@@ -19,5 +19,5 @@ def list_styles() -> list[dict]:
     for path in sorted(STYLES_DIR.glob("*.json")):
         with open(path) as f:
             data = json.load(f)
-        styles.append({"id": data["id"], "name": data["name"], "bpm_range": data.get("bpm_range", [40, 240])})
+        styles.append({"id": data["id"], "name": data["name"], "bpm_range": data.get("bpm_range", [40, 240]), "default_scale": data.get("default_scale", "minor")})
     return styles
