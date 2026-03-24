@@ -20,15 +20,31 @@ def generate_drums(
     triplet_prob = drum_cfg.get("triplet_probability", 0.2)
     snare_beats = drum_cfg.get("snare_standard_beats", [2, 4])
     swing_amount = drum_cfg.get("swing", 0.0)
+    use_ride = drum_cfg.get("use_ride", False)
+    use_clap = drum_cfg.get("use_clap", False)
+    crash_on_bar_1 = drum_cfg.get("crash_on_bar_1", False)
+    tom_fills = drum_cfg.get("tom_fills", False)
+
+    hat_note = DRUM_MAP["ride"] if use_ride else DRUM_MAP["closed_hat"]
 
     beats_per_bar = 4
-    step = 0.25  # 16th note grid
+    step = 0.25
     ticks_per_beat = 480
 
     for bar in range(bars):
         bar_start = bar * beats_per_bar
 
-        # Kick: beat 1, sometimes beat 3, complexity adds offbeats
+        # Crash on bar 1 and at phrase boundaries when complexity is high
+        if crash_on_bar_1 and (bar == 0 or (complexity > 0.7 and bar % 4 == 0)):
+            events.append(NoteEvent(
+                pitch=DRUM_MAP["crash"],
+                start=bar_start,
+                duration=0.5,
+                velocity=100 + random.randint(-8, 8),
+                channel=DRUM_CHANNEL,
+            ))
+
+        # Kick: beat 1 always, beat 3 at medium complexity, offbeats at high complexity
         kick_beats = [0.0]
         if complexity > 0.4:
             kick_beats.append(2.0)
@@ -51,7 +67,7 @@ def generate_drums(
 
         # Snare
         for snare_b in snare_beats:
-            b_f = float(snare_b) - 1.0  # convert 1-indexed beat number to 0-indexed
+            b_f = float(snare_b) - 1.0
             t = bar_start + b_f
             t_tick = int(t * ticks_per_beat)
             t_tick = apply_swing(t_tick, swing_amount, ticks_per_beat)
@@ -63,10 +79,25 @@ def generate_drums(
                 channel=DRUM_CHANNEL,
             ))
 
-        # Hi-hats
+        # Clap layered on snare beats
+        if use_clap:
+            for snare_b in snare_beats:
+                b_f = float(snare_b) - 1.0
+                t = bar_start + b_f
+                t_tick = int(t * ticks_per_beat)
+                t_tick = apply_swing(t_tick, swing_amount, ticks_per_beat)
+                events.append(NoteEvent(
+                    pitch=DRUM_MAP["clap"],
+                    start=t_tick / ticks_per_beat,
+                    duration=0.05,
+                    velocity=85 + random.randint(-10, 10),
+                    channel=DRUM_CHANNEL,
+                ))
+
+        # Hi-hats or ride
         use_triplet = should_trigger(triplet_prob)
         if use_triplet:
-            hat_steps = [i / 3.0 for i in range(bars * 12)]  # triplet 8ths
+            hat_steps = [i / 3.0 for i in range(bars * 12)]
             hat_steps = [s for s in hat_steps if bar_start <= s < bar_start + beats_per_bar]
         else:
             hat_steps = [bar_start + i * step for i in range(int(beats_per_bar / step))]
@@ -74,16 +105,39 @@ def generate_drums(
         for t in hat_steps:
             if not should_trigger(hat_density * (0.7 + complexity * 0.3)):
                 continue
-            is_open = should_trigger(0.1)
+            if use_ride:
+                note = hat_note
+                dur = 0.1
+            else:
+                is_open = should_trigger(0.1)
+                note = DRUM_MAP["open_hat"] if is_open else hat_note
+                dur = 0.2 if is_open else 0.05
             t_tick = int(t * ticks_per_beat)
             t_tick = apply_swing(t_tick, swing_amount, ticks_per_beat)
             vel = 60 + random.randint(-15, 15)
             events.append(NoteEvent(
-                pitch=DRUM_MAP["open_hat"] if is_open else DRUM_MAP["closed_hat"],
+                pitch=note,
                 start=t_tick / ticks_per_beat,
-                duration=0.05 if not is_open else 0.2,
+                duration=dur,
                 velocity=vel,
                 channel=DRUM_CHANNEL,
             ))
+
+        # Tom fill on beat 4 of the last bar in every 4-bar phrase
+        if tom_fills and bar % 4 == 3 and complexity > 0.3:
+            for b_offset, tom_note, base_vel in [
+                (3.0,  DRUM_MAP["tom_hi"],  75),
+                (3.25, DRUM_MAP["tom_mid"], 72),
+                (3.5,  DRUM_MAP["tom_lo"],  70),
+                (3.75, DRUM_MAP["tom_lo"],  68),
+            ]:
+                if should_trigger(0.6 + complexity * 0.3):
+                    events.append(NoteEvent(
+                        pitch=tom_note,
+                        start=bar_start + b_offset,
+                        duration=0.1,
+                        velocity=base_vel + random.randint(-8, 8),
+                        channel=DRUM_CHANNEL,
+                    ))
 
     return events

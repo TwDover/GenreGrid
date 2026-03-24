@@ -1,0 +1,34 @@
+{
+  "id": "ambient",
+  "name": "Ambient",
+  "bpm_range": [55, 75],
+  "default_scale": "major",
+  "preferred_keys": ["C", "D", "E", "G", "A"],
+  "progression_templates": [
+    ["I", "V", "vi", "IV"],
+    ["I", "IV", "I", "V"],
+    ["vi", "IV", "I", "V"]
+  ],
+  "chord_extensions": {
+    "allow_7th": 0.8,
+    "allow_9th": 0.6
+  },
+  "bass": {
+    "pattern_density": 0.2,
+    "octave_jumps": 0.05,
+    "sustain_bias": 0.9
+  },
+  "melody": {
+    "density": 0.2,
+    "stepwise_motion": 0.85,
+    "leap_probability": 0.05,
+    "rest_probability": 0.5,
+    "range": [60, 79]
+  },
+  "drums": {
+    "hat_density": 0.15,
+    "triplet_probability": 0.1,
+    "snare_standard_beats": [3],
+    "swing": 0.0
+  }
+}

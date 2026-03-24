@@ -1,0 +1,36 @@
+{
+  "id": "drum_and_bass",
+  "name": "Drum & Bass",
+  "bpm_range": [165, 180],
+  "default_scale": "minor",
+  "preferred_keys": ["C", "D", "F", "G", "A"],
+  "progression_templates": [
+    ["i", "VI", "VII", "i"],
+    ["i", "iv", "VII", "VI"],
+    ["i", "VII", "VI", "VII"]
+  ],
+  "chord_extensions": {
+    "allow_7th": 0.4,
+    "allow_9th": 0.15
+  },
+  "bass": {
+    "pattern_density": 0.75,
+    "octave_jumps": 0.4,
+    "sustain_bias": 0.4
+  },
+  "melody": {
+    "density": 0.3,
+    "stepwise_motion": 0.6,
+    "leap_probability": 0.25,
+    "rest_probability": 0.4,
+    "range": [60, 80]
+  },
+  "drums": {
+    "hat_density": 0.7,
+    "triplet_probability": 0.2,
+    "snare_standard_beats": [2, 4],
+    "swing": 0.2,
+    "crash_on_bar_1": true,
+    "tom_fills": true
+  }
+}

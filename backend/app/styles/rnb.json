@@ -1,0 +1,35 @@
+{
+  "id": "rnb",
+  "name": "R&B",
+  "bpm_range": [70, 95],
+  "default_scale": "minor",
+  "preferred_keys": ["C", "D", "F", "G", "A", "Bb"],
+  "progression_templates": [
+    ["i", "VI", "III", "VII"],
+    ["i", "iv", "VII", "III"],
+    ["ii", "V", "I", "vi"]
+  ],
+  "chord_extensions": {
+    "allow_7th": 0.95,
+    "allow_9th": 0.7
+  },
+  "bass": {
+    "pattern_density": 0.5,
+    "octave_jumps": 0.1,
+    "sustain_bias": 0.55
+  },
+  "melody": {
+    "density": 0.45,
+    "stepwise_motion": 0.7,
+    "leap_probability": 0.15,
+    "rest_probability": 0.25,
+    "range": [60, 79]
+  },
+  "drums": {
+    "hat_density": 0.55,
+    "triplet_probability": 0.45,
+    "snare_standard_beats": [2, 4],
+    "swing": 0.4,
+    "use_clap": true
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "id": "funk",
+  "name": "Funk",
+  "bpm_range": [90, 115],
+  "default_scale": "major",
+  "preferred_keys": ["C", "D", "E", "F", "G", "A"],
+  "progression_templates": [
+    ["I", "IV", "I", "V"],
+    ["I", "I", "IV", "V"],
+    ["I", "vi", "ii", "V"]
+  ],
+  "chord_extensions": {
+    "allow_7th": 0.85,
+    "allow_9th": 0.5
+  },
+  "bass": {
+    "pattern_density": 0.9,
+    "octave_jumps": 0.3,
+    "sustain_bias": 0.1
+  },
+  "melody": {
+    "density": 0.5,
+    "stepwise_motion": 0.55,
+    "leap_probability": 0.3,
+    "rest_probability": 0.2,
+    "range": [62, 82]
+  },
+  "drums": {
+    "hat_density": 0.85,
+    "triplet_probability": 0.3,
+    "snare_standard_beats": [2, 4],
+    "swing": 0.35,
+    "tom_fills": true
+  }
+}

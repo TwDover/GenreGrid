@@ -1,0 +1,34 @@
+{
+  "id": "synthwave",
+  "name": "Synthwave",
+  "bpm_range": [100, 120],
+  "default_scale": "minor",
+  "preferred_keys": ["C", "D", "F", "G", "A"],
+  "progression_templates": [
+    ["i", "VI", "III", "VII"],
+    ["i", "iv", "VI", "VII"],
+    ["VI", "VII", "i", "III"]
+  ],
+  "chord_extensions": {
+    "allow_7th": 0.8,
+    "allow_9th": 0.5
+  },
+  "bass": {
+    "pattern_density": 0.65,
+    "octave_jumps": 0.15,
+    "sustain_bias": 0.45
+  },
+  "melody": {
+    "density": 0.45,
+    "stepwise_motion": 0.65,
+    "leap_probability": 0.2,
+    "rest_probability": 0.25,
+    "range": [62, 86]
+  },
+  "drums": {
+    "hat_density": 0.6,
+    "triplet_probability": 0.1,
+    "snare_standard_beats": [2, 4],
+    "swing": 0.05
+  }
+}

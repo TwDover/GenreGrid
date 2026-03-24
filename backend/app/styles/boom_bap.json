@@ -29,6 +29,7 @@
     "hat_density": 0.5,
     "triplet_probability": 0.5,
     "snare_standard_beats": [2, 4],
-    "swing": 0.45
+    "swing": 0.45,
+    "tom_fills": true
   }
 }

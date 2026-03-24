@@ -12,7 +12,7 @@
       </section>
 
       <section class="export-section">
-        <ExportPanel :response="result" />
+        <ExportPanel :history="history" />
       </section>
     </main>
   </div>
@@ -28,7 +28,7 @@ import type { StyleInfo, GenerateRequest, GenerateResponse } from '../types/midi
 const styles = ref<StyleInfo[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
-const result = ref<GenerateResponse | null>(null)
+const history = ref<GenerateResponse[]>([])
 
 onMounted(async () => {
   try {
@@ -41,9 +41,9 @@ onMounted(async () => {
 async function handleGenerate(form: GenerateRequest) {
   loading.value = true
   error.value = null
-  result.value = null
   try {
-    result.value = await generate(form)
+    const result = await generate(form)
+    history.value = [result, ...history.value].slice(0, 10)
   } catch (e: any) {
     error.value = e.message ?? 'Unknown error'
   } finally {

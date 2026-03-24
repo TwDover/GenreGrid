@@ -13,10 +13,12 @@ def generate_bass(
     bars: int,
     complexity: float,
     variation: float,
+    progression: list | None = None,
 ) -> List[NoteEvent]:
     events: List[NoteEvent] = []
-    templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
-    progression = random.choice(templates)
+    if progression is None:
+        templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
+        progression = random.choice(templates)
     bass_cfg = style.get("bass", {})
 
     density = bass_cfg.get("pattern_density", 0.5)
