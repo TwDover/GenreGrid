@@ -7,12 +7,12 @@
 
     <main class="app-main">
       <section class="form-section">
-        <GenerateForm :styles="styles" :loading="loading" @submit="handleGenerate" />
+        <GenerateForm :styles="styles" :loading="loading" :replayData="replayData" @submit="handleGenerate" />
         <p v-if="error" class="error-msg">{{ error }}</p>
       </section>
 
       <section class="export-section">
-        <ExportPanel :history="history" />
+        <ExportPanel :history="history" @replay="handleReplay" />
       </section>
     </main>
   </div>
@@ -29,6 +29,7 @@ const styles = ref<StyleInfo[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 const history = ref<GenerateResponse[]>([])
+const replayData = ref<GenerateResponse | null>(null)
 
 onMounted(async () => {
   try {
@@ -49,5 +50,10 @@ async function handleGenerate(form: GenerateRequest) {
   } finally {
     loading.value = false
   }
+}
+
+function handleReplay(response: GenerateResponse) {
+  replayData.value = null          // reset first so the watcher fires even if same seed
+  setTimeout(() => { replayData.value = response }, 0)
 }
 </script>

@@ -1,6 +1,7 @@
 export interface StyleInfo {
   id: string
   name: string
+  bpm_range: [number, number]
 }
 
 export interface GenerateRequest {
@@ -12,6 +13,7 @@ export interface GenerateRequest {
   complexity: number
   variation: number
   parts: string[]
+  seed?: number
 }
 
 export interface FileInfo {
@@ -22,6 +24,8 @@ export interface FileInfo {
 
 export interface GenerateSummary {
   key: string
+  key_root: string
+  scale: string
   bpm: number
   bars: number
 }
@@ -31,4 +35,5 @@ export interface GenerateResponse {
   style: string
   files: FileInfo[]
   summary: GenerateSummary
+  seed: number
 }
