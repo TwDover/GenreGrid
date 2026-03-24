@@ -25,6 +25,13 @@
     "rest_probability": 0.2,
     "range": [64, 84]
   },
+  "chord_rhythm": [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
+  "arpeggio": {
+    "pattern": "up",
+    "speed": 0.25,
+    "include_octave": true,
+    "allow_7th": false
+  },
   "drums": {
     "hat_density": 0.9,
     "triplet_probability": 0.1,

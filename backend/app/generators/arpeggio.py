@@ -1,0 +1,79 @@
+import random
+from typing import List
+
+from app.services.midi_writer import NoteEvent
+from app.theory.chords import roman_to_chord
+from app.services.variation import should_trigger
+from app.theory.rhythm import apply_swing
+
+
+def generate_arpeggio(
+    style: dict,
+    key: str,
+    scale: str,
+    bars: int,
+    complexity: float,
+    variation: float,
+    progression: list | None = None,
+) -> List[NoteEvent]:
+    events: List[NoteEvent] = []
+    if progression is None:
+        templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
+        progression = random.choice(templates)
+
+    arp_cfg = style.get("arpeggio", {})
+    pattern = arp_cfg.get("pattern", "up")          # up | down | up_down
+    speed = arp_cfg.get("speed", 0.25)              # beats per note (0.25=16th, 0.5=8th)
+    include_octave = arp_cfg.get("include_octave", False)
+    allow_7th = arp_cfg.get("allow_7th", False)
+    swing_amount = style.get("drums", {}).get("swing", 0.0)
+
+    beats_per_bar = 4
+    prog_len = len(progression)
+    ticks_per_beat = 480
+
+    for chord_idx in range(bars):
+        roman = progression[chord_idx % prog_len]
+        pitches = sorted(roman_to_chord(roman, key, scale, octave=4, allow_7th=allow_7th))
+
+        if include_octave:
+            pitches = pitches + [pitches[0] + 12]
+
+        if pattern == "up":
+            seq = pitches
+        elif pattern == "down":
+            seq = list(reversed(pitches))
+        else:  # up_down
+            seq = pitches + list(reversed(pitches[1:-1])) if len(pitches) > 2 else pitches
+
+        bar_start = chord_idx * beats_per_bar
+        pos = 0.0
+        seq_idx = 0
+
+        while pos <= beats_per_bar - speed * 0.5:
+            # Occasional rest for variation
+            if seq_idx > 0 and should_trigger(variation * 0.2):
+                pos += speed
+                seq_idx += 1
+                continue
+
+            pitch = seq[seq_idx % len(seq)]
+            is_root = (seq_idx % len(seq) == 0)
+            vel = 76 + random.randint(-8, 8) + (10 if is_root else 0)
+            vel = min(127, vel)
+
+            t_tick = int((bar_start + pos) * ticks_per_beat)
+            t_tick = apply_swing(t_tick, swing_amount, ticks_per_beat)
+
+            events.append(NoteEvent(
+                pitch=min(127, max(0, pitch)),
+                start=t_tick / ticks_per_beat,
+                duration=speed * 0.8,
+                velocity=vel,
+                channel=3,
+            ))
+
+            pos += speed
+            seq_idx += 1
+
+    return events
