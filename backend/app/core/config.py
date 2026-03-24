@@ -5,3 +5,5 @@ EXPORTS_DIR = BASE_DIR / "exports"
 STYLES_DIR = BASE_DIR / "app" / "styles"
 
 EXPORTS_DIR.mkdir(exist_ok=True)
+
+EXPORT_TTL_SECONDS = 3600  # delete exports older than 1 hour
