@@ -25,6 +25,7 @@
     "rest_probability": 0.3,
     "range": [62, 82]
   },
+  "chord_rhythm": [0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,0],
   "drums": {
     "hat_density": 0.65,
     "triplet_probability": 0.2,

@@ -5,6 +5,7 @@ from app.services.midi_writer import NoteEvent
 from app.theory.scales import build_scale
 from app.theory.chords import roman_to_chord
 from app.services.variation import should_trigger
+from app.services.humanize import beat_velocity, timing_jitter, velocity_arc
 
 
 def _chord_tone_indices(roman: str, key: str, scale: str, scale_notes: list) -> list:
@@ -45,11 +46,15 @@ def generate_melody(
     chords_per_bar = 2 if complexity > 0.6 else 1
     beats_per_chord = beats_per_bar / chords_per_bar
     prog_len = len(progression)
+    total_beats = bars * beats_per_bar
 
     current_note_idx = len(scale_notes) // 2
 
+    # Generate raw notes for all bars
+    raw: List[NoteEvent] = []
     beat = 0.0
-    while beat < bars * beats_per_bar - step:
+    while beat < total_beats - step:
+        bar_num = int(beat / beats_per_bar)
         if should_trigger(rest_prob):
             beat += step * random.choice([1, 2])
             continue
@@ -57,7 +62,6 @@ def generate_melody(
             beat += step
             continue
 
-        # Determine which chord is currently playing
         chord_idx = int(beat / beats_per_chord)
         current_roman = progression[chord_idx % prog_len]
         beat_in_chord = beat - chord_idx * beats_per_chord
@@ -66,17 +70,14 @@ def generate_melody(
         is_strong_beat = (beat % 1.0) < step
 
         if is_chord_downbeat and should_trigger(0.65):
-            # Snap to nearest chord tone on chord changes
             ct = _chord_tone_indices(current_roman, key, scale, scale_notes)
             if ct:
                 current_note_idx = min(ct, key=lambda i: abs(i - current_note_idx))
         elif is_strong_beat and should_trigger(0.35):
-            # Weakly bias toward chord tones on other strong beats
             ct = _chord_tone_indices(current_roman, key, scale, scale_notes)
             if ct:
                 current_note_idx = min(ct, key=lambda i: abs(i - current_note_idx))
         else:
-            # Normal stepwise or leap motion
             if should_trigger(stepwise) and len(scale_notes) > 2:
                 direction = random.choice([-1, 1])
                 current_note_idx = max(0, min(len(scale_notes) - 1, current_note_idx + direction))
@@ -87,9 +88,65 @@ def generate_melody(
         pitch = scale_notes[current_note_idx]
         dur_steps = random.choices([1, 2, 4], weights=[0.5, 0.35, 0.15])[0]
         duration = dur_steps * step * 0.9
-        vel = 80 + random.randint(-12, 12)
+        base_vel = velocity_arc(bar_num, bars, 82)
+        vel = beat_velocity(beat, base_vel)
+        jitter = timing_jitter()
 
-        events.append(NoteEvent(pitch=pitch, start=beat, duration=duration, velocity=vel, channel=2))
+        raw.append(NoteEvent(
+            pitch=pitch,
+            start=max(0.0, beat + jitter),
+            duration=duration,
+            velocity=vel,
+            channel=2,
+        ))
         beat += dur_steps * step
 
-    return events
+    # Motif repetition: use first 2 bars as motif, replicate/vary subsequent blocks
+    block_beats = beats_per_bar * 2  # 8 beats = 2 bars
+    motif = [n for n in raw if n.start < block_beats]
+
+    if not motif or bars <= 2:
+        return raw
+
+    # Keep first block; rebuild subsequent blocks
+    final: List[NoteEvent] = list(motif)
+    num_blocks = (bars + 1) // 2
+
+    for block in range(1, num_blocks):
+        b_start = block * block_beats
+        b_end = b_start + block_beats
+        existing = [n for n in raw if b_start <= n.start < b_end]
+
+        roll = random.random()
+        if roll < 0.45:
+            # Exact repeat — shift motif time to this block
+            for n in motif:
+                t = b_start + (n.start % block_beats)
+                if t < total_beats:
+                    final.append(NoteEvent(
+                        pitch=n.pitch,
+                        start=t,
+                        duration=n.duration,
+                        velocity=n.velocity,
+                        channel=n.channel,
+                    ))
+        elif roll < 0.80:
+            # Pitch-shifted repeat — transpose by ±2–5 semitones staying in range
+            shift = random.choice([-5, -4, -3, -2, 2, 3, 4, 5])
+            for n in motif:
+                new_p = n.pitch + shift
+                if note_range[0] <= new_p <= note_range[1]:
+                    t = b_start + (n.start % block_beats)
+                    if t < total_beats:
+                        final.append(NoteEvent(
+                            pitch=new_p,
+                            start=t,
+                            duration=n.duration,
+                            velocity=n.velocity,
+                            channel=n.channel,
+                        ))
+        else:
+            # New material from raw generation
+            final.extend(existing)
+
+    return sorted(final, key=lambda n: n.start)

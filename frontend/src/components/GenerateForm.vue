@@ -99,7 +99,7 @@ const props = defineProps<{
 defineEmits<{ (e: 'submit', form: GenerateRequest): void }>()
 
 const keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-const allParts = ['chords', 'bass', 'melody', 'drums']
+const allParts = ['chords', 'bass', 'melody', 'drums', 'arpeggio']
 
 const form = reactive<GenerateRequest>({
   style_id: props.styles[0]?.id ?? 'dark_trap',

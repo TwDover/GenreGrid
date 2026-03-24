@@ -11,6 +11,7 @@ from app.generators.chords import generate_chords
 from app.generators.bass import generate_bass
 from app.generators.melody import generate_melody
 from app.generators.drums import generate_drums
+from app.generators.arpeggio import generate_arpeggio
 from app.core.config import EXPORTS_DIR
 
 router = APIRouter()
@@ -43,7 +44,8 @@ def generate(req: GenerateRequest):
         "chords": lambda: generate_chords(style, req.key, req.scale, req.bars, req.complexity, req.variation, progression),
         "bass":   lambda: generate_bass(style, req.key, req.scale, req.bars, req.complexity, req.variation, progression),
         "melody": lambda: generate_melody(style, req.key, req.scale, req.bars, req.complexity, req.variation, progression),
-        "drums":  lambda: generate_drums(style, req.bars, req.complexity, req.variation),
+        "drums":    lambda: generate_drums(style, req.bars, req.complexity, req.variation),
+        "arpeggio": lambda: generate_arpeggio(style, req.key, req.scale, req.bars, req.complexity, req.variation, progression),
     }
 
     files = []
