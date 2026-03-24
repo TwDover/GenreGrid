@@ -25,6 +25,12 @@
     "rest_probability": 0.4,
     "range": [57, 76]
   },
+  "arpeggio": {
+    "pattern": "up_down",
+    "speed": 0.5,
+    "include_octave": false,
+    "allow_7th": true
+  },
   "drums": {
     "hat_density": 0.3,
     "triplet_probability": 0.1,

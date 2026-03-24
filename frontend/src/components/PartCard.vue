@@ -5,7 +5,7 @@
       <span class="part-file">{{ file.filename }}</span>
     </div>
     <div class="card-actions">
-      <button class="play-btn" :disabled="isLoading" @click="toggle(file.url)" :title="playing ? 'Stop' : 'Preview'">
+      <button class="play-btn" :disabled="isLoading" @click="toggle(file.url, styleId)" :title="playing ? 'Stop' : 'Preview'">
         <span v-if="isLoading && !playing">...</span>
         <span v-else>{{ playing ? '■' : '▶' }}</span>
       </button>
@@ -29,7 +29,7 @@ import { downloadUrl } from '../services/api'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 import PianoRoll from './PianoRoll.vue'
 
-const props = defineProps<{ file: FileInfo }>()
+const props = defineProps<{ file: FileInfo; styleId?: string }>()
 const downloadHref = computed(() => downloadUrl(props.file.url))
 
 const { toggle, currentlyPlaying, isLoading, getMidiData } = useMidiPlayer()

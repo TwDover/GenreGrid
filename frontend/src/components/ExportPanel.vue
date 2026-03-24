@@ -29,7 +29,7 @@
             </button>
           </div>
           <div class="part-cards">
-            <PartCard v-for="file in response.files" :key="file.part" :file="file" />
+            <PartCard v-for="file in response.files" :key="file.part" :file="file" :styleId="response.style" />
           </div>
         </div>
       </div>
