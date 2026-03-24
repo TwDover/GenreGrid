@@ -25,8 +25,16 @@
 
     <div class="field-row">
       <div class="field">
-        <label>BPM</label>
-        <input type="number" v-model.number="form.bpm" min="40" max="240" />
+        <label>
+          BPM
+          <span v-if="selectedStyle" class="bpm-range">{{ selectedStyle.bpm_range[0] }}–{{ selectedStyle.bpm_range[1] }}</span>
+        </label>
+        <input
+          type="number"
+          v-model.number="form.bpm"
+          :min="selectedStyle?.bpm_range[0] ?? 40"
+          :max="selectedStyle?.bpm_range[1] ?? 240"
+        />
       </div>
       <div class="field">
         <label>Bars</label>
@@ -54,6 +62,16 @@
       </div>
     </div>
 
+    <div class="field">
+      <label>Seed <span class="seed-hint">optional — leave blank for random</span></label>
+      <input
+        type="number"
+        v-model.number="form.seed"
+        placeholder="e.g. 1234567890"
+        min="0"
+      />
+    </div>
+
     <button type="submit" :disabled="loading" class="generate-btn">
       {{ loading ? 'Generating...' : 'Generate' }}
     </button>
@@ -61,13 +79,14 @@
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { reactive, computed, watch } from 'vue'
 import StyleSelector from './StyleSelector.vue'
-import type { StyleInfo, GenerateRequest } from '../types/midi'
+import type { StyleInfo, GenerateRequest, GenerateResponse } from '../types/midi'
 
 const props = defineProps<{
   styles: StyleInfo[]
   loading: boolean
+  replayData?: GenerateResponse | null
 }>()
 
 defineEmits<{ (e: 'submit', form: GenerateRequest): void }>()
@@ -84,5 +103,48 @@ const form = reactive<GenerateRequest>({
   complexity: 0.5,
   variation: 0.4,
   parts: ['chords', 'bass', 'melody', 'drums'],
+  seed: undefined,
+})
+
+const selectedStyle = computed(() =>
+  props.styles.find(s => s.id === form.style_id)
+)
+
+// When style changes, snap BPM to the midpoint of its range
+watch(selectedStyle, (style) => {
+  if (!style) return
+  const [min, max] = style.bpm_range
+  form.bpm = Math.round((min + max) / 2)
+})
+
+// When replay data arrives, populate the form
+watch(() => props.replayData, (data) => {
+  if (!data) return
+  form.style_id = data.style
+  form.key = data.summary.key_root
+  form.scale = data.summary.scale
+  form.bpm = data.summary.bpm
+  form.bars = data.summary.bars
+  form.seed = data.seed
 })
 </script>
+
+<style scoped>
+.bpm-range {
+  font-size: 0.7rem;
+  color: #55556a;
+  margin-left: 0.4rem;
+  font-weight: normal;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.seed-hint {
+  font-size: 0.7rem;
+  color: #55556a;
+  margin-left: 0.4rem;
+  font-weight: normal;
+  text-transform: none;
+  letter-spacing: 0;
+}
+</style>

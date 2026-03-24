@@ -11,11 +11,13 @@ class GenerateRequest(BaseModel):
     complexity: float = Field(default=0.5, ge=0.0, le=1.0)
     variation: float = Field(default=0.4, ge=0.0, le=1.0)
     parts: List[str] = ["chords", "bass", "melody", "drums"]
+    seed: Optional[int] = None
 
 
 class StyleInfo(BaseModel):
     id: str
     name: str
+    bpm_range: List[int] = [40, 240]
 
 
 class FileInfo(BaseModel):
@@ -25,7 +27,9 @@ class FileInfo(BaseModel):
 
 
 class GenerateSummary(BaseModel):
-    key: str
+    key: str        # formatted label e.g. "C minor"
+    key_root: str   # e.g. "C"
+    scale: str      # e.g. "minor"
     bpm: int
     bars: int
 
@@ -35,3 +39,4 @@ class GenerateResponse(BaseModel):
     style: str
     files: List[FileInfo]
     summary: GenerateSummary
+    seed: int

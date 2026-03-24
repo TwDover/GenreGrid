@@ -23,6 +23,14 @@ def generate(req: GenerateRequest):
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+    # Seed random for reproducibility
+    seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
+    random.seed(seed)
+
+    # Clamp BPM to the style's suggested range
+    bpm_min, bpm_max = style.get("bpm_range", [40, 240])
+    bpm = max(bpm_min, min(bpm_max, req.bpm))
+
     gen_id = str(uuid.uuid4())[:8]
     output_dir = EXPORTS_DIR / gen_id
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -49,20 +57,21 @@ def generate(req: GenerateRequest):
         all_events[part] = events
         filename = f"{part}.mid"
         out_path = output_dir / filename
-        write_midi(events, out_path, bpm=req.bpm)
+        write_midi(events, out_path, bpm=bpm)
         files.append(FileInfo(part=part, filename=filename, url=f"/exports/{gen_id}/{filename}"))
 
     # Combined export
     if len(all_events) > 1:
         combined_path = output_dir / "combined.mid"
-        write_combined_midi(all_events, combined_path, bpm=req.bpm)
+        write_combined_midi(all_events, combined_path, bpm=bpm)
         files.append(FileInfo(part="combined", filename="combined.mid", url=f"/exports/{gen_id}/combined.mid"))
 
     return GenerateResponse(
         generation_id=gen_id,
         style=req.style_id,
         files=files,
-        summary=GenerateSummary(key=f"{req.key} {req.scale}", bpm=req.bpm, bars=req.bars),
+        summary=GenerateSummary(key=f"{req.key} {req.scale}", key_root=req.key, scale=req.scale, bpm=bpm, bars=req.bars),
+        seed=seed,
     )
 
 

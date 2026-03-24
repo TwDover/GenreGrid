@@ -18,6 +18,16 @@
           <span class="entry-chevron">{{ expandedId === response.generation_id ? '▲' : '▼' }}</span>
         </button>
         <div v-if="expandedId === response.generation_id" class="entry-body">
+          <div class="seed-row">
+            <span class="seed-label">Seed</span>
+            <span class="seed-value">{{ response.seed }}</span>
+            <button class="seed-action" @click.stop="copy(response.seed)" :title="'Copy seed'">
+              {{ copied === response.seed ? '✓' : 'Copy' }}
+            </button>
+            <button class="seed-action replay" @click.stop="$emit('replay', response)" title="Load these settings into the form">
+              Replay
+            </button>
+          </div>
           <div class="part-cards">
             <PartCard v-for="file in response.files" :key="file.part" :file="file" />
           </div>
@@ -33,8 +43,10 @@ import PartCard from './PartCard.vue'
 import type { GenerateResponse } from '../types/midi'
 
 const props = defineProps<{ history: GenerateResponse[] }>()
+defineEmits<{ (e: 'replay', response: GenerateResponse): void }>()
 
 const expandedId = ref<string | null>(null)
+const copied = ref<number | null>(null)
 
 watch(() => props.history[0], (newest) => {
   if (newest) expandedId.value = newest.generation_id
@@ -46,6 +58,12 @@ function toggle(id: string) {
 
 function formatStyle(id: string): string {
   return id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function copy(seed: number) {
+  navigator.clipboard.writeText(String(seed))
+  copied.value = seed
+  setTimeout(() => { copied.value = null }, 2000)
 }
 </script>
 
@@ -103,9 +121,7 @@ function formatStyle(id: string): string {
   text-align: left;
 }
 
-.history-row:hover {
-  background: #22223a;
-}
+.history-row:hover { background: #22223a; }
 
 .entry-style {
   font-weight: 600;
@@ -132,7 +148,54 @@ function formatStyle(id: string): string {
 
 .entry-body {
   padding: 0 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
+
+.seed-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #12121a;
+  border-radius: 6px;
+  border: 1px solid #2a2a3e;
+}
+
+.seed-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #55556a;
+}
+
+.seed-value {
+  font-family: monospace;
+  font-size: 0.82rem;
+  color: #a78bfa;
+  flex: 1;
+}
+
+.seed-action {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+  background: #2a2a3e;
+  border: 1px solid #3a3a54;
+  border-radius: 4px;
+  color: #8888a0;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.seed-action:hover { background: #3a3a54; color: #e0e0e8; }
+
+.seed-action.replay {
+  color: #a78bfa;
+  border-color: #a78bfa44;
+}
+
+.seed-action.replay:hover { background: #3b1f6e; color: #c4b5fd; }
 
 .part-cards {
   display: grid;
