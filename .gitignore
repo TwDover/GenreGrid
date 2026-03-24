@@ -1,0 +1,63 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+pip-wheel-metadata/
+
+# =========================
+# Node / Frontend
+# =========================
+node_modules/
+frontend/dist/
+.vite/
+*.local
+
+# =========================
+# Generated Files (MIDI exports)
+# =========================
+backend/exports/*
+!backend/exports/.gitkeep
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# Coverage / Testing
+# =========================
+.coverage
+htmlcov/
+
+# =========================
+# IDE / Editor
+# =========================
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Environment Variables
+# =========================
+.env
+.env.*
+!.env.example
