@@ -2,6 +2,7 @@ export interface StyleInfo {
   id: string
   name: string
   bpm_range: [number, number]
+  default_scale: string
 }
 
 export interface GenerateRequest {

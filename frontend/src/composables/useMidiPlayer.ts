@@ -3,9 +3,25 @@ import * as Tone from 'tone'
 import { Midi } from '@tonejs/midi'
 import { downloadUrl } from '../services/api'
 
+export interface ParsedNote {
+  midi: number
+  time: number
+  duration: number
+  velocity: number
+  isPercussion: boolean
+}
+
+export interface MidiData {
+  notes: ParsedNote[]
+  duration: number
+}
+
 // Global so only one track plays at a time
 const currentlyPlaying = ref<string | null>(null)
 const isLoading = ref(false)
+
+// Cache parsed MIDI data per URL so the piano roll persists after stop
+const midiStore = ref<Record<string, MidiData>>({})
 
 let scheduledParts: Tone.Part[] = []
 let activeSynths: Tone.ToneAudioNode[] = []
@@ -63,6 +79,22 @@ export function useMidiPlayer() {
       const buf = await res.arrayBuffer()
       const midi = new Midi(buf)
 
+      // Cache parsed notes for the piano roll
+      const allNotes: ParsedNote[] = []
+      for (const track of midi.tracks) {
+        const isPerc = track.instrument.percussion
+        for (const n of track.notes) {
+          allNotes.push({
+            midi: n.midi,
+            time: n.time,
+            duration: n.duration,
+            velocity: n.velocity,
+            isPercussion: isPerc,
+          })
+        }
+      }
+      midiStore.value[url] = { notes: allNotes, duration: midi.duration }
+
       const bpm = midi.header.tempos[0]?.bpm ?? 120
       Tone.getTransport().bpm.value = bpm
 
@@ -75,7 +107,6 @@ export function useMidiPlayer() {
 
           const notes = track.notes.map(n => ({ time: n.time, midi: n.midi, velocity: n.velocity }))
           const part = new Tone.Part<{ time: number; midi: number; velocity: number }>((time, note) => {
-            // Route by GM drum note number
             if (note.midi === 36 || note.midi === 35) {
               kick.triggerAttackRelease('C1', '8n', time, note.velocity)
             } else if (note.midi === 38 || note.midi === 39 || note.midi === 40) {
@@ -113,7 +144,6 @@ export function useMidiPlayer() {
       currentlyPlaying.value = url
       Tone.getTransport().start()
 
-      // Auto-stop when the MIDI finishes
       Tone.getTransport().scheduleOnce(() => {
         cleanup()
       }, midi.duration + 1)
@@ -129,5 +159,9 @@ export function useMidiPlayer() {
     cleanup()
   }
 
-  return { toggle, stop, currentlyPlaying, isLoading }
+  function getMidiData(url: string): MidiData | null {
+    return midiStore.value[url] ?? null
+  }
+
+  return { toggle, stop, currentlyPlaying, isLoading, getMidiData }
 }

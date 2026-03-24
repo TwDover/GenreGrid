@@ -18,6 +18,7 @@ class StyleInfo(BaseModel):
     id: str
     name: str
     bpm_range: List[int] = [40, 240]
+    default_scale: str = "minor"
 
 
 class FileInfo(BaseModel):

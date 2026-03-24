@@ -13,6 +13,12 @@
         Download .mid
       </a>
     </div>
+    <PianoRoll
+      v-if="midiData"
+      :notes="midiData.notes"
+      :duration="midiData.duration"
+      :playing="playing"
+    />
   </div>
 </template>
 
@@ -21,12 +27,14 @@ import { computed } from 'vue'
 import type { FileInfo } from '../types/midi'
 import { downloadUrl } from '../services/api'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
+import PianoRoll from './PianoRoll.vue'
 
 const props = defineProps<{ file: FileInfo }>()
 const downloadHref = computed(() => downloadUrl(props.file.url))
 
-const { toggle, currentlyPlaying, isLoading } = useMidiPlayer()
+const { toggle, currentlyPlaying, isLoading, getMidiData } = useMidiPlayer()
 const playing = computed(() => currentlyPlaying.value === props.file.url)
+const midiData = computed(() => getMidiData(props.file.url))
 </script>
 
 <style scoped>
