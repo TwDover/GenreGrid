@@ -1,0 +1,35 @@
+{
+  "id": "soul",
+  "name": "Soul",
+  "bpm_range": [70, 95],
+  "default_scale": "major",
+  "preferred_keys": ["C", "D", "F", "G", "A", "Bb"],
+  "progression_templates": [
+    ["I", "vi", "IV", "V"],
+    ["I", "IV", "vi", "V"],
+    ["ii", "V", "I", "vi"]
+  ],
+  "chord_extensions": {
+    "allow_7th": 0.9,
+    "allow_9th": 0.6
+  },
+  "bass": {
+    "pattern_density": 0.6,
+    "octave_jumps": 0.15,
+    "sustain_bias": 0.45
+  },
+  "melody": {
+    "density": 0.5,
+    "stepwise_motion": 0.7,
+    "leap_probability": 0.15,
+    "rest_probability": 0.25,
+    "range": [60, 81]
+  },
+  "drums": {
+    "hat_density": 0.6,
+    "triplet_probability": 0.5,
+    "snare_standard_beats": [2, 4],
+    "swing": 0.5,
+    "use_clap": true
+  }
+}

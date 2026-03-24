@@ -1,0 +1,34 @@
+{
+  "id": "afrobeats",
+  "name": "Afrobeats",
+  "bpm_range": [95, 115],
+  "default_scale": "major",
+  "preferred_keys": ["C", "D", "E", "F", "G", "A"],
+  "progression_templates": [
+    ["I", "IV", "V", "IV"],
+    ["I", "vi", "IV", "V"],
+    ["I", "II", "IV", "I"]
+  ],
+  "chord_extensions": {
+    "allow_7th": 0.5,
+    "allow_9th": 0.3
+  },
+  "bass": {
+    "pattern_density": 0.7,
+    "octave_jumps": 0.2,
+    "sustain_bias": 0.3
+  },
+  "melody": {
+    "density": 0.6,
+    "stepwise_motion": 0.6,
+    "leap_probability": 0.25,
+    "rest_probability": 0.2,
+    "range": [62, 82]
+  },
+  "drums": {
+    "hat_density": 0.8,
+    "triplet_probability": 0.5,
+    "snare_standard_beats": [2, 4],
+    "swing": 0.35
+  }
+}

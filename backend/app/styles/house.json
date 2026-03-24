@@ -1,0 +1,34 @@
+{
+  "id": "house",
+  "name": "House",
+  "bpm_range": [120, 130],
+  "default_scale": "major",
+  "preferred_keys": ["C", "D", "F", "G", "A"],
+  "progression_templates": [
+    ["I", "IV", "vi", "V"],
+    ["I", "vi", "ii", "V"],
+    ["IV", "I", "V", "vi"]
+  ],
+  "chord_extensions": {
+    "allow_7th": 0.7,
+    "allow_9th": 0.4
+  },
+  "bass": {
+    "pattern_density": 0.8,
+    "octave_jumps": 0.2,
+    "sustain_bias": 0.2
+  },
+  "melody": {
+    "density": 0.5,
+    "stepwise_motion": 0.65,
+    "leap_probability": 0.2,
+    "rest_probability": 0.2,
+    "range": [64, 84]
+  },
+  "drums": {
+    "hat_density": 0.9,
+    "triplet_probability": 0.1,
+    "snare_standard_beats": [2, 4],
+    "swing": 0.1
+  }
+}

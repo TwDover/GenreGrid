@@ -1,0 +1,36 @@
+{
+  "id": "jazz",
+  "name": "Jazz",
+  "bpm_range": [80, 140],
+  "default_scale": "major",
+  "preferred_keys": ["F", "Bb", "Eb", "Ab", "C", "G"],
+  "progression_templates": [
+    ["ii", "V", "I", "vi"],
+    ["I", "vi", "ii", "V"],
+    ["iii", "VI", "ii", "V"]
+  ],
+  "chord_extensions": {
+    "allow_7th": 1.0,
+    "allow_9th": 0.8
+  },
+  "bass": {
+    "pattern_density": 0.85,
+    "octave_jumps": 0.25,
+    "sustain_bias": 0.2
+  },
+  "melody": {
+    "density": 0.55,
+    "stepwise_motion": 0.55,
+    "leap_probability": 0.3,
+    "rest_probability": 0.2,
+    "range": [60, 84]
+  },
+  "drums": {
+    "hat_density": 0.7,
+    "triplet_probability": 0.8,
+    "snare_standard_beats": [2, 4],
+    "swing": 0.65,
+    "use_ride": true,
+    "tom_fills": true
+  }
+}

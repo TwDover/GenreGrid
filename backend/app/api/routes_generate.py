@@ -1,3 +1,4 @@
+import random
 import uuid
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
@@ -14,13 +15,6 @@ from app.core.config import EXPORTS_DIR
 
 router = APIRouter()
 
-PART_GENERATORS = {
-    "chords": lambda style, req: generate_chords(style, req.key, req.scale, req.bars, req.complexity, req.variation),
-    "bass":   lambda style, req: generate_bass(style, req.key, req.scale, req.bars, req.complexity, req.variation),
-    "melody": lambda style, req: generate_melody(style, req.key, req.scale, req.bars, req.complexity, req.variation),
-    "drums":  lambda style, req: generate_drums(style, req.bars, req.complexity, req.variation),
-}
-
 
 @router.post("/generate", response_model=GenerateResponse)
 def generate(req: GenerateRequest):
@@ -33,14 +27,25 @@ def generate(req: GenerateRequest):
     output_dir = EXPORTS_DIR / gen_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Pick one progression shared across chords, bass, and melody
+    templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
+    progression = random.choice(templates)
+
+    part_generators = {
+        "chords": lambda: generate_chords(style, req.key, req.scale, req.bars, req.complexity, req.variation, progression),
+        "bass":   lambda: generate_bass(style, req.key, req.scale, req.bars, req.complexity, req.variation, progression),
+        "melody": lambda: generate_melody(style, req.key, req.scale, req.bars, req.complexity, req.variation, progression),
+        "drums":  lambda: generate_drums(style, req.bars, req.complexity, req.variation),
+    }
+
     files = []
     all_events = {}
 
     for part in req.parts:
-        generator = PART_GENERATORS.get(part)
+        generator = part_generators.get(part)
         if generator is None:
             continue
-        events = generator(style, req)
+        events = generator()
         all_events[part] = events
         filename = f"{part}.mid"
         out_path = output_dir / filename

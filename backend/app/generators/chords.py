@@ -13,10 +13,12 @@ def generate_chords(
     bars: int,
     complexity: float,
     variation: float,
+    progression: list | None = None,
 ) -> List[NoteEvent]:
     events: List[NoteEvent] = []
-    templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
-    progression = random.choice(templates)
+    if progression is None:
+        templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
+        progression = random.choice(templates)
     ext = style.get("chord_extensions", {})
     allow_7th_prob = ext.get("allow_7th", 0.3)
     allow_9th_prob = ext.get("allow_9th", 0.1)

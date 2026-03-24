@@ -9,6 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tonejs/midi": "^2.0.28",
+    "tone": "^15.1.22",
     "vue": "^3.4.0"
   },
   "devDependencies": {

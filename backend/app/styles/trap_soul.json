@@ -1,0 +1,35 @@
+{
+  "id": "trap_soul",
+  "name": "Trap Soul",
+  "bpm_range": [60, 80],
+  "default_scale": "minor",
+  "preferred_keys": ["C", "D", "F", "G", "A", "Bb"],
+  "progression_templates": [
+    ["i", "VI", "III", "VII"],
+    ["i", "iv", "VI", "v"],
+    ["i", "VII", "VI", "v"]
+  ],
+  "chord_extensions": {
+    "allow_7th": 0.9,
+    "allow_9th": 0.7
+  },
+  "bass": {
+    "pattern_density": 0.4,
+    "octave_jumps": 0.1,
+    "sustain_bias": 0.7
+  },
+  "melody": {
+    "density": 0.3,
+    "stepwise_motion": 0.75,
+    "leap_probability": 0.1,
+    "rest_probability": 0.4,
+    "range": [58, 78]
+  },
+  "drums": {
+    "hat_density": 0.65,
+    "triplet_probability": 0.4,
+    "snare_standard_beats": [2, 4],
+    "swing": 0.3,
+    "use_clap": true
+  }
+}
