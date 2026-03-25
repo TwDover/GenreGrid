@@ -1,12 +1,11 @@
 import random
 import uuid
-from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from app.models.schemas import GenerateRequest, GenerateResponse, FileInfo, GenerateSummary
 from app.services.style_loader import load_style
-from app.services.midi_writer import write_midi, write_combined_midi
+from app.services.midi_writer import NoteEvent, write_midi, write_combined_midi
 from app.generators.chords import generate_chords
 from app.generators.bass import generate_bass
 from app.generators.melody import generate_melody
@@ -15,6 +14,21 @@ from app.generators.arpeggio import generate_arpeggio
 from app.core.config import EXPORTS_DIR
 
 router = APIRouter()
+
+
+_VELOCITY_DROP = 20  # notes quieter than this are inaudible — discard them
+
+
+def _drop_quiet(events: list[NoteEvent]) -> list[NoteEvent]:
+    return [e for e in events if e.velocity >= _VELOCITY_DROP]
+
+
+def _shift(events: list[NoteEvent], beats: float) -> list[NoteEvent]:
+    return [
+        NoteEvent(pitch=e.pitch, start=e.start + beats, duration=e.duration,
+                  velocity=e.velocity, channel=e.channel)
+        for e in events
+    ]
 
 
 @router.post("/generate", response_model=GenerateResponse)
@@ -40,23 +54,46 @@ def generate(req: GenerateRequest):
     templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
     progression = random.choice(templates)
 
-    part_generators = {
-        "chords": lambda: generate_chords(style, req.key, req.scale, req.bars, req.complexity, req.variation, progression),
-        "bass":   lambda: generate_bass(style, req.key, req.scale, req.bars, req.complexity, req.variation, progression),
-        "melody": lambda: generate_melody(style, req.key, req.scale, req.bars, req.complexity, req.variation, progression),
-        "drums":    lambda: generate_drums(style, req.bars, req.complexity, req.variation),
-        "arpeggio": lambda: generate_arpeggio(style, req.key, req.scale, req.bars, req.complexity, req.variation, progression),
-    }
+    # A/B structure for tracks >= 8 bars: sparse first half → full second half
+    use_sections = req.bars >= 8
+    half = req.bars // 2 if use_sections else req.bars
+    b_offset = half * 4.0  # beats
+
+    def _make_generators(bars: int, complexity: float, include_arpeggio: bool) -> dict:
+        g = {
+            "chords":   lambda b=bars, c=complexity: generate_chords(style, req.key, req.scale, b, c, req.variation, progression),
+            "bass":     lambda b=bars, c=complexity: generate_bass(style, req.key, req.scale, b, c, req.variation, progression),
+            "melody":   lambda b=bars, c=complexity: generate_melody(style, req.key, req.scale, b, c, req.variation, progression),
+            "drums":    lambda b=bars: generate_drums(style, b, req.complexity, req.variation),
+        }
+        if include_arpeggio:
+            g["arpeggio"] = lambda b=bars, c=complexity: generate_arpeggio(style, req.key, req.scale, b, c, req.variation, progression)
+        return g
+
+    all_events: dict[str, list[NoteEvent]] = {}
+
+    if use_sections:
+        a_complexity = req.complexity * 0.55
+        gen_a = _make_generators(half, a_complexity, include_arpeggio=False)
+        gen_b = _make_generators(half, req.complexity, include_arpeggio=True)
+
+        for part in req.parts:
+            a_fn = gen_a.get(part)
+            b_fn = gen_b.get(part)
+            a_evts = a_fn() if a_fn else []
+            b_evts = _shift(b_fn(), b_offset) if b_fn else []
+            if a_evts or b_evts:
+                all_events[part] = a_evts + b_evts
+    else:
+        gen = _make_generators(req.bars, req.complexity, include_arpeggio=True)
+        for part in req.parts:
+            fn = gen.get(part)
+            if fn:
+                all_events[part] = fn()
 
     files = []
-    all_events = {}
-
-    for part in req.parts:
-        generator = part_generators.get(part)
-        if generator is None:
-            continue
-        events = generator()
-        all_events[part] = events
+    for part, events in all_events.items():
+        events = _drop_quiet(events)
         filename = f"{part}.mid"
         out_path = output_dir / filename
         write_midi(events, out_path, bpm=bpm)
@@ -65,7 +102,8 @@ def generate(req: GenerateRequest):
     # Combined export
     if len(all_events) > 1:
         combined_path = output_dir / "combined.mid"
-        write_combined_midi(all_events, combined_path, bpm=bpm)
+        clean_events = {p: _drop_quiet(e) for p, e in all_events.items()}
+        write_combined_midi(clean_events, combined_path, bpm=bpm)
         files.append(FileInfo(part="combined", filename="combined.mid", url=f"/exports/{gen_id}/combined.mid"))
 
     return GenerateResponse(

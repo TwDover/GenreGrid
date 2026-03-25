@@ -44,14 +44,24 @@ def generate_drums(
                 channel=DRUM_CHANNEL,
             ))
 
-        # Kick: beat 1 always, beat 3 at medium complexity, offbeats at high complexity
-        kick_beats = [0.0]
-        if complexity > 0.4:
-            kick_beats.append(2.0)
-        if complexity > 0.7 and should_trigger(0.5):
-            kick_beats.append(2.5)
-        if should_trigger(variation * 0.3):
-            kick_beats.append(0.75)
+        # Kick: use style kick_pattern if present, otherwise fall back to generic logic
+        kick_pattern = drum_cfg.get("kick_pattern")
+        if kick_pattern:
+            kick_beats = [
+                i * step for i, on in enumerate(kick_pattern)
+                if on and should_trigger(0.88 + variation * 0.1)
+            ]
+            # Always guarantee beat 1
+            if not any(b < step for b in kick_beats):
+                kick_beats.insert(0, 0.0)
+        else:
+            kick_beats = [0.0]
+            if complexity > 0.4:
+                kick_beats.append(2.0)
+            if complexity > 0.7 and should_trigger(0.5):
+                kick_beats.append(2.5)
+            if should_trigger(variation * 0.3):
+                kick_beats.append(0.75)
 
         for b in kick_beats:
             t = bar_start + b
@@ -122,6 +132,36 @@ def generate_drums(
                 velocity=vel,
                 channel=DRUM_CHANNEL,
             ))
+
+        # Ghost notes: quiet snare hits on off-16th positions (swing-derived probability)
+        ghost_note_prob = drum_cfg.get("ghost_note_prob", swing_amount * 0.8 if swing_amount >= 0.3 else 0.0)
+        if ghost_note_prob > 0:
+            main_positions = set()
+            for b_f in [float(b) - 1.0 for b in snare_beats]:
+                main_positions.add(round(b_f % beats_per_bar, 2))
+            for b in kick_beats:
+                main_positions.add(round(b, 2))
+
+            for s in range(int(beats_per_bar / step)):
+                beat_in_bar = s * step
+                if round(beat_in_bar, 2) in main_positions:
+                    continue
+                # Prefer "e" and "ah" sub-positions (beat+0.25, beat+0.75)
+                pos_in_beat = round(beat_in_bar % 1.0, 2)
+                is_preferred = pos_in_beat in (0.25, 0.75)
+                prob = ghost_note_prob * (0.35 if is_preferred else 0.12)
+                if not should_trigger(prob):
+                    continue
+                t = bar_start + beat_in_bar
+                t_tick = int(t * ticks_per_beat)
+                t_tick = apply_swing(t_tick, swing_amount, ticks_per_beat)
+                events.append(NoteEvent(
+                    pitch=DRUM_MAP["snare"],
+                    start=t_tick / ticks_per_beat,
+                    duration=0.05,
+                    velocity=random.randint(22, 36),
+                    channel=DRUM_CHANNEL,
+                ))
 
         # Tom fill on beat 4 of the last bar in every 4-bar phrase
         if tom_fills and bar % 4 == 3 and complexity > 0.3:

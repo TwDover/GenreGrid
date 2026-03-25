@@ -26,6 +26,7 @@
     "range": [62, 82]
   },
   "drums": {
+    "kick_pattern": [1,0,0,1,0,0,1,0,0,1,0,0,0,0,0,0],
     "hat_density": 0.8,
     "triplet_probability": 0.5,
     "snare_standard_beats": [2, 4],
