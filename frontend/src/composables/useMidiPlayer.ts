@@ -29,6 +29,14 @@ const LOFI_STYLES = new Set(['lofi', 'cloud_rap'])
 const currentlyPlaying = ref<string | null>(null)
 const isLoading = ref(false)
 
+// Master volume: 0–100 maps to dB via gainToDb
+const volume = ref(80)
+
+function applyVolume(v: number) {
+  Tone.getDestination().volume.value = v === 0 ? -Infinity : Tone.gainToDb(v / 100)
+}
+applyVolume(volume.value)
+
 // Cache parsed MIDI data per URL so the piano roll persists after stop
 const midiStore = ref<Record<string, MidiData>>({})
 
@@ -271,5 +279,10 @@ export function useMidiPlayer() {
     return midiStore.value[url] ?? null
   }
 
-  return { toggle, stop, currentlyPlaying, isLoading, getMidiData }
+  function setVolume(v: number) {
+    volume.value = v
+    applyVolume(v)
+  }
+
+  return { toggle, stop, currentlyPlaying, isLoading, getMidiData, volume, setVolume }
 }

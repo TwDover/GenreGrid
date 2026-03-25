@@ -14,6 +14,7 @@
     "allow_9th": 0.05
   },
   "bass": {
+    "bass_style": "808",
     "pattern_density": 0.5,
     "octave_jumps": 0.35,
     "sustain_bias": 0.75
@@ -27,6 +28,7 @@
   },
   "chord_rhythm": [1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0],
   "drums": {
+    "kick_pattern": [1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0],
     "hat_density": 0.75,
     "triplet_probability": 0.15,
     "snare_standard_beats": [2, 4],
