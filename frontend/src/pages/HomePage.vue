@@ -1,8 +1,22 @@
 <template>
   <div class="home-page">
     <header class="app-header">
-      <h1>GenreGrid</h1>
-      <p class="subtitle">Style-based MIDI generator</p>
+      <div class="header-title">
+        <h1>GenreGrid</h1>
+        <p class="subtitle">Style-based MIDI generator</p>
+      </div>
+      <div class="volume-control">
+        <span class="vol-icon">{{ volume === 0 ? '🔇' : volume < 40 ? '🔈' : '🔊' }}</span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          :value="volume"
+          @input="setVolume(+($event.target as HTMLInputElement).value)"
+          class="vol-slider"
+          title="Master volume"
+        />
+      </div>
     </header>
 
     <main class="app-main">
@@ -24,6 +38,9 @@ import GenerateForm from '../components/GenerateForm.vue'
 import ExportPanel from '../components/ExportPanel.vue'
 import { fetchStyles, generate } from '../services/api'
 import type { StyleInfo, GenerateRequest, GenerateResponse } from '../types/midi'
+import { useMidiPlayer } from '../composables/useMidiPlayer'
+
+const { volume, setVolume } = useMidiPlayer()
 
 const styles = ref<StyleInfo[]>([])
 const loading = ref(false)
@@ -57,3 +74,60 @@ function handleReplay(response: GenerateResponse) {
   setTimeout(() => { replayData.value = response }, 0)
 }
 </script>
+
+<style scoped>
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.header-title h1,
+.header-title .subtitle {
+  margin: 0;
+}
+
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.vol-icon {
+  font-size: 1rem;
+  width: 1.4rem;
+  text-align: center;
+}
+
+.vol-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 90px;
+  height: 4px;
+  border-radius: 2px;
+  background: #3a3a54;
+  outline: none;
+  cursor: pointer;
+}
+
+.vol-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #a78bfa;
+  cursor: pointer;
+}
+
+.vol-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #a78bfa;
+  cursor: pointer;
+  border: none;
+}
+</style>

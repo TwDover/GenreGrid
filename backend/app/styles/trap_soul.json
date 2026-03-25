@@ -14,6 +14,7 @@
     "allow_9th": 0.7
   },
   "bass": {
+    "bass_style": "808",
     "pattern_density": 0.4,
     "octave_jumps": 0.1,
     "sustain_bias": 0.7

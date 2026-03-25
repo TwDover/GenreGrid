@@ -32,6 +32,7 @@
     "allow_7th": true
   },
   "drums": {
+    "kick_pattern": [1,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0],
     "hat_density": 0.8,
     "triplet_probability": 0.25,
     "snare_standard_beats": [2, 4],

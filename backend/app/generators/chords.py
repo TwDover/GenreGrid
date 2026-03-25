@@ -27,6 +27,28 @@ def _voice_lead(pitches: list[int], prev_top: int) -> list[int]:
     return best
 
 
+def _spread_voicing(pitches: list[int]) -> list[int]:
+    """Drop the lowest note one octave to separate bass from upper voices."""
+    if len(pitches) < 2:
+        return pitches
+    s = sorted(pitches)
+    s[0] = max(36, s[0] - 12)
+    return s
+
+
+def _apply_substitution(roman: str, scale: str, complexity: float) -> str:
+    """Probabilistic harmonic color substitutions at higher complexity."""
+    if complexity < 0.4 or not should_trigger(0.25):
+        return roman
+    # Borrow iv from parallel minor when in a major-family scale (darker color)
+    if roman == 'IV' and scale in ('major', 'mixolydian', 'lydian', 'pentatonic_major'):
+        return 'iv'
+    # Raise v to V in minor context: secondary dominant with leading-tone pull
+    if roman == 'v' and scale in ('minor', 'dorian', 'phrygian', 'pentatonic_minor'):
+        return 'V'
+    return roman
+
+
 def generate_chords(
     style: dict,
     key: str,
@@ -56,7 +78,7 @@ def generate_chords(
     prev_top = 72  # initial reference for voice leading
 
     for i in range(total_chords):
-        roman = progression[i % prog_len]
+        roman = _apply_substitution(progression[i % prog_len], scale, complexity)
         allow_7th = should_trigger(allow_7th_prob)
         allow_9th = should_trigger(allow_9th_prob) if allow_7th else False
         pitches = roman_to_chord(roman, key, scale, octave=4, allow_7th=allow_7th, allow_9th=allow_9th)
@@ -66,6 +88,7 @@ def generate_chords(
         else:
             pitches = sorted(pitches)
 
+        pitches = _spread_voicing(pitches)
         prev_top = pitches[-1]
 
         start_beat = i * beats_per_chord

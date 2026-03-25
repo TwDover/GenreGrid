@@ -6,6 +6,7 @@ from app.theory.scales import build_scale
 from app.theory.chords import roman_to_chord
 from app.services.variation import should_trigger
 from app.services.humanize import beat_velocity, timing_jitter, velocity_arc
+from app.theory.rhythm import apply_swing
 
 
 def _chord_tone_indices(roman: str, key: str, scale: str, scale_notes: list) -> list:
@@ -30,6 +31,15 @@ def generate_melody(
         templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
         progression = random.choice(templates)
 
+    swing_amount = style.get("drums", {}).get("swing", 0.0)
+    ticks_per_beat = 480
+
+    def _swing(beat: float) -> float:
+        if swing_amount < 0.01:
+            return beat
+        tick = int(beat * ticks_per_beat)
+        return apply_swing(tick, swing_amount, ticks_per_beat) / ticks_per_beat
+
     density = mel_cfg.get("density", 0.35) * (0.5 + complexity)
     stepwise = mel_cfg.get("stepwise_motion", 0.7)
     leap_prob = mel_cfg.get("leap_probability", 0.15)
@@ -47,6 +57,7 @@ def generate_melody(
     beats_per_chord = beats_per_bar / chords_per_bar
     prog_len = len(progression)
     total_beats = bars * beats_per_bar
+    phrase_beats = beats_per_bar * 4  # 4-bar phrases
 
     current_note_idx = len(scale_notes) // 2
 
@@ -55,21 +66,55 @@ def generate_melody(
     beat = 0.0
     while beat < total_beats - step:
         bar_num = int(beat / beats_per_bar)
-        if should_trigger(rest_prob):
-            beat += step * random.choice([1, 2])
-            continue
-        if not should_trigger(density):
-            beat += step
+        beat_in_phrase = beat % phrase_beats
+        is_phrase_start = beat > 0.5 and beat_in_phrase < step
+        is_cadence_bar = beat_in_phrase >= phrase_beats - beats_per_bar  # last bar of phrase
+        is_phrase_tail = beat_in_phrase >= phrase_beats - 1.0  # last beat of phrase
+
+        # Phrase start: rest briefly so melody breathes between phrases
+        if is_phrase_start and should_trigger(0.65):
+            beat += step * random.choice([2, 4, 6])
             continue
 
         chord_idx = int(beat / beats_per_chord)
         current_roman = progression[chord_idx % prog_len]
         beat_in_chord = beat - chord_idx * beats_per_chord
 
+        # Phrase tail: hold on a long cadential note then rest
+        if is_phrase_tail:
+            ct = _chord_tone_indices(current_roman, key, scale, scale_notes)
+            if ct:
+                current_note_idx = ct[0]  # resolve to root-ish tone
+            pitch = scale_notes[current_note_idx]
+            remaining = phrase_beats - beat_in_phrase
+            dur = max(step, remaining * 0.85)
+            base_vel = velocity_arc(bar_num, bars, 82)
+            vel = beat_velocity(beat, base_vel)
+            raw.append(NoteEvent(
+                pitch=pitch,
+                start=max(0.0, _swing(beat) + timing_jitter()),
+                duration=dur,
+                velocity=vel,
+                channel=2,
+            ))
+            # Skip to start of next phrase
+            beat = (int(beat / phrase_beats) + 1) * phrase_beats
+            continue
+
+        # In cadence bar: extra rest probability and strong chord-tone bias
+        local_rest_prob = rest_prob * 1.4 if is_cadence_bar else rest_prob
+        if should_trigger(local_rest_prob):
+            beat += step * random.choice([1, 2])
+            continue
+        if not should_trigger(density):
+            beat += step
+            continue
+
         is_chord_downbeat = beat_in_chord < step
         is_strong_beat = (beat % 1.0) < step
+        chord_tone_prob = 0.85 if is_cadence_bar else (0.65 if is_chord_downbeat else 0.35)
 
-        if is_chord_downbeat and should_trigger(0.65):
+        if (is_chord_downbeat or is_cadence_bar) and should_trigger(chord_tone_prob):
             ct = _chord_tone_indices(current_roman, key, scale, scale_notes)
             if ct:
                 current_note_idx = min(ct, key=lambda i: abs(i - current_note_idx))
@@ -94,7 +139,7 @@ def generate_melody(
 
         raw.append(NoteEvent(
             pitch=pitch,
-            start=max(0.0, beat + jitter),
+            start=max(0.0, _swing(beat) + jitter),
             duration=duration,
             velocity=vel,
             channel=2,
