@@ -19,7 +19,7 @@
     "sustain_bias": 0.15
   },
   "melody": {
-    "density": 0.55,
+    "density": 0.62,
     "stepwise_motion": 0.5,
     "leap_probability": 0.3,
     "rest_probability": 0.2,

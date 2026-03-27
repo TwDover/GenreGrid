@@ -7,20 +7,30 @@
   "progression_templates": [
     ["i", "VI", "III", "VII"],
     ["i", "iv", "VI", "v"],
-    ["i", "VII", "VI", "v"]
+    ["i", "VII", "VI", "v"],
+    ["i", "bVII", "bVI", "v"],
+    ["i", "bIII", "bVII", "iv"],
+    ["i", "iv", "bVII", "bIII"],
+    ["bVI", "bVII", "i", "v"],
+    ["i", "bVI", "bVII", "i"]
   ],
   "chord_extensions": {
     "allow_7th": 0.9,
     "allow_9th": 0.7
   },
+  "chord_register": [52, 75],
+  "comp_style": "pad_hold",
+  "melody_scale": "pentatonic_minor",
+  "velocity_base": 80,
   "bass": {
     "bass_style": "808",
     "pattern_density": 0.4,
     "octave_jumps": 0.1,
-    "sustain_bias": 0.7
+    "sustain_bias": 0.7,
+    "808_tail": 0.96
   },
   "melody": {
-    "density": 0.3,
+    "density": 0.48,
     "stepwise_motion": 0.75,
     "leap_probability": 0.1,
     "rest_probability": 0.4,
@@ -31,6 +41,7 @@
     "triplet_probability": 0.4,
     "snare_standard_beats": [2, 4],
     "swing": 0.3,
-    "use_clap": true
+    "use_clap": true,
+    "hat_roll_prob": 0.25
   }
 }

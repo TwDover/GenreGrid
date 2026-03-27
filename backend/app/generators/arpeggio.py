@@ -4,6 +4,7 @@ from typing import List
 from app.services.midi_writer import NoteEvent
 from app.theory.chords import roman_to_chord
 from app.services.variation import should_trigger
+from app.services.humanize import velocity_arc
 from app.theory.rhythm import apply_swing
 
 
@@ -15,6 +16,7 @@ def generate_arpeggio(
     complexity: float,
     variation: float,
     progression: list | None = None,
+    octave: int = 5,
 ) -> List[NoteEvent]:
     events: List[NoteEvent] = []
     if progression is None:
@@ -34,7 +36,7 @@ def generate_arpeggio(
 
     for chord_idx in range(bars):
         roman = progression[chord_idx % prog_len]
-        pitches = sorted(roman_to_chord(roman, key, scale, octave=4, allow_7th=allow_7th))
+        pitches = sorted(roman_to_chord(roman, key, scale, octave=octave, allow_7th=allow_7th))
 
         if include_octave:
             pitches = pitches + [pitches[0] + 12]
@@ -52,15 +54,19 @@ def generate_arpeggio(
 
         while pos <= beats_per_bar - speed * 0.5:
             # Occasional rest for variation
-            if seq_idx > 0 and should_trigger(variation * 0.2):
+            if seq_idx > 0 and should_trigger(variation * 0.3 + 0.05):
                 pos += speed
                 seq_idx += 1
                 continue
 
             pitch = seq[seq_idx % len(seq)]
             is_root = (seq_idx % len(seq) == 0)
-            vel = 76 + random.randint(-8, 8) + (10 if is_root else 0)
-            vel = min(127, vel)
+            beat_in_bar = pos % beats_per_bar
+            is_strong = beat_in_bar < 0.01 or abs(beat_in_bar - 2.0) < 0.01
+            is_medium = abs(beat_in_bar - 1.0) < 0.01 or abs(beat_in_bar - 3.0) < 0.01
+            base_vel = velocity_arc(chord_idx, bars, 74)
+            accent = 12 if is_root else (6 if is_strong else (3 if is_medium else 0))
+            vel = min(127, base_vel + accent + random.randint(-6, 6))
 
             t_tick = int((bar_start + pos) * ticks_per_beat)
             t_tick = apply_swing(t_tick, swing_amount, ticks_per_beat)

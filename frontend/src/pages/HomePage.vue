@@ -26,7 +26,7 @@
       </section>
 
       <section class="export-section">
-        <ExportPanel :history="history" @replay="handleReplay" />
+        <ExportPanel :history="history" @replay="handleReplay" @part-regenned="handlePartRegenned" />
       </section>
     </main>
   </div>
@@ -37,7 +37,7 @@ import { ref, onMounted } from 'vue'
 import GenerateForm from '../components/GenerateForm.vue'
 import ExportPanel from '../components/ExportPanel.vue'
 import { fetchStyles, generate } from '../services/api'
-import type { StyleInfo, GenerateRequest, GenerateResponse } from '../types/midi'
+import type { StyleInfo, GenerateRequest, GenerateResponse, FileInfo } from '../types/midi'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 
 const { volume, setVolume } = useMidiPlayer()
@@ -72,6 +72,23 @@ async function handleGenerate(form: GenerateRequest) {
 function handleReplay(response: GenerateResponse) {
   replayData.value = null          // reset first so the watcher fires even if same seed
   setTimeout(() => { replayData.value = response }, 0)
+}
+
+function handlePartRegenned(genId: string, newFile: FileInfo) {
+  const entry = history.value.find(r => r.generation_id === genId)
+  if (!entry) return
+  const v = Date.now()
+  const idx = entry.files.findIndex(f => f.part === newFile.part)
+  if (idx >= 0) {
+    entry.files[idx] = { ...newFile, url: `${newFile.url}?v=${v}` }
+  }
+  // Bust the combined cache too — the backend rebuilds combined.mid on every regen
+  const combinedIdx = entry.files.findIndex(f => f.part === 'combined')
+  if (combinedIdx >= 0) {
+    const combined = entry.files[combinedIdx]
+    const baseUrl = combined.url.split('?')[0]
+    entry.files[combinedIdx] = { ...combined, url: `${baseUrl}?v=${v}` }
+  }
 }
 </script>
 

@@ -13,6 +13,7 @@
     "allow_7th": 0.6,
     "allow_9th": 0.3
   },
+  "velocity_base": 58,
   "bass": {
     "bass_style": "808",
     "pattern_density": 0.15,
@@ -20,7 +21,7 @@
     "sustain_bias": 0.95
   },
   "melody": {
-    "density": 0.1,
+    "density": 0.22,
     "stepwise_motion": 0.9,
     "leap_probability": 0.03,
     "rest_probability": 0.7,

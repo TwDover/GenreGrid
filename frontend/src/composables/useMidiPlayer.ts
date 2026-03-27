@@ -279,10 +279,34 @@ export function useMidiPlayer() {
     return midiStore.value[url] ?? null
   }
 
+  async function prefetchMidi(url: string): Promise<void> {
+    if (midiStore.value[url]) return
+    try {
+      const buf = await fetch(downloadUrl(url)).then(r => r.arrayBuffer())
+      const midi = new Midi(buf)
+      const allNotes: ParsedNote[] = []
+      for (const track of midi.tracks) {
+        const isPerc = track.instrument.percussion
+        for (const n of track.notes) {
+          allNotes.push({
+            midi: n.midi,
+            time: n.time,
+            duration: n.duration,
+            velocity: n.velocity,
+            isPercussion: isPerc,
+          })
+        }
+      }
+      midiStore.value[url] = { notes: allNotes, duration: midi.duration }
+    } catch {
+      // silently ignore — piano roll will appear once the user hits play instead
+    }
+  }
+
   function setVolume(v: number) {
     volume.value = v
     applyVolume(v)
   }
 
-  return { toggle, stop, currentlyPlaying, isLoading, getMidiData, volume, setVolume }
+  return { toggle, stop, currentlyPlaying, isLoading, getMidiData, prefetchMidi, volume, setVolume }
 }

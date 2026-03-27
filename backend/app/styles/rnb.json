@@ -7,19 +7,25 @@
   "progression_templates": [
     ["i", "VI", "III", "VII"],
     ["i", "iv", "VII", "III"],
-    ["ii", "V", "I", "vi"]
+    ["ii", "V", "I", "vi"],
+    ["i", "bVII", "bVI", "v"],
+    ["i", "iv", "bVI", "bVII"],
+    ["I", "bVII", "IV", "I"],
+    ["I", "vi", "ii", "V"],
+    ["i", "bIII", "bVII", "IV"]
   ],
   "chord_extensions": {
     "allow_7th": 0.95,
     "allow_9th": 0.7
   },
+  "blue_notes": true,
   "bass": {
     "pattern_density": 0.5,
     "octave_jumps": 0.1,
     "sustain_bias": 0.55
   },
   "melody": {
-    "density": 0.45,
+    "density": 0.57,
     "stepwise_motion": 0.7,
     "leap_probability": 0.15,
     "rest_probability": 0.25,

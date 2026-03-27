@@ -28,8 +28,16 @@
               Replay
             </button>
           </div>
+          <div v-if="regenError" class="regen-error">{{ regenError }}</div>
           <div class="part-cards">
-            <PartCard v-for="file in response.files" :key="file.part" :file="file" :styleId="response.style" />
+            <PartCard
+              v-for="file in response.files"
+              :key="file.url"
+              :file="file"
+              :styleId="response.style"
+              :regenLoading="regenLoadingKey === `${response.generation_id}:${file.part}`"
+              @regen="handleRegen(response, file.part)"
+            />
           </div>
         </div>
       </div>
@@ -40,13 +48,19 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import PartCard from './PartCard.vue'
-import type { GenerateResponse } from '../types/midi'
+import type { GenerateResponse, FileInfo } from '../types/midi'
+import { regeneratePart } from '../services/api'
 
 const props = defineProps<{ history: GenerateResponse[] }>()
-defineEmits<{ (e: 'replay', response: GenerateResponse): void }>()
+const emit = defineEmits<{
+  (e: 'replay', response: GenerateResponse): void
+  (e: 'part-regenned', genId: string, file: FileInfo): void
+}>()
 
 const expandedId = ref<string | null>(null)
 const copied = ref<number | null>(null)
+const regenLoadingKey = ref<string | null>(null)
+const regenError = ref<string | null>(null)
 
 watch(() => props.history[0], (newest) => {
   if (newest) expandedId.value = newest.generation_id
@@ -64,6 +78,32 @@ function copy(seed: number) {
   navigator.clipboard.writeText(String(seed))
   copied.value = seed
   setTimeout(() => { copied.value = null }, 2000)
+}
+
+async function handleRegen(response: GenerateResponse, part: string) {
+  const key = `${response.generation_id}:${part}`
+  regenLoadingKey.value = key
+  regenError.value = null
+  try {
+    const newFile = await regeneratePart({
+      generation_id: response.generation_id,
+      part,
+      style_id: response.style,
+      key: response.summary.key_root,
+      scale: response.summary.scale,
+      bpm: response.summary.bpm,
+      bars: response.summary.bars,
+      complexity: response.summary.complexity,
+      variation: response.summary.variation,
+      mode: response.summary.mode,
+      seed: response.seed,
+    })
+    emit('part-regenned', response.generation_id, newFile)
+  } catch (e: any) {
+    regenError.value = e.message ?? 'Regeneration failed'
+  } finally {
+    regenLoadingKey.value = null
+  }
 }
 </script>
 
@@ -196,6 +236,14 @@ function copy(seed: number) {
 }
 
 .seed-action.replay:hover { background: #3b1f6e; color: #c4b5fd; }
+
+.regen-error {
+  font-size: 0.75rem;
+  color: #f87171;
+  padding: 0.3rem 0.5rem;
+  background: #2a1010;
+  border-radius: 4px;
+}
 
 .part-cards {
   display: grid;

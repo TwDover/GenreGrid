@@ -7,25 +7,31 @@
   "progression_templates": [
     ["I", "IV", "vi", "V"],
     ["I", "vi", "ii", "V"],
-    ["IV", "I", "V", "vi"]
+    ["IV", "I", "V", "vi"],
+    ["I", "bVII", "IV", "I"],
+    ["vi", "IV", "I", "bVII"],
+    ["I", "IV", "bVII", "IV"],
+    ["i", "bVII", "bVI", "bVII"],
+    ["I", "iii", "IV", "V"]
   ],
   "chord_extensions": {
     "allow_7th": 0.7,
     "allow_9th": 0.4
   },
+  "chord_register": [55, 84],
+  "comp_style": "house_stab",
   "bass": {
     "pattern_density": 0.8,
     "octave_jumps": 0.2,
     "sustain_bias": 0.2
   },
   "melody": {
-    "density": 0.5,
+    "density": 0.58,
     "stepwise_motion": 0.65,
     "leap_probability": 0.2,
     "rest_probability": 0.2,
     "range": [64, 84]
   },
-  "chord_rhythm": [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
   "arpeggio": {
     "pattern": "up",
     "speed": 0.25,
@@ -37,6 +43,7 @@
     "hat_density": 0.9,
     "triplet_probability": 0.1,
     "snare_standard_beats": [2, 4],
-    "swing": 0.1
+    "swing": 0.1,
+    "open_hat_style": "offbeats"
   }
 }

@@ -7,19 +7,30 @@
   "progression_templates": [
     ["ii", "V", "I", "vi"],
     ["I", "vi", "ii", "V"],
-    ["iii", "VI", "ii", "V"]
+    ["iii", "VI", "ii", "V"],
+    ["I", "bVII", "IV", "I"],
+    ["ii", "V", "iii", "VI"],
+    ["imM7", "iv", "bVII", "bIII"],
+    ["I", "V9sus4", "vi", "ii"],
+    ["I", "IV", "iii", "vi"]
   ],
   "chord_extensions": {
     "allow_7th": 1.0,
     "allow_9th": 0.75
   },
+  "blue_notes": true,
+  "grace_notes": true,
+  "secondary_dominants": true,
+  "comp_style": "jazz_comp",
+  "open_voicing_prob": 0.35,
   "bass": {
+    "bass_style": "walking",
     "pattern_density": 0.8,
     "octave_jumps": 0.2,
     "sustain_bias": 0.2
   },
   "melody": {
-    "density": 0.6,
+    "density": 0.65,
     "stepwise_motion": 0.5,
     "leap_probability": 0.35,
     "rest_probability": 0.15,
@@ -31,6 +42,7 @@
     "snare_standard_beats": [2, 4],
     "swing": 0.55,
     "use_ride": true,
-    "tom_fills": true
+    "tom_fills": true,
+    "crash_on_bar_1": true
   }
 }
