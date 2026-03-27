@@ -13,6 +13,7 @@
     "allow_7th": 0.4,
     "allow_9th": 0.15
   },
+  "chord_register": [52, 76],
   "bass": {
     "pattern_density": 0.75,
     "octave_jumps": 0.4,
@@ -32,6 +33,7 @@
     "snare_standard_beats": [2, 4],
     "swing": 0.2,
     "crash_on_bar_1": true,
-    "tom_fills": true
+    "tom_fills": true,
+    "edm_drops": true
   }
 }

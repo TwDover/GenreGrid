@@ -7,29 +7,37 @@
   "progression_templates": [
     ["I", "IV", "V", "I"],
     ["I", "V", "I", "IV"],
-    ["I", "IV", "I", "V"]
+    ["I", "IV", "I", "V"],
+    ["I", "ii", "V", "I"],
+    ["I", "IV", "ii", "V"],
+    ["I", "V", "IV", "I"]
   ],
   "chord_extensions": {
-    "allow_7th": 0.35,
-    "allow_9th": 0.1
+    "allow_7th": 0.40,
+    "allow_9th": 0.12
   },
+  "syncopation_prob": 0.25,
+  "chord_rhythm": [0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0],
   "bass": {
-    "pattern_density": 0.7,
-    "octave_jumps": 0.2,
-    "sustain_bias": 0.3
+    "pattern_density": 0.72,
+    "octave_jumps": 0.18,
+    "sustain_bias": 0.28
   },
   "melody": {
-    "density": 0.58,
-    "stepwise_motion": 0.6,
-    "leap_probability": 0.25,
-    "rest_probability": 0.25,
+    "density": 0.60,
+    "stepwise_motion": 0.62,
+    "leap_probability": 0.22,
+    "rest_probability": 0.22,
     "range": [62, 82]
   },
   "drums": {
-    "hat_density": 0.7,
-    "triplet_probability": 0.35,
+    "kick_pattern": [1,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0],
+    "hat_density": 0.72,
+    "triplet_probability": 0.30,
     "snare_standard_beats": [2, 4],
-    "swing": 0.2,
+    "snare_beat3_prob": 0.30,
+    "swing": 0.18,
+    "tom_fills": true,
     "perc_layers": ["shaker", "tambourine"]
   }
 }

@@ -1,24 +1,76 @@
 {
   "id": "cloud_rap",
   "name": "Cloud Rap",
-  "bpm_range": [55, 75],
+  "bpm_range": [
+    55,
+    75
+  ],
   "default_scale": "minor",
-  "preferred_keys": ["C", "D", "F", "G", "A"],
+  "preferred_keys": [
+    "C",
+    "D",
+    "F",
+    "G",
+    "A"
+  ],
   "progression_templates": [
-    ["i", "VI", "III", "VII"],
-    ["i", "VII", "VI", "VII"],
-    ["i", "iv", "i", "VII"],
-    ["i", "bVII", "bVI", "v"],
-    ["i", "bIII", "bVII", "iv"],
-    ["bVI", "bVII", "i", "v"],
-    ["i", "iv", "bVI", "bVII"],
-    ["i", "bVI", "bVII", "i"]
+    [
+      "i",
+      "VI",
+      "III",
+      "VII"
+    ],
+    [
+      "i",
+      "VII",
+      "VI",
+      "VII"
+    ],
+    [
+      "i",
+      "iv",
+      "i",
+      "VII"
+    ],
+    [
+      "i",
+      "bVII",
+      "bVI",
+      "v"
+    ],
+    [
+      "i",
+      "bIII",
+      "bVII",
+      "iv"
+    ],
+    [
+      "bVI",
+      "bVII",
+      "i",
+      "v"
+    ],
+    [
+      "i",
+      "iv",
+      "bVI",
+      "bVII"
+    ],
+    [
+      "i",
+      "bVI",
+      "bVII",
+      "i"
+    ]
   ],
   "chord_extensions": {
     "allow_7th": 0.8,
     "allow_9th": 0.5
   },
-  "chord_register": [52, 75],
+  "chord_register": [
+    52,
+    75
+  ],
   "comp_style": "pad_hold",
   "melody_scale": "pentatonic_minor",
   "bass": {
@@ -33,12 +85,19 @@
     "stepwise_motion": 0.8,
     "leap_probability": 0.08,
     "rest_probability": 0.55,
-    "range": [60, 78]
+    "range": [
+      60,
+      78
+    ]
   },
   "drums": {
     "hat_density": 0.5,
     "triplet_probability": 0.35,
-    "snare_standard_beats": [2, 4],
+    "snare_standard_beats": [
+      2,
+      4
+    ],
     "swing": 0.25
-  }
+  },
+  "groove_push": -0.01
 }
