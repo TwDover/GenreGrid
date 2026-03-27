@@ -18,6 +18,21 @@ class NoteEvent:
     channel: int = 0
 
 
+@dataclass
+class ControlEvent:
+    control: int    # CC number (e.g. 10=pan, 11=expression, 64=sustain)
+    value: int      # 0-127
+    start: float    # in beats
+    channel: int = 0
+
+
+@dataclass
+class PitchBendEvent:
+    value: int      # -8192 to 8191  (0 = no bend)
+    start: float    # in beats
+    channel: int = 0
+
+
 def _trim_overlaps(events: List[NoteEvent]) -> List[NoteEvent]:
     """Trim note durations so same pitch+channel notes never overlap.
 
@@ -42,7 +57,12 @@ def _trim_overlaps(events: List[NoteEvent]) -> List[NoteEvent]:
     return result
 
 
-def _events_to_track(events: List[NoteEvent], ticks_per_beat: int = TICKS_PER_BEAT) -> mido.MidiTrack:
+def _events_to_track(
+    events: List[NoteEvent],
+    ticks_per_beat: int = TICKS_PER_BEAT,
+    cc_events: "List[ControlEvent] | None" = None,
+    pb_events: "List[PitchBendEvent] | None" = None,
+) -> mido.MidiTrack:
     track = mido.MidiTrack()
     messages = []
 
@@ -54,7 +74,21 @@ def _events_to_track(events: List[NoteEvent], ticks_per_beat: int = TICKS_PER_BE
         messages.append((start_tick, mido.Message("note_on",  channel=ev.channel, note=ev.pitch, velocity=ev.velocity, time=0)))
         messages.append((end_tick,   mido.Message("note_off", channel=ev.channel, note=ev.pitch, velocity=0,           time=0)))
 
-    messages.sort(key=lambda x: (x[0], 0 if x[1].type == "note_off" else 1))
+    if cc_events:
+        for cc in cc_events:
+            tick = int(cc.start * ticks_per_beat)
+            messages.append((tick, mido.Message("control_change", channel=cc.channel, control=cc.control, value=cc.value, time=0)))
+
+    if pb_events:
+        for pb in pb_events:
+            tick = int(pb.start * ticks_per_beat)
+            messages.append((tick, mido.Message("pitchwheel", channel=pb.channel, pitch=pb.value, time=0)))
+
+    def _sort_key(item):
+        tick, msg = item
+        order = {"note_off": 0, "control_change": 1, "pitchwheel": 1, "note_on": 2}.get(msg.type, 3)
+        return (tick, order)
+    messages.sort(key=_sort_key)
 
     current_tick = 0
     for abs_tick, msg in messages:
@@ -72,13 +106,16 @@ def write_midi(
     bpm: int = 140,
     ticks_per_beat: int = TICKS_PER_BEAT,
     program: int | None = None,
+    cc_events: "List[ControlEvent] | None" = None,
+    pb_events: "List[PitchBendEvent] | None" = None,
 ) -> None:
     mid = mido.MidiFile(type=1, ticks_per_beat=ticks_per_beat)
     tempo_track = mido.MidiTrack()
+    tempo_track.append(mido.MetaMessage("time_signature", numerator=4, denominator=4, clocks_per_click=24, notated_32nd_notes_per_beat=8, time=0))
     tempo_track.append(mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(bpm), time=0))
     tempo_track.append(mido.MetaMessage("end_of_track", time=0))
     mid.tracks.append(tempo_track)
-    track = _events_to_track(events, ticks_per_beat)
+    track = _events_to_track(events, ticks_per_beat, cc_events, pb_events)
     if program is not None and events:
         track.insert(0, mido.Message("program_change", channel=events[0].channel, program=program, time=0))
     mid.tracks.append(track)
@@ -97,6 +134,7 @@ def rebuild_combined_from_parts(output_dir: Path, bpm: int, ticks_per_beat: int 
 
     combined = mido.MidiFile(type=1, ticks_per_beat=ticks_per_beat)
     tempo_track = mido.MidiTrack()
+    tempo_track.append(mido.MetaMessage("time_signature", numerator=4, denominator=4, clocks_per_click=24, notated_32nd_notes_per_beat=8, time=0))
     tempo_track.append(mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(bpm), time=0))
     tempo_track.append(mido.MetaMessage("end_of_track", time=0))
     combined.tracks.append(tempo_track)
@@ -118,15 +156,22 @@ def write_combined_midi(
     bpm: int = 140,
     ticks_per_beat: int = TICKS_PER_BEAT,
     programs: dict[str, int] | None = None,
+    cc_parts: "dict[str, List[ControlEvent]] | None" = None,
+    pb_parts: "dict[str, List[PitchBendEvent]] | None" = None,
 ) -> None:
     mid = mido.MidiFile(type=1, ticks_per_beat=ticks_per_beat)
     tempo_track = mido.MidiTrack()
+    tempo_track.append(mido.MetaMessage("time_signature", numerator=4, denominator=4, clocks_per_click=24, notated_32nd_notes_per_beat=8, time=0))
     tempo_track.append(mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(bpm), time=0))
     tempo_track.append(mido.MetaMessage("end_of_track", time=0))
     mid.tracks.append(tempo_track)
 
     for part_name, events in parts.items():
-        track = _events_to_track(events, ticks_per_beat)
+        track = _events_to_track(
+            events, ticks_per_beat,
+            cc_parts.get(part_name) if cc_parts else None,
+            pb_parts.get(part_name) if pb_parts else None,
+        )
         if programs and part_name in programs and events:
             track.insert(0, mido.Message("program_change", channel=events[0].channel, program=programs[part_name], time=0))
         track.name = part_name

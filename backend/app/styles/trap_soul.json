@@ -1,24 +1,77 @@
 {
   "id": "trap_soul",
   "name": "Trap Soul",
-  "bpm_range": [60, 80],
+  "bpm_range": [
+    60,
+    80
+  ],
   "default_scale": "minor",
-  "preferred_keys": ["C", "D", "F", "G", "A", "Bb"],
+  "preferred_keys": [
+    "C",
+    "D",
+    "F",
+    "G",
+    "A",
+    "Bb"
+  ],
   "progression_templates": [
-    ["i", "VI", "III", "VII"],
-    ["i", "iv", "VI", "v"],
-    ["i", "VII", "VI", "v"],
-    ["i", "bVII", "bVI", "v"],
-    ["i", "bIII", "bVII", "iv"],
-    ["i", "iv", "bVII", "bIII"],
-    ["bVI", "bVII", "i", "v"],
-    ["i", "bVI", "bVII", "i"]
+    [
+      "i",
+      "VI",
+      "III",
+      "VII"
+    ],
+    [
+      "i",
+      "iv",
+      "VI",
+      "v"
+    ],
+    [
+      "i",
+      "VII",
+      "VI",
+      "v"
+    ],
+    [
+      "i",
+      "bVII",
+      "bVI",
+      "v"
+    ],
+    [
+      "i",
+      "bIII",
+      "bVII",
+      "iv"
+    ],
+    [
+      "i",
+      "iv",
+      "bVII",
+      "bIII"
+    ],
+    [
+      "bVI",
+      "bVII",
+      "i",
+      "v"
+    ],
+    [
+      "i",
+      "bVI",
+      "bVII",
+      "i"
+    ]
   ],
   "chord_extensions": {
     "allow_7th": 0.9,
     "allow_9th": 0.7
   },
-  "chord_register": [52, 75],
+  "chord_register": [
+    52,
+    75
+  ],
   "comp_style": "pad_hold",
   "melody_scale": "pentatonic_minor",
   "velocity_base": 80,
@@ -34,14 +87,21 @@
     "stepwise_motion": 0.75,
     "leap_probability": 0.1,
     "rest_probability": 0.4,
-    "range": [58, 78]
+    "range": [
+      58,
+      78
+    ]
   },
   "drums": {
     "hat_density": 0.65,
     "triplet_probability": 0.4,
-    "snare_standard_beats": [2, 4],
+    "snare_standard_beats": [
+      2,
+      4
+    ],
     "swing": 0.3,
     "use_clap": true,
     "hat_roll_prob": 0.25
-  }
+  },
+  "groove_push": -0.008
 }

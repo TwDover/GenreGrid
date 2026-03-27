@@ -1,0 +1,97 @@
+import * as Tone from 'tone'
+import { getMasterCompressor } from './loader'
+
+const STYLE_TO_KIT: Record<string, string> = {
+  jazz:           'acoustic-kit',
+  bossa_nova:     'acoustic-kit',
+  latin_jazz:     'acoustic-kit',
+  afrobeats:      'acoustic-kit',
+  cumbia:         'acoustic-kit',
+  epic_orchestral:'acoustic-kit',
+  cinematic:      'acoustic-kit',
+  // LinnDrum
+  soul:           'LINN',
+  rnb:            'LINN',
+  funk:           'LINN',
+  // KPR77 — mellow, dusty
+  lofi:           'KPR77',
+  cloud_rap:      'KPR77',
+  ambient:        'KPR77',
+  dark_ambient:   'KPR77',
+  // Roland R-8 — punchy, clean
+  dancehall:      'R8',
+  reggaeton:      'R8',
+  // Breakbeats — hip-hop
+  boom_bap:       'breakbeat8',
+  trap_soul:      'breakbeat8',
+  dark_trap:      'breakbeat13',
+  drill:          'breakbeat13',
+  // Electronic / club
+  house:          'Techno',
+  techno:         'Techno',
+  drum_and_bass:  'Techno',
+  future_bass:    'Techno',
+  synthwave:      'Techno',
+  jersey_club:    'Techno',
+}
+const DEFAULT_KIT = 'acoustic-kit'
+
+// Kits that get light room reverb (acoustic sources benefit; electronic stays dry)
+const REVERB_KITS = new Set(['acoustic-kit', 'LINN'])
+const KIT_REVERB_PARAMS: Record<string, { decay: number; wet: number }> = {
+  'acoustic-kit': { decay: 0.7, wet: 0.16 },
+  'LINN':         { decay: 0.4, wet: 0.10 },
+}
+
+export const DRUM_PITCH_TO_SAMPLE: Record<number, string> = {
+  35: 'kick', 36: 'kick',
+  38: 'snare', 39: 'snare', 40: 'snare',
+  41: 'tom3', 43: 'tom3',
+  45: 'tom2', 47: 'tom2',
+  48: 'tom1', 50: 'tom1',
+  42: 'hihat', 44: 'hihat', 46: 'hihat',
+  49: 'hihat', 51: 'hihat', 59: 'hihat',
+}
+
+const kitCache = new Map<string, Promise<Tone.Players>>()
+
+async function buildDrumFx(kitName: string, comp: Tone.Compressor): Promise<Tone.ToneAudioNode> {
+  if (REVERB_KITS.has(kitName)) {
+    const params = KIT_REVERB_PARAMS[kitName]
+    const reverb = new Tone.Reverb({ decay: params.decay, wet: params.wet })
+    await reverb.generate()
+    reverb.connect(comp)
+    return reverb
+  }
+  // Electronic kits: connect directly (dry)
+  return comp
+}
+
+export function getDrumKit(styleId?: string): Promise<Tone.Players> {
+  const kitName = (styleId && STYLE_TO_KIT[styleId]) ?? DEFAULT_KIT
+  if (kitCache.has(kitName)) return kitCache.get(kitName)!
+
+  const comp = getMasterCompressor()
+  const base = `/samples/drums/${kitName}/`
+
+  const promise = buildDrumFx(kitName, comp).then(
+    (fxInput) =>
+      new Promise<Tone.Players>((resolve, reject) => {
+        const players = new Tone.Players(
+          {
+            kick:  base + 'kick.mp3',
+            snare: base + 'snare.mp3',
+            hihat: base + 'hihat.mp3',
+            tom1:  base + 'tom1.mp3',
+            tom2:  base + 'tom2.mp3',
+            tom3:  base + 'tom3.mp3',
+          },
+          () => resolve(players),
+        ).connect(fxInput)
+        setTimeout(() => reject(new Error(`Drum kit "${kitName}" load timeout`)), 15_000)
+      }),
+  )
+
+  kitCache.set(kitName, promise)
+  return promise
+}

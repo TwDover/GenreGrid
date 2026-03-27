@@ -1,30 +1,92 @@
 {
   "id": "lofi",
   "name": "Lo-Fi",
-  "bpm_range": [70, 90],
+  "bpm_range": [
+    70,
+    90
+  ],
   "default_scale": "major",
-  "preferred_keys": ["C", "D", "F", "G", "A"],
+  "preferred_keys": [
+    "C",
+    "D",
+    "F",
+    "G",
+    "A"
+  ],
   "progression_templates": [
-    ["I", "V", "vi", "IV"],
-    ["I", "vi", "IV", "V"],
-    ["ii", "V", "I", "vi"],
-    ["vi", "IV", "I", "V"],
-    ["I", "bVII", "IV", "I"],
-    ["iii", "vi", "IV", "I"],
-    ["I", "iii", "IV", "iv"],
-    ["ii", "V", "iii", "vi"],
-    ["Isus2", "V", "vi", "IV"],
-    ["I", "Vsus4", "vi", "IV"]
+    [
+      "I",
+      "V",
+      "vi",
+      "IV"
+    ],
+    [
+      "I",
+      "vi",
+      "IV",
+      "V"
+    ],
+    [
+      "ii",
+      "V",
+      "I",
+      "vi"
+    ],
+    [
+      "vi",
+      "IV",
+      "I",
+      "V"
+    ],
+    [
+      "I",
+      "bVII",
+      "IV",
+      "I"
+    ],
+    [
+      "iii",
+      "vi",
+      "IV",
+      "I"
+    ],
+    [
+      "I",
+      "iii",
+      "IV",
+      "iv"
+    ],
+    [
+      "ii",
+      "V",
+      "iii",
+      "vi"
+    ],
+    [
+      "Isus2",
+      "V",
+      "vi",
+      "IV"
+    ],
+    [
+      "I",
+      "Vsus4",
+      "vi",
+      "IV"
+    ]
   ],
   "chord_extensions": {
     "allow_7th": 0.9,
     "allow_9th": 0.5
   },
   "blue_notes": true,
+  "syncopation_prob": 0.12,
+  "strum_speed": 0.022,
   "vel_arc_start": 0.65,
   "velocity_base": 68,
   "comp_style": "lofi_strum",
-  "open_voicing_prob": 0.30,
+  "open_voicing_prob": 0.3,
+  "drop_2_prob": 0.22,
   "bass": {
     "pattern_density": 0.4,
     "octave_jumps": 0.05,
@@ -35,9 +97,30 @@
     "stepwise_motion": 0.75,
     "leap_probability": 0.1,
     "rest_probability": 0.35,
-    "range": [60, 79]
+    "range": [
+      60,
+      79
+    ],
+    "phrase_climax_prob": 0.15
   },
-  "chord_rhythm": [1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0],
+  "chord_rhythm": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
   "arpeggio": {
     "pattern": "up",
     "speed": 0.5,
@@ -45,10 +128,31 @@
     "allow_7th": true
   },
   "drums": {
-    "kick_pattern": [1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0],
+    "kick_pattern": [
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
     "hat_density": 0.6,
     "triplet_probability": 0.6,
-    "snare_standard_beats": [2, 4],
+    "snare_standard_beats": [
+      2,
+      4
+    ],
     "swing": 0.55
-  }
+  },
+  "groove_push": -0.012
 }

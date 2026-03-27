@@ -44,6 +44,7 @@
     "snare_standard_beats": [2, 4],
     "swing": 0.1,
     "use_clap": true,
-    "crash_on_bar_1": true
+    "crash_on_bar_1": true,
+    "edm_drops": true
   }
 }

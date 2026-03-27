@@ -1,20 +1,80 @@
 {
   "id": "soul",
   "name": "Soul",
-  "bpm_range": [70, 95],
+  "bpm_range": [
+    70,
+    95
+  ],
   "default_scale": "major",
-  "preferred_keys": ["C", "D", "F", "G", "A", "Bb"],
+  "preferred_keys": [
+    "C",
+    "D",
+    "F",
+    "G",
+    "A",
+    "Bb"
+  ],
   "progression_templates": [
-    ["I", "vi", "IV", "V"],
-    ["I", "IV", "vi", "V"],
-    ["ii", "V", "I", "vi"],
-    ["I", "bVII", "IV", "I"],
-    ["I", "IV", "bVII", "IV"],
-    ["iv", "I", "bVII", "I"],
-    ["I", "iii", "IV", "V"],
-    ["I", "vi", "ii", "bVII"],
-    ["I6", "vi", "ii", "V"],
-    ["I", "IV6", "bVII", "IV"]
+    [
+      "I",
+      "vi",
+      "IV",
+      "V"
+    ],
+    [
+      "I",
+      "IV",
+      "vi",
+      "V"
+    ],
+    [
+      "ii",
+      "V",
+      "I",
+      "vi"
+    ],
+    [
+      "I",
+      "bVII",
+      "IV",
+      "I"
+    ],
+    [
+      "I",
+      "IV",
+      "bVII",
+      "IV"
+    ],
+    [
+      "iv",
+      "I",
+      "bVII",
+      "I"
+    ],
+    [
+      "I",
+      "iii",
+      "IV",
+      "V"
+    ],
+    [
+      "I",
+      "vi",
+      "ii",
+      "bVII"
+    ],
+    [
+      "I6",
+      "vi",
+      "ii",
+      "V"
+    ],
+    [
+      "I",
+      "IV6",
+      "bVII",
+      "IV"
+    ]
   ],
   "chord_extensions": {
     "allow_7th": 0.9,
@@ -23,7 +83,15 @@
   "blue_notes": true,
   "grace_notes": true,
   "secondary_dominants": true,
+  "syncopation_prob": 0.2,
+  "staccato_factor": 0.82,
+  "phrase_anticipation_prob": 0.3,
+  "strum_speed": 0.018,
+  "chorus_key_shift": 2,
   "open_voicing_prob": 0.25,
+  "turnaround_prob": 0.25,
+  "drop_2_prob": 0.2,
+  "passing_chord_prob": 0.1,
   "bass": {
     "bass_style": "walking",
     "pattern_density": 0.6,
@@ -31,19 +99,47 @@
     "sustain_bias": 0.45
   },
   "melody": {
-    "density": 0.60,
+    "density": 0.6,
     "stepwise_motion": 0.7,
     "leap_probability": 0.15,
     "rest_probability": 0.25,
-    "range": [60, 81]
+    "range": [
+      60,
+      81
+    ],
+    "phrase_climax_prob": 0.25,
+    "run_prob": 0.12
   },
-  "chord_rhythm": [1,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0],
+  "chord_rhythm": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0
+  ],
   "drums": {
     "hat_density": 0.6,
     "triplet_probability": 0.5,
-    "snare_standard_beats": [2, 4],
+    "snare_standard_beats": [
+      2,
+      4
+    ],
+    "snare_upbeat_prob": 0.3,
+    "snare_beat3_prob": 0.15,
     "swing": 0.5,
     "use_clap": true,
     "ghost_note_prob": 0.6
-  }
+  },
+  "groove_push": 0.004
 }

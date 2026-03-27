@@ -13,6 +13,7 @@
     "allow_7th": 0.2,
     "allow_9th": 0.05
   },
+  "chord_register": [52, 76],
   "bass": {
     "pattern_density": 0.9,
     "octave_jumps": 0.1,
@@ -37,6 +38,7 @@
     "hat_density": 0.95,
     "triplet_probability": 0.05,
     "snare_standard_beats": [2, 4],
-    "swing": 0.0
+    "swing": 0.0,
+    "edm_drops": true
   }
 }
