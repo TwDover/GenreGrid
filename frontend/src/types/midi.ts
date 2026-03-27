@@ -14,7 +14,22 @@ export interface GenerateRequest {
   complexity: number
   variation: number
   parts: string[]
+  mode: string
   seed?: number
+}
+
+export interface RegeneratePartRequest {
+  generation_id: string
+  part: string
+  style_id: string
+  key: string
+  scale: string
+  bpm: number
+  bars: number
+  complexity: number
+  variation: number
+  mode: string
+  seed: number
 }
 
 export interface FileInfo {
@@ -29,6 +44,9 @@ export interface GenerateSummary {
   scale: string
   bpm: number
   bars: number
+  complexity: number
+  variation: number
+  mode: string
 }
 
 export interface GenerateResponse {

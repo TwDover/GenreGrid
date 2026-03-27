@@ -9,9 +9,20 @@
         <span v-if="isLoading && !playing">...</span>
         <span v-else>{{ playing ? '■' : '▶' }}</span>
       </button>
-      <a :href="downloadHref" :download="file.filename" class="download-btn">
-        Download .mid
-      </a>
+      <button class="regen-btn" :disabled="regenLoading" @click="$emit('regen', file.part)" title="Regenerate this part">
+        <span v-if="regenLoading">...</span>
+        <span v-else>⟳</span>
+      </button>
+      <button
+        class="save-btn"
+        :disabled="saving"
+        @click="saveTo"
+        :title="hasPicker ? 'Choose where to save — navigate to your DAW project folder' : 'Download .mid'"
+      >
+        <span v-if="saving">...</span>
+        <span v-else-if="saved">✓</span>
+        <span v-else>{{ hasPicker ? 'Save to…' : '↓ .mid' }}</span>
+      </button>
     </div>
     <PianoRoll
       v-if="midiData"
@@ -23,18 +34,68 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import type { FileInfo } from '../types/midi'
 import { downloadUrl } from '../services/api'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 import PianoRoll from './PianoRoll.vue'
 
-const props = defineProps<{ file: FileInfo; styleId?: string }>()
-const downloadHref = computed(() => downloadUrl(props.file.url))
+const props = defineProps<{
+  file: FileInfo
+  styleId?: string
+  regenLoading?: boolean
+}>()
 
-const { toggle, currentlyPlaying, isLoading, getMidiData } = useMidiPlayer()
+defineEmits<{ (e: 'regen', part: string): void }>()
+
+const saving = ref(false)
+const saved = ref(false)
+
+// File System Access API — available in Chrome/Edge, not in Firefox/Safari
+const hasPicker = typeof window !== 'undefined' && 'showSaveFilePicker' in window
+
+const { toggle, currentlyPlaying, isLoading, getMidiData, prefetchMidi } = useMidiPlayer()
 const playing = computed(() => currentlyPlaying.value === props.file.url)
 const midiData = computed(() => getMidiData(props.file.url))
+
+onMounted(() => prefetchMidi(props.file.url))
+watch(() => props.file.url, url => prefetchMidi(url))
+
+async function saveTo() {
+  saving.value = true
+  try {
+    const res = await fetch(downloadUrl(props.file.url))
+    const buf = await res.arrayBuffer()
+
+    if (hasPicker) {
+      // Let the user pick the exact save location (e.g. their DAW project folder)
+      const handle = await (window as any).showSaveFilePicker({
+        suggestedName: props.file.filename,
+        types: [{ description: 'MIDI File', accept: { 'audio/midi': ['.mid', '.midi'] } }],
+      })
+      const writable = await handle.createWritable()
+      await writable.write(buf)
+      await writable.close()
+    } else {
+      // Fallback: standard browser download
+      const blob = new Blob([buf], { type: 'audio/midi' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = props.file.filename
+      a.click()
+      URL.revokeObjectURL(url)
+    }
+
+    saved.value = true
+    setTimeout(() => { saved.value = false }, 2000)
+  } catch (e: any) {
+    // AbortError = user cancelled the picker — not an error
+    if (e?.name !== 'AbortError') console.error('Save failed', e)
+  } finally {
+    saving.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -44,7 +105,7 @@ const midiData = computed(() => getMidiData(props.file.url))
   align-items: center;
 }
 
-.play-btn {
+.play-btn, .regen-btn {
   width: 36px;
   height: 36px;
   flex-shrink: 0;
@@ -59,8 +120,26 @@ const midiData = computed(() => getMidiData(props.file.url))
   justify-content: center;
   transition: background 0.15s;
 }
-.play-btn:hover:not(:disabled) { background: #3a3a54; }
-.play-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.play-btn:hover:not(:disabled), .regen-btn:hover:not(:disabled) { background: #3a3a54; }
+.play-btn:disabled, .regen-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.regen-btn { font-size: 1rem; }
+
+.save-btn {
+  flex: 1;
+  height: 36px;
+  background: #2a2a3e;
+  border: 1px solid #3a3a54;
+  border-radius: 6px;
+  color: #a78bfa;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0 0.75rem;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.save-btn:hover:not(:disabled) { background: #3a3a54; }
+.save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .playing .play-btn {
   background: #3b1f6e;

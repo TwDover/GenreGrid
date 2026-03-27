@@ -13,13 +13,17 @@
     "allow_7th": 0.7,
     "allow_9th": 0.35
   },
+  "chord_register": [48, 76],
+  "harmonic_rhythm_bars": 2,
+  "vel_arc_start": 0.35,
+  "velocity_base": 82,
   "bass": {
     "pattern_density": 0.35,
     "octave_jumps": 0.15,
     "sustain_bias": 0.8
   },
   "melody": {
-    "density": 0.35,
+    "density": 0.50,
     "stepwise_motion": 0.7,
     "leap_probability": 0.2,
     "rest_probability": 0.35,

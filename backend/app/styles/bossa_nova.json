@@ -13,13 +13,19 @@
     "allow_7th": 1.0,
     "allow_9th": 0.8
   },
+  "blue_notes": true,
+  "grace_notes": true,
+  "secondary_dominants": true,
+  "comp_style": "bossa_comp",
+  "open_voicing_prob": 0.35,
   "bass": {
+    "bass_style": "walking",
     "pattern_density": 0.55,
     "octave_jumps": 0.1,
     "sustain_bias": 0.4
   },
   "melody": {
-    "density": 0.4,
+    "density": 0.55,
     "stepwise_motion": 0.7,
     "leap_probability": 0.15,
     "rest_probability": 0.3,
@@ -30,6 +36,7 @@
     "triplet_probability": 0.4,
     "snare_standard_beats": [2, 4],
     "swing": 0.45,
-    "use_ride": true
+    "use_ride": true,
+    "perc_layers": ["shaker", "tambourine"]
   }
 }

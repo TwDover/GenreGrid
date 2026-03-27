@@ -24,7 +24,7 @@
       </div>
       <div class="field">
         <label>Bars</label>
-        <input type="number" v-model.number="form.bars" min="1" max="32" />
+        <input type="number" v-model.number="form.bars" min="1" max="128" />
       </div>
     </div>
 
@@ -70,6 +70,22 @@
     </div>
 
     <div class="field">
+      <label>Mode</label>
+      <div class="mode-toggles">
+        <label class="mode-option" :class="{ active: form.mode === 'loop' }">
+          <input type="radio" value="loop" v-model="form.mode" />
+          Loop
+          <span class="mode-hint">all parts · all bars · uniform</span>
+        </label>
+        <label class="mode-option" :class="{ active: form.mode === 'arrangement' }">
+          <input type="radio" value="arrangement" v-model="form.mode" />
+          Arrangement
+          <span class="mode-hint">intro · verse · chorus · outro</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="field">
       <label>Seed <span class="hint">optional — leave blank for random</span></label>
       <input type="number" v-model.number="form.seed" placeholder="e.g. 1234567890" min="0" />
     </div>
@@ -110,6 +126,7 @@ const form = reactive<GenerateRequest>({
   complexity: 0.5,
   variation: 0.4,
   parts: ['chords', 'bass', 'melody', 'drums'],
+  mode: 'arrangement',
   seed: undefined,
 })
 
@@ -130,6 +147,7 @@ watch(() => props.replayData, (data) => {
   form.scale = data.summary.scale
   form.bpm = data.summary.bpm
   form.bars = data.summary.bars
+  form.mode = data.summary.mode
   form.seed = data.seed
 })
 
@@ -195,4 +213,50 @@ function randomize() {
   color: #a78bfa;
 }
 .randomize-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.mode-toggles {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.mode-option {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.5rem 0.75rem;
+  background: #1a1a24;
+  border: 1px solid #2a2a3e;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #8888a0;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.mode-option input[type="radio"] {
+  display: none;
+}
+
+.mode-option.active {
+  border-color: #a78bfa;
+  color: #e0e0e8;
+}
+
+.mode-option:hover:not(.active) {
+  border-color: #3a3a54;
+  color: #c0c0d0;
+}
+
+.mode-hint {
+  font-size: 0.68rem;
+  color: #55556a;
+  font-weight: normal;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.mode-option.active .mode-hint {
+  color: #8888a0;
+}
 </style>

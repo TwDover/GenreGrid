@@ -19,7 +19,7 @@
     "sustain_bias": 0.3
   },
   "melody": {
-    "density": 0.5,
+    "density": 0.58,
     "stepwise_motion": 0.6,
     "leap_probability": 0.25,
     "rest_probability": 0.25,
@@ -29,6 +29,7 @@
     "hat_density": 0.7,
     "triplet_probability": 0.35,
     "snare_standard_beats": [2, 4],
-    "swing": 0.2
+    "swing": 0.2,
+    "perc_layers": ["shaker", "tambourine"]
   }
 }

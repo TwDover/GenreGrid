@@ -15,12 +15,19 @@ def sixteenth_to_ticks(sixteenths: float, ticks_per_beat: int = 480) -> int:
 
 
 def apply_swing(tick: int, swing: float, ticks_per_beat: int = 480) -> int:
-    """Push every odd 8th-note subdivision forward by swing amount (0=straight, 1=full triplet)."""
+    """Push the 'and' of each beat toward a triplet position (swing feel).
+
+    Uses a linear taper: the exact 'and' (beat+0.5) gets the full shift; notes
+    further into the second eighth get proportionally less, so nothing overshoots
+    the next beat even at high swing values.
+    """
+    if swing < 0.01:
+        return tick
     eighth = ticks_per_beat // 2
     beat_pos = tick % ticks_per_beat
-    eighth_pos = beat_pos // eighth
-    pos_in_eighth = beat_pos % eighth
-    if eighth_pos % 2 == 1:
-        shift = int(swing * eighth / 3)
+    if beat_pos >= eighth:
+        pos_in_second_eighth = beat_pos - eighth          # 0 at "and", eighth-1 approaching next beat
+        proximity = 1.0 - pos_in_second_eighth / eighth   # 1.0 → 0.0
+        shift = int(swing * eighth / 3 * proximity)
         return tick + shift
     return tick

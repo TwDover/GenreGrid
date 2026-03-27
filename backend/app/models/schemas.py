@@ -7,11 +7,26 @@ class GenerateRequest(BaseModel):
     key: str = "C"
     scale: str = "minor"
     bpm: int = Field(default=140, ge=40, le=240)
-    bars: int = Field(default=8, ge=1, le=32)
+    bars: int = Field(default=8, ge=1, le=128)
     complexity: float = Field(default=0.5, ge=0.0, le=1.0)
     variation: float = Field(default=0.4, ge=0.0, le=1.0)
     parts: List[str] = ["chords", "bass", "melody", "drums"]
+    mode: str = "arrangement"   # "arrangement" | "loop"
     seed: Optional[int] = None
+
+
+class RegeneratePartRequest(BaseModel):
+    generation_id: str
+    part: str
+    style_id: str
+    key: str = "C"
+    scale: str = "minor"
+    bpm: int = Field(default=140, ge=40, le=240)
+    bars: int = Field(default=8, ge=1, le=128)
+    complexity: float = Field(default=0.5, ge=0.0, le=1.0)
+    variation: float = Field(default=0.4, ge=0.0, le=1.0)
+    mode: str = "arrangement"
+    seed: int  # original seed — replayed to derive the same progression
 
 
 class StyleInfo(BaseModel):
@@ -33,6 +48,9 @@ class GenerateSummary(BaseModel):
     scale: str      # e.g. "minor"
     bpm: int
     bars: int
+    complexity: float
+    variation: float
+    mode: str
 
 
 class GenerateResponse(BaseModel):
