@@ -264,19 +264,19 @@ def generate_bass(
         roman = progression[chord_idx % prog_len]
         next_roman = progression[(chord_idx + 1) % prog_len]
 
-        chord_pitches = roman_to_chord(roman, key, scale, octave=3)
-        next_pitches = roman_to_chord(next_roman, key, scale, octave=3)
+        chord_pitches = roman_to_chord(roman, key, scale, octave=2)
+        next_pitches = roman_to_chord(next_roman, key, scale, octave=2)
 
         root = chord_pitches[0]
         if should_trigger(octave_jump_prob):
-            root -= 12
-        root = max(24, min(52, root))
+            root += 12   # jump UP an octave for variety (was: down, which went below useful range)
+        root = max(24, min(48, root))
 
         interval_third = chord_pitches[1] - chord_pitches[0] if len(chord_pitches) > 1 else 4
-        third = max(24, min(60, root + interval_third))
-        fifth = max(24, min(60, root + 7))
+        third = max(24, min(52, root + interval_third))
+        fifth = max(24, min(52, root + 7))
 
-        next_root = max(24, min(52, next_pitches[0]))
+        next_root = max(24, min(48, next_pitches[0]))
         chord_start = chord_idx * beats_per_chord
         # two-bar pattern variation: second bar of each 2-bar phrase
         bar_in_pair = int(chord_start / beats_per_bar) % 2

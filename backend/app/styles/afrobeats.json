@@ -20,7 +20,6 @@
     "allow_7th": 0.55,
     "allow_9th": 0.35
   },
-  "comp_style": "chord_strum",
   "syncopation_prob": 0.30,
   "passing_chord_prob": 0.10,
   "chord_rhythm": [1,0,0,1,0,0,1,0,0,0,1,0,0,1,0,0],

@@ -20,6 +20,7 @@
   },
   "chord_register": [55, 84],
   "comp_style": "house_stab",
+  "chord_rhythm": [0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0],
   "bass": {
     "pattern_density": 0.8,
     "octave_jumps": 0.2,

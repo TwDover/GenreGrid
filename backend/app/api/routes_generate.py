@@ -4,7 +4,7 @@ import uuid
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-from app.models.schemas import GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, GenerateSummary
+from app.models.schemas import GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, GenerateSummary, QualityScore
 from app.services.style_loader import load_style
 from app.services.midi_writer import NoteEvent, ControlEvent, PitchBendEvent, write_midi, write_combined_midi, rebuild_combined_from_parts
 from app.generators.chords import generate_chords, resolve_progression
@@ -14,6 +14,8 @@ from app.generators.drums import generate_drums
 from app.generators.arpeggio import generate_arpeggio
 from app.core.config import EXPORTS_DIR
 from app.core.constants import DRUM_MAP
+from app.services.quality import score_generation, extract_rhythm_patterns
+from app.services.library import save_generation as lib_save, is_saved, build_scoring_style
 
 router = APIRouter()
 
@@ -285,6 +287,15 @@ def _plan_sections(total_bars: int, complexity: float, requested_parts: list[str
     return secs
 
 
+_MAX_QUALITY_ATTEMPTS = 5
+_GREEN_THRESHOLD = 0.82
+_QUALITY_DIMS = ("harmonic", "register", "rhythm", "density", "mix")
+
+
+def _all_green(quality_raw: dict) -> bool:
+    return all(quality_raw.get(d, 0.0) >= _GREEN_THRESHOLD for d in _QUALITY_DIMS)
+
+
 def _apply_groove_push(events: list[NoteEvent], push: float) -> list[NoteEvent]:
     """Shift all notes by a systematic beat offset.
 
@@ -325,46 +336,37 @@ def _section_end_bars(sections: list[dict], current_section_offset: int) -> list
     return end_bars
 
 
-@router.post("/generate", response_model=GenerateResponse)
-def generate(req: GenerateRequest):
-    try:
-        style = load_style(req.style_id)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+def _run_attempt(
+    req,
+    style: dict,
+    seed: int,
+    is_loop: bool,
+    groove_push: float,
+    secondary_dominants: bool,
+    tritone_sub: bool,
+    scoring_style: dict | None = None,
+) -> tuple[dict, dict, dict, list, dict | None, dict]:
+    """Run one generation attempt for a given seed.
 
-    # Seed random for reproducibility
-    seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
-    random.seed(seed)
-
-    # Clamp BPM to the style's suggested range
-    bpm_min, bpm_max = style.get("bpm_range", [40, 240])
-    bpm = max(bpm_min, min(bpm_max, req.bpm))
-
-    gen_id = str(uuid.uuid4())[:8]
-    output_dir = EXPORTS_DIR / gen_id
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Build GM instrument map: defaults merged with any style-specific overrides
-    programs: dict[str, int] = {**_DEFAULT_PROGRAMS, **_STYLE_PROGRAMS.get(req.style_id, {})}
-
-    # Pick one progression shared across chords, bass, and melody
+    Returns (all_events, cc_parts, pb_parts, progression, quality_raw, patterns).
+    quality_raw is None if scoring raised an exception.
+    scoring_style overrides the style dict used for quality scoring only,
+    so learned patterns can improve scorer accuracy without touching generation.
+    """
     templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
+    random.seed(seed)
     progression = random.choice(templates)
     hrb = style.get("harmonic_rhythm_bars", 1)
     if hrb > 1:
         progression = [chord for chord in progression for _ in range(hrb)]
 
-    secondary_dominants = style.get("secondary_dominants", False)
-    tritone_sub = style.get("tritone_substitution", False)
-
-    is_loop = (req.mode == "loop")
-    groove_push = style.get("groove_push", 0.0)
-
     if is_loop:
-        sections = [{"bars": req.bars, "complexity": req.complexity, "parts": req.parts, "offset": 0, "key": req.key, "dynamic": 1.0}]
+        sections = [{"bars": req.bars, "complexity": req.complexity, "parts": req.parts,
+                     "offset": 0, "key": req.key, "dynamic": 1.0}]
     else:
         key_shift = style.get("chorus_key_shift", 0)
         sections = _plan_sections(req.bars, req.complexity, req.parts, req.key, key_shift)
+
     all_events: dict[str, list[NoteEvent]] = {part: [] for part in req.parts}
 
     for section_i, section in enumerate(sections):
@@ -374,18 +376,13 @@ def generate(req: GenerateRequest):
         s_off   = section["offset"]
         s_key   = section.get("key", req.key)
 
-        # Pre-resolve chord substitutions with a deterministic harmony seed so
-        # chords and melody always target the same chord tones.
         random.seed(_part_seed(seed, section_i, "harmony"))
         s_resolved = resolve_progression(progression, req.scale, s_cplx, secondary_dominants, tritone_sub)
 
         s_dyn = section.get("dynamic", 1.0)
-
-        # Outro pedal: last section at low complexity holds tonic in bass
         is_outro = (section_i == len(sections) - 1 and s_cplx < 0.5 and s_bars >= 2)
         bass_prog = (["I"] * len(progression)) if is_outro else progression
 
-        # ── Step 1: Drums first — extract kick times for bass/velocity sync ──
         kick_times: list[float] = []
         if "drums" in req.parts and "drums" in s_parts:
             random.seed(_part_seed(seed, section_i, "drums"))
@@ -396,11 +393,19 @@ def generate(req: GenerateRequest):
             all_events["drums"].extend(_shift(drum_evts, s_off))
             kick_times = [e.start for e in drum_evts if e.pitch == DRUM_MAP["kick"]]
 
-        # ── Step 2: Melody first so its range can inform chord voicing ────────
         has_melody = "melody" in s_parts
-        # melody_ceiling: keep chord top notes below the melody's range
         mel_range = style.get("melody", {}).get("range", [60, 79])
-        melody_ceiling = mel_range[0] if has_melody else None
+        # Apply melody_ceiling only for styles that explicitly set a high chord_register
+        # (synthwave, house, future_bass, etc. that use pads in the melody's range).
+        # Low-register styles (jazz, lofi, etc.) use the default [48,72] chord range
+        # which already sits below melody without needing a ceiling.
+        has_custom_chord_register = "chord_register" in style
+        chord_avg_register = sum(style["chord_register"]) / 2 if has_custom_chord_register else 0
+        melody_ceiling = (
+            mel_range[0]
+            if (has_melody and has_custom_chord_register and chord_avg_register > mel_range[0])
+            else None
+        )
 
         mel_rests: list = []
         if has_melody and "melody" in req.parts:
@@ -409,8 +414,6 @@ def generate(req: GenerateRequest):
                                        req.variation, s_resolved, is_loop=is_loop)
             mel_evts = _apply_dynamic(mel_evts, s_dyn)
             all_events["melody"].extend(_shift(mel_evts, s_off))
-
-            # Compute melody rest intervals for bass call-response fills
             if mel_evts:
                 sorted_mel = sorted(mel_evts, key=lambda e: e.start)
                 for _i in range(1, len(sorted_mel)):
@@ -419,7 +422,6 @@ def generate(req: GenerateRequest):
                     if gap_e - gap_s >= 1.5:
                         mel_rests.append((round(gap_s, 3), round(gap_e, 3)))
 
-        # ── Step 3: All other parts with melody-informed voicing ──────────────
         for part in req.parts:
             if part in ("drums", "melody") or part not in s_parts:
                 continue
@@ -433,8 +435,6 @@ def generate(req: GenerateRequest):
                                      req.variation, bass_prog, kick_times,
                                      melody_rests=mel_rests)
             elif part == "arpeggio":
-                # Push arpeggio one octave higher when melody is present to avoid
-                # occupying the same register
                 arp_octave = 6 if has_melody else 5
                 evts = generate_arpeggio(style, s_key, req.scale, s_bars, s_cplx,
                                          req.variation, s_resolved, arp_octave)
@@ -443,20 +443,16 @@ def generate(req: GenerateRequest):
             evts = _apply_dynamic(evts, s_dyn)
             all_events[part].extend(_shift(evts, s_off))
 
-    # Groove push: shift melodic parts slightly behind/ahead of the beat.
-    # Drums are the timing reference and are NOT shifted.
     if groove_push:
         for gp_part in ("melody", "chords", "arpeggio", "bass"):
             if gp_part in all_events and all_events[gp_part]:
                 all_events[gp_part] = _apply_groove_push(all_events[gp_part], groove_push)
 
-    # Post-process: reduce parallel octaves/fifths between melody and bass
     if "melody" in all_events and "bass" in all_events:
         all_events["melody"] = _prevent_parallel_motion(
             all_events["melody"], all_events["bass"]
         )
 
-    # Build CC events (pan + sustain) for each non-drum part
     cc_parts: dict[str, list[ControlEvent]] = {}
     for part in req.parts:
         if part == "drums" or part not in all_events or not all_events[part]:
@@ -464,19 +460,126 @@ def generate(req: GenerateRequest):
         channel = _PART_CHANNELS.get(part, 0)
         cc_parts[part] = _generate_part_cc(part, req.bars, channel)
 
-    # CC11 expression automation for melody
     if "melody" in all_events and all_events["melody"]:
         ch = _PART_CHANNELS.get("melody", 2)
         melody_cc11 = _generate_melody_expression_cc(all_events["melody"], ch)
         cc_parts.setdefault("melody", []).extend(melody_cc11)
 
-    # 808 pitch bends
     pb_parts: dict[str, list[PitchBendEvent]] = {}
     if "bass" in all_events and all_events["bass"]:
         bass_cfg = style.get("bass", {})
         if bass_cfg.get("bass_style") == "808":
             ch = _PART_CHANNELS.get("bass", 1)
             pb_parts["bass"] = _generate_808_pitch_bends(all_events["bass"], ch)
+
+    patterns = extract_rhythm_patterns(all_events, req.bars)
+
+    # Pre-apply the same velocity scaling used for MIDI output so the mix scorer
+    # evaluates what the listener will actually hear, not the raw generator values.
+    _scored_events = {
+        part: [
+            NoteEvent(e.pitch, e.start, e.duration,
+                      max(1, min(127, int(e.velocity * _VELOCITY_SCALE.get(part, 1.0)))),
+                      e.channel)
+            for e in evts
+        ]
+        for part, evts in all_events.items()
+    }
+
+    try:
+        quality_raw = score_generation(
+            _scored_events, scoring_style or style,
+            req.key, req.scale, req.bars, progression, req.complexity
+        )
+    except Exception:
+        quality_raw = None
+
+    return all_events, cc_parts, pb_parts, progression, quality_raw, patterns
+
+
+@router.post("/generate", response_model=GenerateResponse)
+def generate(req: GenerateRequest):
+    try:
+        style = load_style(req.style_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    bpm_min, bpm_max = style.get("bpm_range", [40, 240])
+    bpm = max(bpm_min, min(bpm_max, req.bpm))
+
+    gen_id = str(uuid.uuid4())[:8]
+    output_dir = EXPORTS_DIR / gen_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    programs: dict[str, int] = {**_DEFAULT_PROGRAMS, **_STYLE_PROGRAMS.get(req.style_id, {})}
+
+    secondary_dominants = style.get("secondary_dominants", False)
+    tritone_sub = style.get("tritone_substitution", False)
+    is_loop = (req.mode == "loop")
+    groove_push = style.get("groove_push", 0.0)
+
+    # Use library-learned patterns to sharpen the scorer's rhythm references
+    scoring_style = build_scoring_style(style, req.style_id)
+
+    # Start with the requested seed (or a fresh random one)
+    base_seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
+
+    best_events = best_cc = best_pb = best_progression = best_quality_raw = best_patterns = None
+    best_seed = base_seed
+
+    for attempt in range(_MAX_QUALITY_ATTEMPTS):
+        attempt_seed = base_seed if attempt == 0 else random.randint(0, 2**31 - 1)
+        all_events, cc_parts, pb_parts, progression, quality_raw, patterns = _run_attempt(
+            req, style, attempt_seed, is_loop, groove_push, secondary_dominants, tritone_sub,
+            scoring_style=scoring_style,
+        )
+
+        # Keep the best result seen so far (by total score)
+        if best_quality_raw is None or (
+            quality_raw is not None and
+            quality_raw.get("total", 0) > best_quality_raw.get("total", 0)
+        ):
+            best_events, best_cc, best_pb = all_events, cc_parts, pb_parts
+            best_progression, best_quality_raw = progression, quality_raw
+            best_patterns = patterns
+            best_seed = attempt_seed
+
+        # Accept as soon as all dimensions are in the green
+        if quality_raw is not None and _all_green(quality_raw):
+            best_seed = attempt_seed
+            break
+
+    all_events  = best_events
+    cc_parts    = best_cc
+    pb_parts    = best_pb
+    progression = best_progression
+    quality_raw = best_quality_raw
+    patterns    = best_patterns
+    seed        = best_seed
+
+    quality = QualityScore(**quality_raw) if quality_raw else None
+
+    import json as _json
+
+    # Write patterns.json so the frontend's manual-save can retrieve them later
+    (output_dir / "patterns.json").write_text(_json.dumps(patterns or {}))
+
+    # Auto-save to library when all dimensions are green
+    if quality_raw and _all_green(quality_raw):
+        try:
+            lib_save(
+                gen_id=gen_id,
+                style_id=req.style_id,
+                key=req.key,
+                scale=req.scale,
+                bpm=bpm,
+                bars=req.bars,
+                seed=seed,
+                quality_raw=quality_raw,
+                patterns=patterns or {},
+            )
+        except Exception:
+            pass   # library failure must never break generation
 
     files = []
     for part, events in all_events.items():
@@ -490,7 +593,6 @@ def generate(req: GenerateRequest):
                    cc_events=cc_parts.get(part), pb_events=pb_parts.get(part))
         files.append(FileInfo(part=part, filename=filename, url=f"/exports/{gen_id}/{filename}"))
 
-    # Combined export
     if len(all_events) > 1:
         combined_path = output_dir / "combined.mid"
         clean_events = {p: _drop_quiet(_scale_velocity(e, p)) for p, e in all_events.items()}
@@ -513,6 +615,8 @@ def generate(req: GenerateRequest):
             mode=req.mode,
         ),
         seed=seed,
+        quality=quality,
+        auto_saved=bool(quality_raw and _all_green(quality_raw)),
     )
 
 

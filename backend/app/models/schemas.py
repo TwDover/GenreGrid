@@ -53,9 +53,22 @@ class GenerateSummary(BaseModel):
     mode: str
 
 
+class QualityScore(BaseModel):
+    total: float
+    harmonic: float
+    register: float
+    rhythm: float
+    density: float
+    mix: float
+    label: str
+    flags: List[str]
+
+
 class GenerateResponse(BaseModel):
     generation_id: str
     style: str
     files: List[FileInfo]
     summary: GenerateSummary
     seed: int
+    quality: Optional[QualityScore] = None
+    auto_saved: bool = False

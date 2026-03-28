@@ -49,10 +49,23 @@ export interface GenerateSummary {
   mode: string
 }
 
+export interface QualityScore {
+  total: number
+  harmonic: number
+  register: number
+  rhythm: number
+  density: number
+  mix: number
+  label: string
+  flags: string[]
+}
+
 export interface GenerateResponse {
   generation_id: string
   style: string
   files: FileInfo[]
   summary: GenerateSummary
   seed: number
+  quality?: QualityScore
+  auto_saved: boolean
 }

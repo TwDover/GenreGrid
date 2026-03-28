@@ -34,6 +34,24 @@ export async function regeneratePart(req: RegeneratePartRequest): Promise<FileIn
   return res.json()
 }
 
+export async function saveToLibrary(response: GenerateResponse): Promise<void> {
+  if (!response.quality) return
+  await fetch(`${BASE_URL}/library/save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      gen_id:   response.generation_id,
+      style_id: response.style,
+      key:      response.summary.key_root,
+      scale:    response.summary.scale,
+      bpm:      response.summary.bpm,
+      bars:     response.summary.bars,
+      seed:     response.seed,
+      quality:  response.quality,
+    }),
+  })
+}
+
 export function downloadUrl(url: string): string {
   return `${BASE_URL}${url}`
 }

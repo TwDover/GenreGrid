@@ -1,20 +1,44 @@
 {
   "id": "jersey_club",
   "name": "Jersey Club",
-  "bpm_range": [130, 145],
+  "bpm_range": [
+    130,
+    145
+  ],
   "default_scale": "major",
-  "preferred_keys": ["C", "D", "F", "G", "A"],
+  "preferred_keys": [
+    "C",
+    "D",
+    "F",
+    "G",
+    "A"
+  ],
   "progression_templates": [
-    ["I", "IV", "V", "IV"],
-    ["I", "vi", "IV", "V"],
-    ["I", "V", "IV", "I"]
+    [
+      "I",
+      "IV",
+      "V",
+      "IV"
+    ],
+    [
+      "I",
+      "vi",
+      "IV",
+      "V"
+    ],
+    [
+      "I",
+      "V",
+      "IV",
+      "I"
+    ]
   ],
   "chord_extensions": {
     "allow_7th": 0.3,
     "allow_9th": 0.1
   },
   "bass": {
-    "pattern_density": 0.85,
+    "pattern_density": 0.95,
     "octave_jumps": 0.3,
     "sustain_bias": 0.15
   },
@@ -23,12 +47,18 @@
     "stepwise_motion": 0.5,
     "leap_probability": 0.3,
     "rest_probability": 0.2,
-    "range": [62, 84]
+    "range": [
+      62,
+      84
+    ]
   },
   "drums": {
     "hat_density": 0.9,
     "triplet_probability": 0.3,
-    "snare_standard_beats": [2, 4],
+    "snare_standard_beats": [
+      2,
+      4
+    ],
     "swing": 0.05
   }
 }
