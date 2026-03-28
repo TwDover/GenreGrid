@@ -13,7 +13,7 @@
     "allow_7th": 0.4,
     "allow_9th": 0.15
   },
-  "chord_register": [52, 76],
+  "chord_register": [52, 68],
   "bass": {
     "pattern_density": 0.75,
     "octave_jumps": 0.4,

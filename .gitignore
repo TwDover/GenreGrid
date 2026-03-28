@@ -25,10 +25,11 @@ frontend/dist/
 *.local
 
 # =========================
-# Generated Files (MIDI exports)
+# Generated Files (MIDI exports, generation library)
 # =========================
 backend/exports/*
 !backend/exports/.gitkeep
+backend/library/*/*
 
 # =========================
 # Logs

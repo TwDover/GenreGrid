@@ -1,13 +1,37 @@
 {
   "id": "dancehall",
   "name": "Dancehall",
-  "bpm_range": [80, 100],
+  "bpm_range": [
+    80,
+    100
+  ],
   "default_scale": "major",
-  "preferred_keys": ["C", "D", "F", "G", "A"],
+  "preferred_keys": [
+    "C",
+    "D",
+    "F",
+    "G",
+    "A"
+  ],
   "progression_templates": [
-    ["I", "IV", "V", "IV"],
-    ["I", "vi", "IV", "V"],
-    ["I", "V", "vi", "IV"]
+    [
+      "I",
+      "IV",
+      "V",
+      "IV"
+    ],
+    [
+      "I",
+      "vi",
+      "IV",
+      "V"
+    ],
+    [
+      "I",
+      "V",
+      "vi",
+      "IV"
+    ]
   ],
   "chord_extensions": {
     "allow_7th": 0.4,
@@ -23,13 +47,40 @@
     "stepwise_motion": 0.65,
     "leap_probability": 0.2,
     "rest_probability": 0.3,
-    "range": [62, 82]
+    "range": [
+      62,
+      82
+    ]
   },
-  "chord_rhythm": [0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,0],
+  "chord_rhythm": [
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
   "drums": {
     "hat_density": 0.65,
     "triplet_probability": 0.2,
-    "snare_standard_beats": [2, 4],
+    "snare_standard_beats": [
+      2,
+      4
+    ],
     "swing": 0.15
-  }
+  },
+  "chord_register": [
+    45,
+    66
+  ]
 }

@@ -13,7 +13,8 @@
     "allow_7th": 0.6,
     "allow_9th": 0.3
   },
-  "velocity_base": 58,
+  "velocity_base": 75,
+  "chord_register": [48, 62],
   "bass": {
     "bass_style": "808",
     "pattern_density": 0.15,
@@ -21,11 +22,11 @@
     "sustain_bias": 0.95
   },
   "melody": {
-    "density": 0.22,
+    "density": 0.30,
     "stepwise_motion": 0.9,
     "leap_probability": 0.03,
     "rest_probability": 0.7,
-    "range": [48, 68]
+    "range": [62, 79]
   },
   "drums": {
     "hat_density": 0.05,

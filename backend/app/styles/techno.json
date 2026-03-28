@@ -1,21 +1,48 @@
 {
   "id": "techno",
   "name": "Techno",
-  "bpm_range": [130, 150],
+  "bpm_range": [
+    130,
+    150
+  ],
   "default_scale": "minor",
-  "preferred_keys": ["C", "D", "F", "G", "A"],
+  "preferred_keys": [
+    "C",
+    "D",
+    "F",
+    "G",
+    "A"
+  ],
   "progression_templates": [
-    ["i", "i", "i", "i"],
-    ["i", "VII", "i", "VII"],
-    ["i", "VI", "i", "VI"]
+    [
+      "i",
+      "i",
+      "i",
+      "i"
+    ],
+    [
+      "i",
+      "VII",
+      "i",
+      "VII"
+    ],
+    [
+      "i",
+      "VI",
+      "i",
+      "VI"
+    ]
   ],
   "chord_extensions": {
     "allow_7th": 0.2,
     "allow_9th": 0.05
   },
-  "chord_register": [52, 76],
+  "chord_register": [
+    50,
+    72
+  ],
   "bass": {
-    "pattern_density": 0.9,
+    "pattern_density": 0.95,
     "octave_jumps": 0.1,
     "sustain_bias": 0.1
   },
@@ -24,7 +51,10 @@
     "stepwise_motion": 0.8,
     "leap_probability": 0.05,
     "rest_probability": 0.6,
-    "range": [60, 72]
+    "range": [
+      65,
+      80
+    ]
   },
   "arpeggio": {
     "pattern": "up",
@@ -32,12 +62,49 @@
     "include_octave": true,
     "allow_7th": false
   },
-  "chord_rhythm": [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
+  "chord_rhythm": [
+    1,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0
+  ],
   "drums": {
-    "kick_pattern": [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
+    "kick_pattern": [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0
+    ],
     "hat_density": 0.95,
     "triplet_probability": 0.05,
-    "snare_standard_beats": [2, 4],
+    "snare_standard_beats": [
+      2,
+      4
+    ],
     "swing": 0.0,
     "edm_drops": true
   }

@@ -27,7 +27,18 @@
             <button class="seed-action replay" @click.stop="$emit('replay', response)" title="Load these settings into the form">
               Replay
             </button>
+            <button
+              v-if="response.quality"
+              class="seed-action save"
+              :class="{ saved: savedIds.has(response.generation_id) }"
+              :disabled="savedIds.has(response.generation_id) || saveLoading === response.generation_id"
+              @click.stop="handleSave(response)"
+              title="Save to library to improve future generations"
+            >
+              {{ savedIds.has(response.generation_id) ? 'Saved' : saveLoading === response.generation_id ? '...' : 'Save' }}
+            </button>
           </div>
+          <QualityBadge v-if="response.quality" :score="response.quality" />
           <div v-if="regenError" class="regen-error">{{ regenError }}</div>
           <div class="part-cards">
             <PartCard
@@ -48,8 +59,9 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import PartCard from './PartCard.vue'
+import QualityBadge from './QualityBadge.vue'
 import type { GenerateResponse, FileInfo } from '../types/midi'
-import { regeneratePart } from '../services/api'
+import { regeneratePart, saveToLibrary } from '../services/api'
 
 const props = defineProps<{ history: GenerateResponse[] }>()
 const emit = defineEmits<{
@@ -61,9 +73,15 @@ const expandedId = ref<string | null>(null)
 const copied = ref<number | null>(null)
 const regenLoadingKey = ref<string | null>(null)
 const regenError = ref<string | null>(null)
+const savedIds = ref<Set<string>>(new Set())
+const saveLoading = ref<string | null>(null)
 
 watch(() => props.history[0], (newest) => {
-  if (newest) expandedId.value = newest.generation_id
+  if (!newest) return
+  expandedId.value = newest.generation_id
+  if (newest.auto_saved) {
+    savedIds.value = new Set([...savedIds.value, newest.generation_id])
+  }
 }, { immediate: true })
 
 function toggle(id: string) {
@@ -78,6 +96,18 @@ function copy(seed: number) {
   navigator.clipboard.writeText(String(seed))
   copied.value = seed
   setTimeout(() => { copied.value = null }, 2000)
+}
+
+async function handleSave(response: GenerateResponse) {
+  saveLoading.value = response.generation_id
+  try {
+    await saveToLibrary(response)
+    savedIds.value = new Set([...savedIds.value, response.generation_id])
+  } catch {
+    // silently ignore — save is best-effort
+  } finally {
+    saveLoading.value = null
+  }
 }
 
 async function handleRegen(response: GenerateResponse, part: string) {
@@ -236,6 +266,21 @@ async function handleRegen(response: GenerateResponse, part: string) {
 }
 
 .seed-action.replay:hover { background: #3b1f6e; color: #c4b5fd; }
+
+.seed-action.save {
+  color: #34d399;
+  border-color: #34d39944;
+}
+
+.seed-action.save:hover:not(:disabled) { background: #064e3b; color: #6ee7b7; }
+
+.seed-action.save.saved {
+  color: #55556a;
+  border-color: #2a2a3e;
+  cursor: default;
+}
+
+.seed-action:disabled { opacity: 0.6; cursor: default; }
 
 .regen-error {
   font-size: 0.75rem;

@@ -52,12 +52,20 @@ def _voice_lead(pitches: list[int], prev_pitches: list[int]) -> list[int]:
 
 
 def _clamp_register(pitches: list[int], low: int = 55, high: int = 84) -> list[int]:
-    """Shift the entire voicing by octaves until it fits within [low, high]."""
+    """Shift the entire voicing by octaves until it fits within [low, high].
+
+    If the voicing spans more than the range (too wide to fit), nudge individual
+    notes that fall below the floor up by an octave so the lowest note is never
+    below `low`, even if the top note exceeds `high`.
+    """
     s = sorted(pitches)
     while s[0] < low and s[-1] + 12 <= 127:
         s = [p + 12 for p in s]
     while s[-1] > high and s[0] - 12 >= 0:
         s = [p - 12 for p in s]
+    # Fallback: voicing too wide to fit entirely — shift individual sub-floor notes up
+    if s[0] < low:
+        s = sorted(p + 12 if p < low else p for p in s)
     return s
 
 

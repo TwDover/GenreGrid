@@ -1,28 +1,81 @@
 {
   "id": "dark_trap",
   "name": "Dark Trap",
-  "bpm_range": [130, 160],
+  "bpm_range": [
+    130,
+    160
+  ],
   "default_scale": "minor",
-  "preferred_keys": ["C", "C#", "D#", "F", "G"],
+  "preferred_keys": [
+    "C",
+    "C#",
+    "D#",
+    "F",
+    "G"
+  ],
   "progression_templates": [
-    ["i", "VI", "III", "VII"],
-    ["i", "iv", "VI", "V"],
-    ["i", "VII", "VI", "VII"],
-    ["i", "bVII", "bVI", "bVII"],
-    ["i", "v", "bVI", "bVII"],
-    ["i", "bVI", "bIII", "bVII"],
-    ["i", "iv", "v", "bVI"],
-    ["bVI", "bVII", "i", "i"]
+    [
+      "i",
+      "VI",
+      "III",
+      "VII"
+    ],
+    [
+      "i",
+      "iv",
+      "VI",
+      "V"
+    ],
+    [
+      "i",
+      "VII",
+      "VI",
+      "VII"
+    ],
+    [
+      "i",
+      "bVII",
+      "bVI",
+      "bVII"
+    ],
+    [
+      "i",
+      "v",
+      "bVI",
+      "bVII"
+    ],
+    [
+      "i",
+      "bVI",
+      "bIII",
+      "bVII"
+    ],
+    [
+      "i",
+      "iv",
+      "v",
+      "bVI"
+    ],
+    [
+      "bVI",
+      "bVII",
+      "i",
+      "i"
+    ]
   ],
   "chord_extensions": {
     "allow_7th": 0.35,
     "allow_9th": 0.1
   },
   "melody_scale": "pentatonic_minor",
+  "chord_register": [
+    48,
+    60
+  ],
   "velocity_base": 88,
   "bass": {
     "bass_style": "808",
-    "pattern_density": 0.45,
+    "pattern_density": 0.22,
     "octave_jumps": 0.2,
     "sustain_bias": 0.7,
     "808_tail": 0.72
@@ -32,7 +85,10 @@
     "stepwise_motion": 0.7,
     "leap_probability": 0.15,
     "rest_probability": 0.3,
-    "range": [60, 79]
+    "range": [
+      60,
+      79
+    ]
   },
   "arpeggio": {
     "pattern": "up",
@@ -40,12 +96,49 @@
     "include_octave": false,
     "allow_7th": false
   },
-  "chord_rhythm": [1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0],
+  "chord_rhythm": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
   "drums": {
-    "kick_pattern": [1,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0],
+    "kick_pattern": [
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0
+    ],
     "hat_density": 0.8,
     "triplet_probability": 0.3,
-    "snare_standard_beats": [2, 4],
+    "snare_standard_beats": [
+      2,
+      4
+    ],
     "swing": 0.15,
     "hat_roll_prob": 0.4
   }

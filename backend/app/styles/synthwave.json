@@ -20,6 +20,7 @@
   },
   "chord_register": [55, 84],
   "comp_style": "synth_gate",
+  "chord_rhythm": [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
   "velocity_base": 84,
   "bass": {
     "pattern_density": 0.65,
