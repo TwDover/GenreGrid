@@ -44,6 +44,7 @@
     "triplet_probability": 0.1,
     "snare_standard_beats": [2, 4],
     "swing": 0.1,
-    "open_hat_style": "offbeats"
+    "open_hat_style": "offbeats",
+    "edm_drops": true
   }
 }

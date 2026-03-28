@@ -1,18 +1,68 @@
 {
   "id": "latin_jazz",
   "name": "Latin Jazz",
-  "bpm_range": [120, 200],
+  "bpm_range": [
+    120,
+    200
+  ],
   "default_scale": "major",
-  "preferred_keys": ["C", "F", "Bb", "Eb", "G", "D"],
+  "preferred_keys": [
+    "C",
+    "F",
+    "Bb",
+    "Eb",
+    "G",
+    "D"
+  ],
   "progression_templates": [
-    ["ii", "V", "I", "vi"],
-    ["I", "vi", "ii", "V"],
-    ["iii", "VI", "ii", "V"],
-    ["I", "bVII", "IV", "I"],
-    ["ii", "V", "iii", "VI"],
-    ["imM7", "iv", "bVII", "bIII"],
-    ["I", "V9sus4", "vi", "ii"],
-    ["I", "IV", "iii", "vi"]
+    [
+      "ii",
+      "V",
+      "I",
+      "vi"
+    ],
+    [
+      "I",
+      "vi",
+      "ii",
+      "V"
+    ],
+    [
+      "iii",
+      "VI",
+      "ii",
+      "V"
+    ],
+    [
+      "I",
+      "bVII",
+      "IV",
+      "I"
+    ],
+    [
+      "ii",
+      "V",
+      "iii",
+      "VI"
+    ],
+    [
+      "imM7",
+      "iv",
+      "bVII",
+      "bIII"
+    ],
+    [
+      "I",
+      "V9sus4",
+      "vi",
+      "ii"
+    ],
+    [
+      "I",
+      "IV",
+      "iii",
+      "vi"
+    ]
   ],
   "chord_extensions": {
     "allow_7th": 1.0,
@@ -21,8 +71,16 @@
   "blue_notes": true,
   "grace_notes": true,
   "secondary_dominants": true,
+  "tritone_substitution": true,
+  "syncopation_prob": 0.22,
+  "phrase_anticipation_prob": 0.4,
+  "altered_dominant_prob": 0.35,
+  "strum_speed": 0.008,
   "comp_style": "jazz_comp",
   "open_voicing_prob": 0.35,
+  "turnaround_prob": 0.4,
+  "drop_2_prob": 0.38,
+  "passing_chord_prob": 0.15,
   "bass": {
     "bass_style": "walking",
     "pattern_density": 0.8,
@@ -34,15 +92,26 @@
     "stepwise_motion": 0.5,
     "leap_probability": 0.35,
     "rest_probability": 0.15,
-    "range": [60, 84]
+    "range": [
+      60,
+      84
+    ],
+    "phrase_climax_prob": 0.25,
+    "run_prob": 0.12,
+    "bebop_run_prob": 0.14
   },
   "drums": {
     "hat_density": 0.75,
     "triplet_probability": 0.6,
-    "snare_standard_beats": [2, 4],
+    "snare_standard_beats": [
+      2,
+      4
+    ],
     "swing": 0.55,
     "use_ride": true,
+    "ride_style": "jazz",
     "tom_fills": true,
     "crash_on_bar_1": true
-  }
+  },
+  "groove_push": -0.006
 }

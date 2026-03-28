@@ -1,24 +1,78 @@
 {
   "id": "rnb",
   "name": "R&B",
-  "bpm_range": [70, 95],
+  "bpm_range": [
+    70,
+    95
+  ],
   "default_scale": "minor",
-  "preferred_keys": ["C", "D", "F", "G", "A", "Bb"],
+  "preferred_keys": [
+    "C",
+    "D",
+    "F",
+    "G",
+    "A",
+    "Bb"
+  ],
   "progression_templates": [
-    ["i", "VI", "III", "VII"],
-    ["i", "iv", "VII", "III"],
-    ["ii", "V", "I", "vi"],
-    ["i", "bVII", "bVI", "v"],
-    ["i", "iv", "bVI", "bVII"],
-    ["I", "bVII", "IV", "I"],
-    ["I", "vi", "ii", "V"],
-    ["i", "bIII", "bVII", "IV"]
+    [
+      "i",
+      "VI",
+      "III",
+      "VII"
+    ],
+    [
+      "i",
+      "iv",
+      "VII",
+      "III"
+    ],
+    [
+      "ii",
+      "V",
+      "I",
+      "vi"
+    ],
+    [
+      "i",
+      "bVII",
+      "bVI",
+      "v"
+    ],
+    [
+      "i",
+      "iv",
+      "bVI",
+      "bVII"
+    ],
+    [
+      "I",
+      "bVII",
+      "IV",
+      "I"
+    ],
+    [
+      "I",
+      "vi",
+      "ii",
+      "V"
+    ],
+    [
+      "i",
+      "bIII",
+      "bVII",
+      "IV"
+    ]
   ],
   "chord_extensions": {
     "allow_7th": 0.95,
     "allow_9th": 0.7
   },
   "blue_notes": true,
+  "syncopation_prob": 0.2,
+  "phrase_anticipation_prob": 0.25,
+  "strum_speed": 0.02,
+  "chorus_key_shift": 2,
   "bass": {
     "pattern_density": 0.5,
     "octave_jumps": 0.1,
@@ -29,15 +83,58 @@
     "stepwise_motion": 0.7,
     "leap_probability": 0.15,
     "rest_probability": 0.25,
-    "range": [60, 79]
+    "range": [
+      60,
+      79
+    ],
+    "phrase_climax_prob": 0.2
   },
-  "chord_rhythm": [1,0,0,1,0,1,0,0,1,0,0,1,0,0,1,0],
+  "chord_rhythm": [
+    1,
+    0,
+    0,
+    1,
+    0,
+    1,
+    0,
+    0,
+    1,
+    0,
+    0,
+    1,
+    0,
+    0,
+    1,
+    0
+  ],
   "drums": {
-    "kick_pattern": [1,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0],
+    "kick_pattern": [
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
     "hat_density": 0.55,
     "triplet_probability": 0.45,
-    "snare_standard_beats": [2, 4],
+    "snare_standard_beats": [
+      2,
+      4
+    ],
+    "snare_upbeat_prob": 0.3,
     "swing": 0.4,
     "use_clap": true
-  }
+  },
+  "groove_push": 0.003
 }

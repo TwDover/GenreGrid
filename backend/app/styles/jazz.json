@@ -1,22 +1,92 @@
 {
   "id": "jazz",
   "name": "Jazz",
-  "bpm_range": [80, 140],
+  "bpm_range": [
+    80,
+    140
+  ],
   "default_scale": "major",
-  "preferred_keys": ["F", "Bb", "Eb", "Ab", "C", "G"],
+  "preferred_keys": [
+    "F",
+    "Bb",
+    "Eb",
+    "Ab",
+    "C",
+    "G"
+  ],
   "progression_templates": [
-    ["ii", "V", "I", "vi"],
-    ["I", "vi", "ii", "V"],
-    ["iii", "VI", "ii", "V"],
-    ["I", "bVII", "IV", "I"],
-    ["ii", "V", "iii", "VI"],
-    ["i", "iv", "bVII", "bIII"],
-    ["I", "IV", "iii", "vi"],
-    ["ii", "bII", "I", "I"],
-    ["Imaj7", "IVsus2", "ii", "V"],
-    ["i", "ivsus2", "bVII", "bIII"],
-    ["I", "V9sus4", "vi", "ii"],
-    ["imM7", "iv", "bVII", "bIII"]
+    [
+      "ii",
+      "V",
+      "I",
+      "vi"
+    ],
+    [
+      "I",
+      "vi",
+      "ii",
+      "V"
+    ],
+    [
+      "iii",
+      "VI",
+      "ii",
+      "V"
+    ],
+    [
+      "I",
+      "bVII",
+      "IV",
+      "I"
+    ],
+    [
+      "ii",
+      "V",
+      "iii",
+      "VI"
+    ],
+    [
+      "i",
+      "iv",
+      "bVII",
+      "bIII"
+    ],
+    [
+      "I",
+      "IV",
+      "iii",
+      "vi"
+    ],
+    [
+      "ii",
+      "bII",
+      "I",
+      "I"
+    ],
+    [
+      "Imaj7",
+      "IVsus2",
+      "ii",
+      "V"
+    ],
+    [
+      "i",
+      "ivsus2",
+      "bVII",
+      "bIII"
+    ],
+    [
+      "I",
+      "V9sus4",
+      "vi",
+      "ii"
+    ],
+    [
+      "imM7",
+      "iv",
+      "bVII",
+      "bIII"
+    ]
   ],
   "chord_extensions": {
     "allow_7th": 1.0,
@@ -25,10 +95,19 @@
   "blue_notes": true,
   "grace_notes": true,
   "secondary_dominants": true,
+  "tritone_substitution": true,
+  "syncopation_prob": 0.25,
+  "phrase_anticipation_prob": 0.45,
+  "altered_dominant_prob": 0.4,
+  "strum_speed": 0.007,
+  "chorus_key_shift": 2,
   "vel_arc_start": 0.65,
   "velocity_base": 72,
   "comp_style": "jazz_comp",
-  "open_voicing_prob": 0.40,
+  "open_voicing_prob": 0.4,
+  "turnaround_prob": 0.5,
+  "drop_2_prob": 0.45,
+  "passing_chord_prob": 0.18,
   "bass": {
     "bass_style": "walking",
     "pattern_density": 0.85,
@@ -40,15 +119,27 @@
     "stepwise_motion": 0.55,
     "leap_probability": 0.3,
     "rest_probability": 0.2,
-    "range": [60, 84]
+    "range": [
+      60,
+      84
+    ],
+    "phrase_climax_prob": 0.3,
+    "trill_prob": 0.12,
+    "run_prob": 0.18,
+    "bebop_run_prob": 0.2
   },
   "drums": {
     "hat_density": 0.7,
     "triplet_probability": 0.8,
-    "snare_standard_beats": [2, 4],
+    "snare_standard_beats": [
+      2,
+      4
+    ],
     "swing": 0.65,
     "use_ride": true,
+    "ride_style": "jazz",
     "tom_fills": true,
     "crash_on_bar_1": true
-  }
+  },
+  "groove_push": -0.008
 }
