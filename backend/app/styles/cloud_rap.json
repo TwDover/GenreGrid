@@ -72,10 +72,28 @@
     75
   ],
   "comp_style": "pad_hold",
+  "chord_rhythm": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
   "melody_scale": "pentatonic_minor",
   "bass": {
     "bass_style": "808",
-    "pattern_density": 0.3,
+    "pattern_density": 0.22,
     "octave_jumps": 0.1,
     "sustain_bias": 0.8,
     "808_tail": 0.88

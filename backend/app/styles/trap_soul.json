@@ -69,15 +69,33 @@
     "allow_9th": 0.7
   },
   "chord_register": [
-    52,
-    75
+    48,
+    62
   ],
   "comp_style": "pad_hold",
+  "chord_rhythm": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
   "melody_scale": "pentatonic_minor",
   "velocity_base": 80,
   "bass": {
     "bass_style": "808",
-    "pattern_density": 0.4,
+    "pattern_density": 0.22,
     "octave_jumps": 0.1,
     "sustain_bias": 0.7,
     "808_tail": 0.96
