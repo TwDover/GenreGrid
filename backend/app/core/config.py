@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -6,4 +7,4 @@ STYLES_DIR = BASE_DIR / "app" / "styles"
 
 EXPORTS_DIR.mkdir(exist_ok=True)
 
-EXPORT_TTL_SECONDS = 3600  # delete exports older than 1 hour
+EXPORT_TTL_SECONDS = int(os.environ.get("EXPORT_TTL_SECONDS", "3600"))

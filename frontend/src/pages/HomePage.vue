@@ -22,11 +22,19 @@
     <main class="app-main">
       <section class="form-section">
         <GenerateForm :styles="styles" :loading="loading" :replayData="replayData" @submit="handleGenerate" />
-        <p v-if="error" class="error-msg">{{ error }}</p>
+        <div v-if="error && !loading" class="error-row">
+          <p class="error-msg">{{ error }}</p>
+          <button class="retry-btn" @click="retryFetch">Retry</button>
+        </div>
       </section>
 
       <section class="export-section">
-        <ExportPanel :history="history" @replay="handleReplay" @part-regenned="handlePartRegenned" />
+        <div class="panel-tabs">
+          <button class="panel-tab" :class="{ active: activePanel === 'history' }" @click="activePanel = 'history'">History</button>
+          <button class="panel-tab" :class="{ active: activePanel === 'library' }" @click="activePanel = 'library'">Library</button>
+        </div>
+        <ExportPanel v-if="activePanel === 'history'" :history="history" @replay="handleReplay" @part-regenned="handlePartRegenned" />
+        <LibraryPanel v-else :styles="styles" @replay="handleLibraryReplay" />
       </section>
     </main>
   </div>
@@ -36,8 +44,9 @@
 import { ref, onMounted } from 'vue'
 import GenerateForm from '../components/GenerateForm.vue'
 import ExportPanel from '../components/ExportPanel.vue'
+import LibraryPanel from '../components/LibraryPanel.vue'
 import { fetchStyles, generate } from '../services/api'
-import type { StyleInfo, GenerateRequest, GenerateResponse, FileInfo } from '../types/midi'
+import type { StyleInfo, GenerateRequest, GenerateResponse, FileInfo, LibraryEntry } from '../types/midi'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 
 const { volume, setVolume } = useMidiPlayer()
@@ -47,6 +56,7 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const history = ref<GenerateResponse[]>([])
 const replayData = ref<GenerateResponse | null>(null)
+const activePanel = ref<'history' | 'library'>('history')
 
 onMounted(async () => {
   try {
@@ -62,6 +72,7 @@ async function handleGenerate(form: GenerateRequest) {
   try {
     const result = await generate(form)
     history.value = [result, ...history.value].slice(0, 10)
+    activePanel.value = 'history'
   } catch (e: any) {
     error.value = e.message ?? 'Unknown error'
   } finally {
@@ -69,9 +80,48 @@ async function handleGenerate(form: GenerateRequest) {
   }
 }
 
+async function retryFetch() {
+  error.value = null
+  try {
+    styles.value = await fetchStyles()
+  } catch (e) {
+    error.value = 'Could not reach backend — make sure uvicorn is running on port 8000.'
+  }
+}
+
 function handleReplay(response: GenerateResponse) {
-  replayData.value = null          // reset first so the watcher fires even if same seed
+  replayData.value = null
   setTimeout(() => { replayData.value = response }, 0)
+}
+
+async function handleLibraryReplay(entry: LibraryEntry) {
+  const req: GenerateRequest = {
+    style_id: entry.style_id,
+    key: entry.key,
+    scale: entry.scale,
+    bpm: entry.bpm,
+    bars: entry.bars,
+    complexity: 0.5,
+    variation: 0.4,
+    parts: ['chords', 'bass', 'melody', 'drums'],
+    mode: 'loop',
+    seed: entry.seed,
+  }
+  // Pre-fill the form so the user can tweak and re-generate
+  replayData.value = null
+  setTimeout(() => {
+    replayData.value = {
+      generation_id: entry.gen_id,
+      style: entry.style_id,
+      files: [],
+      summary: { key: `${entry.key} ${entry.scale}`, key_root: entry.key, scale: entry.scale,
+                 bpm: entry.bpm, bars: entry.bars, complexity: 0.5, variation: 0.4, mode: 'loop' },
+      seed: entry.seed,
+      quality: entry.quality,
+      auto_saved: true,
+    }
+  }, 0)
+  await handleGenerate(req)
 }
 
 function handlePartRegenned(genId: string, newFile: FileInfo) {
@@ -146,5 +196,53 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
   background: #a78bfa;
   cursor: pointer;
   border: none;
+}
+
+.error-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.retry-btn {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+  background: #2a2a3e;
+  border: 1px solid #3a3a54;
+  border-radius: 4px;
+  color: #8888a0;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.retry-btn:hover {
+  background: #3a3a54;
+  color: #e0e0e8;
+}
+
+.panel-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.panel-tab {
+  font-size: 0.78rem;
+  padding: 0.3rem 0.9rem;
+  background: #1a1a24;
+  border: 1px solid #2a2a3e;
+  border-radius: 6px;
+  color: #8888a0;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.panel-tab:hover { background: #22223a; color: #e0e0e8; }
+
+.panel-tab.active {
+  background: #2a1a4e;
+  border-color: #a78bfa;
+  color: #c4b5fd;
 }
 </style>

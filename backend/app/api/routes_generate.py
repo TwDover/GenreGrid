@@ -1,3 +1,4 @@
+import logging
 import random
 import secrets
 import uuid
@@ -18,6 +19,7 @@ from app.services.quality import score_generation, extract_rhythm_patterns
 from app.services.library import save_generation as lib_save, is_saved, build_scoring_style
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # General MIDI program numbers per part, keyed by style_id.
 # Parts not listed fall back to _DEFAULT_PROGRAMS.
@@ -578,8 +580,8 @@ def generate(req: GenerateRequest):
                 quality_raw=quality_raw,
                 patterns=patterns or {},
             )
-        except Exception:
-            pass   # library failure must never break generation
+        except Exception as exc:
+            logger.warning("Library auto-save failed for gen_id=%s: %s", gen_id, exc)
 
     files = []
     for part, events in all_events.items():
@@ -617,6 +619,7 @@ def generate(req: GenerateRequest):
         seed=seed,
         quality=quality,
         auto_saved=bool(quality_raw and _all_green(quality_raw)),
+        progression=progression,
     )
 
 
@@ -663,7 +666,7 @@ def regenerate_part(req: RegeneratePartRequest):
     # arpeggio can be pushed to a higher octave to avoid register conflict.
     melody_exists = (output_dir / "melody.mid").exists()
 
-    for section in sections:
+    for section_i, section in enumerate(sections):
         s_bars  = section["bars"]
         s_cplx  = section["complexity"]
         s_parts = set(section["parts"])
@@ -676,12 +679,23 @@ def regenerate_part(req: RegeneratePartRequest):
         # regenerated part stays harmonically aligned with the original session.
         s_resolved = resolve_progression(progression, req.scale, s_cplx, secondary_dominants, tritone_sub)
 
+        kick_times: list[float] = []
+        if req.part == "bass":
+            saved_state = random.getstate()
+            random.seed(_part_seed(req.seed, section_i, "drums"))
+            drum_evts_tmp = generate_drums(style, s_bars, s_cplx, req.variation,
+                                           section_end_bars=_section_end_bars(sections, s_off))
+            kick_times = [e.start for e in drum_evts_tmp if e.pitch == DRUM_MAP["kick"]]
+            random.setstate(saved_state)
+
+        s_dyn = section.get("dynamic", 1.0)
+
         if req.part == "chords":
             evts = generate_chords(style, s_key, req.scale, s_bars, s_cplx,
                                    req.variation, progression, s_resolved)
         elif req.part == "bass":
             evts = generate_bass(style, s_key, req.scale, s_bars, s_cplx,
-                                 req.variation, progression)
+                                 req.variation, progression, kick_times)
         elif req.part == "melody":
             evts = generate_melody(style, s_key, req.scale, s_bars, s_cplx,
                                    req.variation, s_resolved)
@@ -694,7 +708,12 @@ def regenerate_part(req: RegeneratePartRequest):
                                      req.variation, s_resolved, arp_octave)
         else:
             continue
+        evts = _apply_dynamic(evts, s_dyn)
         events.extend(_shift(evts, s_off))
+
+    groove_push = style.get("groove_push", 0.0)
+    if groove_push and req.part in ("melody", "chords", "arpeggio", "bass"):
+        events = _apply_groove_push(events, groove_push)
 
     events = _scale_velocity(events, req.part)
     events = _drop_quiet(events)
@@ -702,14 +721,47 @@ def regenerate_part(req: RegeneratePartRequest):
     channel = _PART_CHANNELS.get(req.part, 0)
     part_cc = _generate_part_cc(req.part, req.bars, channel) if req.part != "drums" else None
 
+    if req.part == "melody" and events:
+        cc11 = _generate_melody_expression_cc(events, channel)
+        part_cc = (part_cc or []) + cc11
+
+    pb_events = None
+    if req.part == "bass":
+        bass_cfg = style.get("bass", {})
+        if bass_cfg.get("bass_style") == "808":
+            pb_events = _generate_808_pitch_bends(events, channel)
+
     filename = f"{req.part}.mid"
     out_path = output_dir / filename
-    write_midi(events, out_path, bpm=bpm, program=programs.get(req.part), cc_events=part_cc)
+    write_midi(events, out_path, bpm=bpm, program=programs.get(req.part),
+               cc_events=part_cc, pb_events=pb_events)
 
     # Rebuild combined.mid so it reflects the newly regenerated part
     rebuild_combined_from_parts(output_dir, bpm)
 
     return FileInfo(part=req.part, filename=filename, url=f"/exports/{req.generation_id}/{filename}")
+
+
+@router.get("/exports/{gen_id}/bundle.zip")
+def download_bundle(gen_id: str):
+    import zipfile, io
+    output_dir = EXPORTS_DIR / gen_id
+    if not output_dir.exists():
+        raise HTTPException(status_code=404, detail="Generation not found")
+    mid_files = list(output_dir.glob("*.mid"))
+    if not mid_files:
+        raise HTTPException(status_code=404, detail="No MIDI files found")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in sorted(mid_files):
+            zf.write(f, f.name)
+    buf.seek(0)
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=genregrid_{gen_id}.zip"},
+    )
 
 
 @router.get("/exports/{gen_id}/{filename}")

@@ -126,7 +126,7 @@ const form = reactive<GenerateRequest>({
   complexity: 0.5,
   variation: 0.4,
   parts: ['chords', 'bass', 'melody', 'drums'],
-  mode: 'arrangement',
+  mode: 'loop',
   seed: undefined,
 })
 
