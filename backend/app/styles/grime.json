@@ -1,0 +1,40 @@
+{
+  "id": "grime",
+  "name": "Grime",
+  "bpm_range": [137, 142],
+  "default_scale": "minor",
+  "preferred_keys": ["C", "D", "F", "G", "A#"],
+  "progression_templates": [
+    ["i", "VII", "VI", "VII"],
+    ["i", "VI", "III", "VII"],
+    ["i", "iv", "VII", "VI"],
+    ["i", "bVII", "bVI", "bVII"]
+  ],
+  "chord_extensions": { "allow_7th": 0.25, "allow_9th": 0.05 },
+  "melody_scale": "pentatonic_minor",
+  "chord_register": [48, 62],
+  "velocity_base": 90,
+  "bass": {
+    "bass_style": "808",
+    "pattern_density": 0.22,
+    "octave_jumps": 0.3,
+    "sustain_bias": 0.65,
+    "808_tail": 0.5
+  },
+  "melody": {
+    "density": 0.5,
+    "stepwise_motion": 0.6,
+    "leap_probability": 0.25,
+    "rest_probability": 0.35,
+    "range": [58, 77]
+  },
+  "chord_rhythm": [1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0],
+  "drums": {
+    "kick_pattern": [1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0],
+    "hat_density": 0.85,
+    "triplet_probability": 0.1,
+    "snare_standard_beats": [2, 4],
+    "swing": 0.05,
+    "hat_roll_prob": 0.15
+  }
+}

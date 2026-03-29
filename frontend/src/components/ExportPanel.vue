@@ -13,7 +13,10 @@
       >
         <button class="history-row" @click="toggle(response.generation_id)">
           <span class="entry-style">{{ formatStyle(response.style) }}</span>
-          <span class="entry-meta">{{ response.summary.key }} · {{ response.summary.bpm }} BPM · {{ response.summary.bars }} bars</span>
+          <span class="entry-meta">
+            <span v-if="response.summary.section_type" class="entry-section">{{ formatSection(response.summary.section_type) }}</span>
+            {{ response.summary.key }} · {{ response.summary.bpm }} BPM · {{ response.summary.bars }} bars<span v-if="response._elapsed"> · {{ response._elapsed }}s</span>
+          </span>
           <span class="entry-id">{{ response.generation_id }}</span>
           <span class="entry-chevron">{{ expandedId === response.generation_id ? '▲' : '▼' }}</span>
         </button>
@@ -36,6 +39,9 @@
               title="Save to library to improve future generations"
             >
               {{ savedIds.has(response.generation_id) ? 'Saved' : saveLoading === response.generation_id ? '...' : 'Save' }}
+            </button>
+            <button class="seed-action" @click.stop="share(response)" title="Copy shareable link">
+              {{ shared === response.generation_id ? '✓ Copied' : 'Share' }}
             </button>
             <a
               class="seed-action"
@@ -81,6 +87,7 @@ const emit = defineEmits<{
 
 const expandedId = ref<string | null>(null)
 const copied = ref<number | null>(null)
+const shared = ref<string | null>(null)
 const regenLoadingKey = ref<string | null>(null)
 const regenError = ref<string | null>(null)
 const savedIds = ref<Set<string>>(new Set())
@@ -102,10 +109,24 @@ function formatStyle(id: string): string {
   return id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
+const _SECTION_LABELS: Record<string, string> = {
+  intro: 'Intro', verse: 'Verse', pre_chorus: 'Pre-Ch', chorus: 'Chorus',
+  post_chorus: 'Post-Ch', bridge: 'Bridge', instrumental_solo: 'Solo', outro: 'Outro',
+}
+function formatSection(id: string): string {
+  return _SECTION_LABELS[id] ?? id
+}
+
 function copy(seed: number) {
   navigator.clipboard.writeText(String(seed))
   copied.value = seed
   setTimeout(() => { copied.value = null }, 2000)
+}
+
+function share(response: GenerateResponse) {
+  navigator.clipboard.writeText(window.location.href)
+  shared.value = response.generation_id
+  setTimeout(() => { shared.value = null }, 2000)
 }
 
 async function handleSave(response: GenerateResponse) {
@@ -213,6 +234,21 @@ async function handleRegen(response: GenerateResponse, part: string) {
   font-size: 0.8rem;
   color: #8888a0;
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.entry-section {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #a78bfa;
+  background: #1e1430;
+  border: 1px solid #a78bfa44;
+  border-radius: 3px;
+  padding: 0.05rem 0.4rem;
+  white-space: nowrap;
 }
 
 .entry-id {

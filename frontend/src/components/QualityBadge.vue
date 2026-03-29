@@ -15,7 +15,10 @@
       </div>
     </div>
     <ul v-if="score.flags.length" class="quality-flags">
-      <li v-for="flag in score.flags" :key="flag">{{ flag }}</li>
+      <li v-for="flag in score.flags" :key="flag" :title="FLAG_TIPS[flag] ?? ''" class="flag-item">
+        {{ flag }}
+        <span v-if="FLAG_TIPS[flag]" class="flag-tip">{{ FLAG_TIPS[flag] }}</span>
+      </li>
     </ul>
   </div>
 </template>
@@ -25,6 +28,24 @@ import { computed } from 'vue'
 import type { QualityScore } from '../types/midi'
 
 const props = defineProps<{ score: QualityScore }>()
+
+const FLAG_TIPS: Record<string, string> = {
+  'Melody clashes heavily with chords — many non-scale tones': 'Try a simpler scale (pentatonic minor) or lower complexity.',
+  'Melody has notable dissonance against chord tones': 'Reduce complexity or switch to a scale that fits the style.',
+  'Melody sits below chord voicings — register overlap': 'This style may have high chord registers. Try a different key.',
+  'Melody and chords are too close in register': 'Try enabling arpeggio instead of melody, or increase bars.',
+  'Chords and bass are in the same register': 'This is usually fixed automatically on retry — try generating again.',
+  'Kick pattern diverges from style signature': 'The drums drifted from the style. Try regenerating just the drums.',
+  "Chord rhythm doesn't match style comping pattern": 'Try regenerating just the chords part.',
+  'Melody is much sparser than expected for this style': 'Increase complexity or bars.',
+  'Melody is much denser than expected for this style': 'Decrease complexity or increase bars.',
+  'Bass is much sparser than expected': 'Try regenerating just the bass.',
+  'Bass is much denser than expected': 'Normal for styles with call-response bass fills.',
+  'Chords overpower melody — mix sounds cluttered': 'This mix issue usually resolves on retry.',
+  'Melody velocity is too dominant': 'This resolves on retry.',
+  'Bass is very quiet relative to chords': 'Try regenerating just the bass.',
+  'Bass overpowers the mid-range': 'Normal for 808-heavy styles like trap and drill.',
+}
 
 const dimensions = [
   { key: 'harmonic' as const, label: 'Harmonic' },
@@ -150,5 +171,16 @@ function barColor(v: number): string {
   font-size: 0.7rem;
   color: #fbbf24;
   list-style: disc;
+}
+
+.flag-item {
+  cursor: default;
+}
+.flag-tip {
+  display: block;
+  font-size: 0.65rem;
+  color: #55556a;
+  margin-top: 0.1rem;
+  font-style: italic;
 }
 </style>

@@ -4,7 +4,7 @@ from typing import List
 from app.services.midi_writer import NoteEvent
 from app.theory.chords import roman_to_chord
 from app.services.variation import should_trigger
-from app.services.humanize import timing_jitter, velocity_arc, phrase_breath_factor
+from app.services.humanize import timing_jitter, velocity_arc, phrase_breath_factor, style_jitter
 from app.theory.rhythm import apply_swing
 
 
@@ -355,7 +355,7 @@ def generate_chords(
                         if staccato_factor < 1.0:
                             duration = max(step * 0.5, duration * staccato_factor)
 
-                    hit_start = _swing(start_beat + s * step) + timing_jitter(0.015)
+                    hit_start = _swing(start_beat + s * step) + timing_jitter(style_jitter(style))
                     hit_vel = vel - random.randint(0, 10)
                     sorted_pitches_hit = sorted(pitches)
                     n_hit = len(sorted_pitches_hit)
@@ -375,7 +375,7 @@ def generate_chords(
                 duration = comp_duration_override if comp_duration_override is not None else beats_per_chord * 0.95
                 if comp_duration_override is None and staccato_factor < 1.0:
                     duration = max(step * 0.5, duration * staccato_factor)
-                jitter = timing_jitter(0.015)
+                jitter = timing_jitter(style_jitter(style))
                 sorted_pitches = sorted(pitches)
                 n = len(sorted_pitches)
                 for note_idx, pitch in enumerate(sorted_pitches):

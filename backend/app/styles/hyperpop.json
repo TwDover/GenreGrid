@@ -1,0 +1,43 @@
+{
+  "id": "hyperpop",
+  "name": "Hyperpop",
+  "bpm_range": [148, 168],
+  "default_scale": "major",
+  "preferred_keys": ["C", "D", "F", "G", "A"],
+  "progression_templates": [
+    ["I", "V", "vi", "IV"],
+    ["I", "IV", "V", "vi"],
+    ["vi", "IV", "I", "V"],
+    ["I", "vi", "IV", "V"]
+  ],
+  "chord_extensions": { "allow_7th": 0.5, "allow_9th": 0.3 },
+  "melody_scale": "major",
+  "chord_register": [52, 72],
+  "velocity_base": 100,
+  "comp_style": "pad_hold",
+  "bass": {
+    "bass_style": "808",
+    "pattern_density": 0.22,
+    "octave_jumps": 0.15,
+    "sustain_bias": 0.8,
+    "808_tail": 0.9
+  },
+  "melody": {
+    "density": 0.7,
+    "stepwise_motion": 0.55,
+    "leap_probability": 0.3,
+    "rest_probability": 0.2,
+    "range": [64, 88]
+  },
+  "chord_rhythm": [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  "arpeggio": { "pattern": "up", "speed": 0.25, "include_octave": true, "allow_7th": true },
+  "drums": {
+    "kick_pattern": [1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0],
+    "hat_density": 0.9,
+    "triplet_probability": 0.05,
+    "snare_standard_beats": [2, 4],
+    "swing": 0.0,
+    "hat_roll_prob": 0.35,
+    "use_clap": true
+  }
+}

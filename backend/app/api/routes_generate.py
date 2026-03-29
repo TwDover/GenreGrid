@@ -49,8 +49,6 @@ _STYLE_PROGRAMS: dict[str, dict[str, int]] = {
     "drum_and_bass":   {"chords": 90, "bass": 38, "melody": 81, "arpeggio": 80},
     "future_bass":     {"chords": 90, "bass": 38, "melody": 81, "arpeggio": 80},
     "jersey_club":     {"bass": 38},
-    "dancehall":       {"bass": 38},
-    "reggaeton":       {"bass": 38},
     # Hip-hop / Trap
     "trap_soul":       {"chords": 88, "bass": 38, "arpeggio": 88},
     "dark_trap":       {"chords": 88, "bass": 38, "melody": 80, "arpeggio": 80},
@@ -63,11 +61,78 @@ _STYLE_PROGRAMS: dict[str, dict[str, int]] = {
     "ambient":         {"chords": 89, "bass": 38, "melody": 73, "arpeggio": 88},
     "dark_ambient":    {"chords": 92, "bass": 38, "melody": 68, "arpeggio": 92},
     # Afro / Latin
-    "afrobeats":       {"bass": 33},
-    "cumbia":          {"bass": 33},
+    "afrobeats":  {"chords": 24, "bass": 33, "melody": 56, "arpeggio": 24},
+    "cumbia":     {"chords": 23, "bass": 33, "melody": 73, "arpeggio": 23},
+    "reggaeton":  {"chords": 90, "bass": 38, "melody": 80, "arpeggio": 80},
+    "dancehall":  {"chords": 90, "bass": 38, "melody": 80, "arpeggio": 80},
+    # New styles
+    "grime":       {"chords": 90, "bass": 38, "melody": 80},
+    "hyperpop":    {"chords": 90, "bass": 38, "melody": 81, "arpeggio": 80},
+    "baile_funk":  {"chords": 5,  "bass": 33, "melody": 80},
+    "samba":       {"chords": 25, "bass": 32, "melody": 73, "arpeggio": 25},
+    "afropop":     {"chords": 24, "bass": 33, "melody": 56, "arpeggio": 24},
 }
 
 _VELOCITY_DROP = 20  # notes quieter than this are inaudible — discard them
+
+# How each section type shapes the generated loop.
+# complexity_scale / variation_scale multiply the user's sliders.
+# velocity_scale is applied to all note events after generation.
+# melody_complexity_scale / backing_complexity_scale override per-part
+# complexity for instrumental_solo (melody leads, chords/bass serve as backing).
+SECTION_PROFILES: dict[str, dict] = {
+    "intro": {
+        "bars_typical": [4, 8],
+        "complexity_scale": 0.60,
+        "variation_scale": 0.80,
+        "velocity_scale": 0.80,
+        "melody_complexity_scale": 0.40,
+    },
+    "verse": {
+        "bars_typical": [8, 16],
+        "complexity_scale": 0.82,
+        "variation_scale": 0.90,
+        "velocity_scale": 0.87,
+    },
+    "pre_chorus": {
+        "bars_typical": [2, 4],
+        "complexity_scale": 1.00,
+        "variation_scale": 1.10,
+        "velocity_scale": 0.93,
+    },
+    "chorus": {
+        "bars_typical": [4, 8],
+        "complexity_scale": 1.12,
+        "variation_scale": 0.85,
+        "velocity_scale": 1.00,
+    },
+    "post_chorus": {
+        "bars_typical": [2, 4],
+        "complexity_scale": 1.05,
+        "variation_scale": 0.80,
+        "velocity_scale": 0.97,
+    },
+    "bridge": {
+        "bars_typical": [4, 8],
+        "complexity_scale": 0.90,
+        "variation_scale": 1.20,
+        "velocity_scale": 0.88,
+    },
+    "instrumental_solo": {
+        "bars_typical": [4, 16],
+        "complexity_scale": 0.90,
+        "variation_scale": 1.10,
+        "velocity_scale": 0.95,
+        "melody_complexity_scale": 1.40,
+        "backing_complexity_scale": 0.60,
+    },
+    "outro": {
+        "bars_typical": [4, 16],
+        "complexity_scale": 0.55,
+        "variation_scale": 0.70,
+        "velocity_scale": 0.78,
+    },
+}
 
 # Per-part velocity scale factors. Bass sits loudest, chords slightly back,
 # melody present above chords, arpeggio light. Drums are not scaled.
@@ -362,9 +427,15 @@ def _run_attempt(
     if hrb > 1:
         progression = [chord for chord in progression for _ in range(hrb)]
 
+    # Resolve section profile for loop-mode shaping
+    _sec_profile = SECTION_PROFILES.get(req.section_type or "", {}) if is_loop else {}
+    _sec_cplx = min(1.0, req.complexity * _sec_profile.get("complexity_scale", 1.0))
+    _sec_var  = min(1.0, req.variation  * _sec_profile.get("variation_scale",  1.0))
+    _sec_dyn  = _sec_profile.get("velocity_scale", 1.0)
+
     if is_loop:
-        sections = [{"bars": req.bars, "complexity": req.complexity, "parts": req.parts,
-                     "offset": 0, "key": req.key, "dynamic": 1.0}]
+        sections = [{"bars": req.bars, "complexity": _sec_cplx, "parts": req.parts,
+                     "offset": 0, "key": req.key, "dynamic": _sec_dyn}]
     else:
         key_shift = style.get("chorus_key_shift", 0)
         sections = _plan_sections(req.bars, req.complexity, req.parts, req.key, key_shift)
@@ -385,10 +456,15 @@ def _run_attempt(
         is_outro = (section_i == len(sections) - 1 and s_cplx < 0.5 and s_bars >= 2)
         bass_prog = (["I"] * len(progression)) if is_outro else progression
 
+        # Per-part complexity / variation overrides from section profile (loop mode only)
+        eff_var      = _sec_var if is_loop else req.variation
+        mel_cplx     = min(1.0, s_cplx * _sec_profile.get("melody_complexity_scale",  1.0))
+        backing_cplx = min(1.0, s_cplx * _sec_profile.get("backing_complexity_scale", 1.0))
+
         kick_times: list[float] = []
         if "drums" in req.parts and "drums" in s_parts:
             random.seed(_part_seed(seed, section_i, "drums"))
-            drum_evts = generate_drums(style, s_bars, s_cplx, req.variation,
+            drum_evts = generate_drums(style, s_bars, s_cplx, eff_var,
                                        section_end_bars=_section_end_bars(sections, s_off),
                                        is_loop=is_loop)
             drum_evts = _apply_dynamic(drum_evts, s_dyn)
@@ -412,8 +488,8 @@ def _run_attempt(
         mel_rests: list = []
         if has_melody and "melody" in req.parts:
             random.seed(_part_seed(seed, section_i, "melody"))
-            mel_evts = generate_melody(style, s_key, req.scale, s_bars, s_cplx,
-                                       req.variation, s_resolved, is_loop=is_loop)
+            mel_evts = generate_melody(style, s_key, req.scale, s_bars, mel_cplx,
+                                       eff_var, s_resolved, is_loop=is_loop)
             mel_evts = _apply_dynamic(mel_evts, s_dyn)
             all_events["melody"].extend(_shift(mel_evts, s_off))
             if mel_evts:
@@ -429,17 +505,17 @@ def _run_attempt(
                 continue
             random.seed(_part_seed(seed, section_i, part))
             if part == "chords":
-                evts = generate_chords(style, s_key, req.scale, s_bars, s_cplx,
-                                       req.variation, progression, s_resolved,
+                evts = generate_chords(style, s_key, req.scale, s_bars, backing_cplx,
+                                       eff_var, progression, s_resolved,
                                        melody_ceiling=melody_ceiling)
             elif part == "bass":
-                evts = generate_bass(style, s_key, req.scale, s_bars, s_cplx,
-                                     req.variation, bass_prog, kick_times,
+                evts = generate_bass(style, s_key, req.scale, s_bars, backing_cplx,
+                                     eff_var, bass_prog, kick_times,
                                      melody_rests=mel_rests)
             elif part == "arpeggio":
                 arp_octave = 6 if has_melody else 5
-                evts = generate_arpeggio(style, s_key, req.scale, s_bars, s_cplx,
-                                         req.variation, s_resolved, arp_octave)
+                evts = generate_arpeggio(style, s_key, req.scale, s_bars, backing_cplx,
+                                         eff_var, s_resolved, arp_octave)
             else:
                 continue
             evts = _apply_dynamic(evts, s_dyn)
@@ -615,6 +691,7 @@ def generate(req: GenerateRequest):
             complexity=req.complexity,
             variation=req.variation,
             mode=req.mode,
+            section_type=req.section_type,
         ),
         seed=seed,
         quality=quality,

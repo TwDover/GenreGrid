@@ -54,3 +54,51 @@ def velocity_arc(bar: int, total_bars: int, base: int) -> int:
 def micro_jitter(ticks_per_beat: int = 480, max_ticks: int = 3) -> float:
     """Tiny ±1–3 tick timing offset that removes the quantized feel without audible slop."""
     return random.randint(-max_ticks, max_ticks) / ticks_per_beat
+
+
+def style_jitter(style: dict) -> float:
+    """Return a timing jitter amount scaled to the style's feel.
+
+    Tight styles (techno, drill, house): ±0.008 beats
+    Medium styles (rnb, funk, boom_bap): ±0.018 beats
+    Loose styles (jazz, lofi, bossa_nova): ±0.032 beats
+    """
+    jitter_map = {
+        # tight
+        "techno": 0.008, "drill": 0.008, "house": 0.010, "drum_and_bass": 0.008,
+        "jersey_club": 0.008, "future_bass": 0.010,
+        # medium
+        "rnb": 0.018, "funk": 0.018, "boom_bap": 0.020, "dark_trap": 0.015,
+        "trap_soul": 0.015, "cloud_rap": 0.015, "reggaeton": 0.015,
+        "dancehall": 0.018, "cumbia": 0.018, "afrobeats": 0.020,
+        # loose
+        "jazz": 0.032, "lofi": 0.030, "bossa_nova": 0.028, "latin_jazz": 0.028,
+        "soul": 0.025, "ambient": 0.035, "dark_ambient": 0.035,
+        "cinematic": 0.025, "epic_orchestral": 0.022, "synthwave": 0.012,
+    }
+    style_id = style.get("id", "")
+    return jitter_map.get(style_id, 0.018)
+
+
+def style_velocity_variation(style: dict) -> int:
+    """Return max velocity variation (±N) for this style.
+
+    Tight electronic styles: ±4 (very consistent)
+    Medium styles: ±8
+    Loose/expressive styles: ±12 (more human feel)
+    """
+    variation_map = {
+        # tight
+        "techno": 4, "drill": 4, "house": 5, "drum_and_bass": 4,
+        "jersey_club": 4, "future_bass": 5,
+        # medium
+        "rnb": 8, "funk": 9, "boom_bap": 9, "dark_trap": 6,
+        "trap_soul": 6, "cloud_rap": 6, "reggaeton": 7,
+        "dancehall": 8, "cumbia": 8, "afrobeats": 9, "synthwave": 5,
+        # loose / expressive
+        "jazz": 12, "lofi": 11, "bossa_nova": 11, "latin_jazz": 11,
+        "soul": 10, "ambient": 8, "dark_ambient": 8,
+        "cinematic": 7, "epic_orchestral": 7,
+    }
+    style_id = style.get("id", "")
+    return variation_map.get(style_id, 8)

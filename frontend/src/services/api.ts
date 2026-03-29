@@ -1,6 +1,6 @@
 import type { StyleInfo, GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, LibraryEntry } from '../types/midi'
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+const BASE_URL = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8000'
 
 export async function fetchStyles(): Promise<StyleInfo[]> {
   const res = await fetch(`${BASE_URL}/styles`)
@@ -64,5 +64,11 @@ export async function fetchLibrary(style_id?: string): Promise<LibraryEntry[]> {
   const url = style_id ? `${BASE_URL}/library/${style_id}` : `${BASE_URL}/library/`
   const res = await fetch(url)
   if (!res.ok) throw new Error('Failed to fetch library')
+  return res.json()
+}
+
+export async function fetchLibraryCounts(): Promise<Record<string, number>> {
+  const res = await fetch(`${BASE_URL}/library/counts`)
+  if (!res.ok) return {}
   return res.json()
 }
