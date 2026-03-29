@@ -1,8 +1,12 @@
 import json
+import logging
 from pathlib import Path
 from functools import lru_cache
 
 STYLES_DIR = Path(__file__).resolve().parent.parent / "styles"
+
+_logger = logging.getLogger(__name__)
+_REQUIRED_FIELDS = ("id", "name", "bpm_range", "default_scale", "progression_templates")
 
 
 @lru_cache(maxsize=None)
@@ -11,7 +15,11 @@ def load_style(style_id: str) -> dict:
     if not path.exists():
         raise ValueError(f"Style not found: {style_id}")
     with open(path) as f:
-        return json.load(f)
+        data = json.load(f)
+    missing = [field for field in _REQUIRED_FIELDS if field not in data]
+    if missing:
+        _logger.warning("Style %r is missing required fields: %s", style_id, missing)
+    return data
 
 
 def list_styles() -> list[dict]:

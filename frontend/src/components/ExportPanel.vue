@@ -37,6 +37,16 @@
             >
               {{ savedIds.has(response.generation_id) ? 'Saved' : saveLoading === response.generation_id ? '...' : 'Save' }}
             </button>
+            <a
+              class="seed-action"
+              :href="bundleUrl(response.generation_id)"
+              download
+              title="Download all parts as ZIP"
+            >Download All</a>
+          </div>
+          <div v-if="response.progression?.length" class="progression-row">
+            <span class="prog-label">Progression</span>
+            <span class="prog-chords">{{ response.progression.join(' → ') }}</span>
           </div>
           <QualityBadge v-if="response.quality" :score="response.quality" />
           <div v-if="regenError" class="regen-error">{{ regenError }}</div>
@@ -61,7 +71,7 @@ import { ref, watch } from 'vue'
 import PartCard from './PartCard.vue'
 import QualityBadge from './QualityBadge.vue'
 import type { GenerateResponse, FileInfo } from '../types/midi'
-import { regeneratePart, saveToLibrary } from '../services/api'
+import { regeneratePart, saveToLibrary, bundleUrl } from '../services/api'
 
 const props = defineProps<{ history: GenerateResponse[] }>()
 const emit = defineEmits<{
@@ -294,5 +304,30 @@ async function handleRegen(response: GenerateResponse, part: string) {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 0.75rem;
+}
+
+.progression-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: #12121a;
+  border-radius: 6px;
+  border: 1px solid #2a2a3e;
+}
+
+.prog-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #55556a;
+  flex-shrink: 0;
+}
+
+.prog-chords {
+  font-family: monospace;
+  font-size: 0.82rem;
+  color: #c4b5fd;
+  letter-spacing: 0.03em;
 }
 </style>
