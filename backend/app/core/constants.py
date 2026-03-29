@@ -10,6 +10,10 @@ SCALE_INTERVALS = {
     "locrian":     [0, 1, 3, 5, 6, 8, 10],
     "pentatonic_minor": [0, 3, 5, 7, 10],
     "pentatonic_major": [0, 2, 4, 7, 9],
+    "blues":            [0, 3, 5, 6, 7, 10],
+    "harmonic_minor":   [0, 2, 3, 5, 7, 8, 11],
+    "phrygian_dominant": [0, 1, 4, 5, 7, 8, 10],
+    "whole_tone":       [0, 2, 4, 6, 8, 10],
 }
 
 ROMAN_TO_DEGREE = {

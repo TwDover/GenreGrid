@@ -56,6 +56,18 @@ def list_all():
     return list_library()
 
 
+@router.get("/counts")
+def get_counts():
+    """Return a dict of style_id -> saved entry count."""
+    from app.services.library import LIBRARY_DIR
+    counts = {}
+    if LIBRARY_DIR.exists():
+        for d in LIBRARY_DIR.iterdir():
+            if d.is_dir():
+                counts[d.name] = len(list(d.glob("*.json")))
+    return counts
+
+
 @router.get("/{style_id}")
 def list_by_style(style_id: str):
     """List saved entries for a specific style."""

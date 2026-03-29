@@ -1,0 +1,40 @@
+{
+  "id": "samba",
+  "name": "Samba",
+  "bpm_range": [88, 104],
+  "default_scale": "major",
+  "preferred_keys": ["C", "F", "G", "D", "Bb"],
+  "progression_templates": [
+    ["I", "IV", "V", "I"],
+    ["I", "vi", "IV", "V"],
+    ["I", "II", "V", "I"],
+    ["I", "IV", "ii", "V"]
+  ],
+  "chord_extensions": { "allow_7th": 0.6, "allow_9th": 0.3 },
+  "melody_scale": "major",
+  "chord_register": [48, 66],
+  "velocity_base": 85,
+  "bass": {
+    "pattern_density": 0.65,
+    "octave_jumps": 0.4,
+    "sustain_bias": 0.3
+  },
+  "melody": {
+    "density": 0.55,
+    "stepwise_motion": 0.7,
+    "leap_probability": 0.2,
+    "rest_probability": 0.3,
+    "range": [60, 82]
+  },
+  "chord_rhythm": [1,0,0,1,0,0,1,0,1,0,0,1,0,0,1,0],
+  "drums": {
+    "kick_pattern": [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
+    "hat_density": 0.85,
+    "triplet_probability": 0.1,
+    "snare_standard_beats": [2, 4],
+    "swing": 0.1,
+    "hat_roll_prob": 0.0,
+    "use_clap": true,
+    "snare_upbeat_prob": 0.5
+  }
+}

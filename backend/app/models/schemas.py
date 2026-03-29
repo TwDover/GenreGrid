@@ -13,6 +13,7 @@ class GenerateRequest(BaseModel):
     parts: List[str] = ["chords", "bass", "melody", "drums"]
     mode: str = "loop"   # "loop" | "arrangement"
     seed: Optional[int] = None
+    section_type: Optional[str] = None  # intro | verse | pre_chorus | chorus | post_chorus | bridge | instrumental_solo | outro
 
 
 class RegeneratePartRequest(BaseModel):
@@ -51,6 +52,7 @@ class GenerateSummary(BaseModel):
     complexity: float
     variation: float
     mode: str
+    section_type: Optional[str] = None
 
 
 class QualityScore(BaseModel):

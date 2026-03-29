@@ -41,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import GenerateForm from '../components/GenerateForm.vue'
 import ExportPanel from '../components/ExportPanel.vue'
 import LibraryPanel from '../components/LibraryPanel.vue'
@@ -54,13 +54,45 @@ const { volume, setVolume } = useMidiPlayer()
 const styles = ref<StyleInfo[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
-const history = ref<GenerateResponse[]>([])
+
+const loadHistory = (): GenerateResponse[] => {
+  try {
+    return JSON.parse(localStorage.getItem('genregrid_history') ?? '[]')
+  } catch {
+    return []
+  }
+}
+const history = ref<GenerateResponse[]>(loadHistory())
 const replayData = ref<GenerateResponse | null>(null)
 const activePanel = ref<'history' | 'library'>('history')
+
+watch(history, (val) => {
+  localStorage.setItem('genregrid_history', JSON.stringify(val))
+}, { immediate: false, deep: true })
 
 onMounted(async () => {
   try {
     styles.value = await fetchStyles()
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('seed')) {
+      replayData.value = {
+        generation_id: '',
+        style: params.get('style') ?? styles.value[0]?.id ?? 'lofi',
+        files: [],
+        summary: {
+          key: `${params.get('key') ?? 'C'} ${params.get('scale') ?? 'minor'}`,
+          key_root: params.get('key') ?? 'C',
+          scale: params.get('scale') ?? 'minor',
+          bpm: Number(params.get('bpm') ?? 120),
+          bars: Number(params.get('bars') ?? 8),
+          complexity: 0.5,
+          variation: 0.4,
+          mode: params.get('mode') ?? 'loop',
+        },
+        seed: Number(params.get('seed')),
+        auto_saved: false,
+      }
+    }
   } catch (e) {
     error.value = 'Could not reach backend — make sure uvicorn is running on port 8000.'
   }
@@ -70,9 +102,21 @@ async function handleGenerate(form: GenerateRequest) {
   loading.value = true
   error.value = null
   try {
+    const t0 = Date.now()
     const result = await generate(form)
+    result._elapsed = ((Date.now() - t0) / 1000).toFixed(1)
     history.value = [result, ...history.value].slice(0, 10)
     activePanel.value = 'history'
+    const params = new URLSearchParams({
+      style: result.style,
+      key: result.summary.key_root,
+      scale: result.summary.scale,
+      bpm: String(result.summary.bpm),
+      bars: String(result.summary.bars),
+      seed: String(result.seed),
+      mode: result.summary.mode,
+    })
+    window.history.replaceState({}, '', `?${params}`)
   } catch (e: any) {
     error.value = e.message ?? 'Unknown error'
   } finally {

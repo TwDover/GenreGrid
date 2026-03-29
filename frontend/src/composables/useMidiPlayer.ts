@@ -38,7 +38,8 @@ const volume = ref(80)
 function applyVolume(v: number) {
   Tone.getDestination().volume.value = v === 0 ? -Infinity : Tone.gainToDb(v / 100)
 }
-applyVolume(volume.value)
+// Volume is applied inside toggle() after Tone.start() — calling applyVolume here
+// would create the AudioContext at import time, which browsers block before a user gesture.
 
 // Cache parsed MIDI data per URL so the piano roll persists after stop
 const midiStore = ref<Record<string, MidiData>>({})
@@ -112,6 +113,7 @@ export function useMidiPlayer() {
 
     try {
       await Tone.start()
+      applyVolume(volume.value)
 
       const isSynth = styleId ? SYNTH_STYLES.has(styleId) : false
       const isPad   = styleId ? PAD_STYLES.has(styleId) : false

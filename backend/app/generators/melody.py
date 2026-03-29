@@ -6,11 +6,11 @@ from app.theory.scales import build_scale
 from app.theory.chords import roman_to_chord
 from app.theory.notes import note_name_to_midi
 from app.services.variation import should_trigger
-from app.services.humanize import beat_velocity, timing_jitter, velocity_arc, micro_jitter, phrase_breath_factor
+from app.services.humanize import beat_velocity, timing_jitter, velocity_arc, micro_jitter, phrase_breath_factor, style_jitter, style_velocity_variation
 from app.theory.rhythm import apply_swing
 
 
-def _trill_events(note: NoteEvent, trill_pitch: int) -> List[NoteEvent]:
+def _trill_events(note: NoteEvent, trill_pitch: int, vel_variation: int = 4) -> List[NoteEvent]:
     """Expand a long note into a trill (rapid alternation between note.pitch and trill_pitch)."""
     step = 0.125   # 32nd note
     n_steps = max(4, int(note.duration / step))
@@ -22,7 +22,7 @@ def _trill_events(note: NoteEvent, trill_pitch: int) -> List[NoteEvent]:
         if remaining < 0.02:
             break
         dur = min(step * 0.88, remaining)
-        vel = note.velocity if k == 0 else max(1, min(127, note.velocity - 12 + random.randint(-4, 4)))
+        vel = note.velocity if k == 0 else max(1, min(127, note.velocity - 12 + random.randint(-vel_variation, vel_variation)))
         result.append(NoteEvent(p, t, dur, vel, note.channel))
     return result
 
@@ -191,6 +191,10 @@ def generate_melody(
     _rep_count: int = 0
     _last_interval: int = 0            # signed interval in scale steps for post-leap enforcement
 
+    # Motif development: seed motif intervals extracted from the first phrase
+    _motif_intervals: list[int] = []   # scale-step intervals of the seed motif
+    _motif_locked = False               # True once the seed phrase is complete
+
     # Generate raw notes for all bars
     raw: List[NoteEvent] = []
     beat = 0.0
@@ -217,6 +221,31 @@ def generate_melody(
         # Call/response: question = first half of phrase, response = second half
         is_question = beat_in_phrase < question_beats
         is_response_tail = beat_in_phrase >= phrase_beats - beats_per_bar * 1.5
+
+        # Motif development: lock seed motif after first phrase, replay at subsequent phrase starts
+        if is_phrase_start and phrase_idx > 0:
+            # Lock the motif after the first phrase
+            if not _motif_locked and phrase_idx == 1 and len(raw) >= 3:
+                pitches = [e.pitch for e in raw if e.start < phrase_beats]
+                if len(pitches) >= 2:
+                    _motif_intervals = []
+                    for k in range(min(4, len(pitches) - 1)):
+                        p_cur = pitches[k]
+                        p_nxt = pitches[k + 1]
+                        try:
+                            i_cur = active_scale.index(min(active_scale, key=lambda n: abs(n - p_cur)))
+                            i_nxt = active_scale.index(min(active_scale, key=lambda n: abs(n - p_nxt)))
+                            _motif_intervals.append(i_nxt - i_cur)
+                        except Exception:
+                            pass
+                _motif_locked = True
+
+            # Replay motif at phrase boundaries (not the first phrase)
+            if _motif_locked and _motif_intervals and phrase_idx > 1:
+                if should_trigger(0.35):
+                    for interval in _motif_intervals:
+                        new_idx = max(0, min(len(active_scale) - 1, current_note_idx + interval))
+                        current_note_idx = new_idx
 
         # Phrase start: anticipate by an 8th note ("and of 4") or take a breath
         phrase_anticipation = 0.0
@@ -266,7 +295,7 @@ def generate_melody(
             vel = beat_velocity(beat, base_vel)
             raw.append(NoteEvent(
                 pitch=pitch,
-                start=max(0.0, _swing(beat) + timing_jitter()),
+                start=max(0.0, _swing(beat) + timing_jitter(style_jitter(style))),
                 duration=min(dur, total_beats - beat),
                 velocity=vel,
                 channel=2,
@@ -386,7 +415,7 @@ def generate_melody(
         base_vel = _phrase_vel_arc(beat_in_phrase, phrase_beats, base_vel)
         base_vel = int(base_vel * phrase_breath_factor(bar_num))
         vel = beat_velocity(beat, base_vel)
-        jitter = timing_jitter()
+        jitter = timing_jitter(style_jitter(style))
 
         # Grace note: add before chord-tone arrivals on downbeats in expressive styles
         if grace_notes and is_chord_downbeat and is_strong_beat and should_trigger(0.22):
@@ -412,7 +441,7 @@ def generate_melody(
                 idx = next((i for i, n in enumerate(scale_notes) if n == note.pitch), -1)
                 if idx >= 0 and idx + 1 < len(scale_notes):
                     trill_pitch = scale_notes[idx + 1]
-                    expanded.extend(_trill_events(note, trill_pitch))
+                    expanded.extend(_trill_events(note, trill_pitch, style_velocity_variation(style)))
                     continue
             expanded.append(note)
         raw = expanded
@@ -538,7 +567,8 @@ def generate_melody(
             # snapping each note to the nearest scale tone. Most common real-world
             # compositional development technique.
             shift_steps = random.choice([-5, -3, -2, 2, 3, 5])  # scale steps
-            vel_shift = random.randint(-6, 6)
+            _vel_var = style_velocity_variation(style)
+            vel_shift = random.randint(-_vel_var, _vel_var)
             for n in motif:
                 idx = min(range(len(scale_notes)), key=lambda i: abs(scale_notes[i] - n.pitch))
                 new_idx = max(0, min(len(scale_notes) - 1, idx + shift_steps))

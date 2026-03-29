@@ -3,7 +3,7 @@
     <div class="lib-toolbar">
       <select v-model="filterStyle" class="style-filter" @change="load">
         <option value="" disabled>Select a style…</option>
-        <option v-for="s in styles" :key="s.id" :value="s.id">{{ formatStyle(s.id) }}</option>
+        <option v-for="s in styles" :key="s.id" :value="s.id">{{ formatStyle(s.id) }}{{ counts[s.id] ? ` (${counts[s.id]})` : '' }}</option>
       </select>
       <span class="lib-count" v-if="filterStyle && !loading">{{ entries.length }} saved</span>
     </div>
@@ -39,17 +39,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { fetchLibrary } from '../services/api'
+import { ref, onMounted } from 'vue'
+import { fetchLibrary, fetchLibraryCounts } from '../services/api'
 import type { LibraryEntry, StyleInfo } from '../types/midi'
 
-const props = defineProps<{ styles: StyleInfo[] }>()
+defineProps<{ styles: StyleInfo[] }>()
 defineEmits<{ (e: 'replay', entry: LibraryEntry): void }>()
 
 const entries = ref<LibraryEntry[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 const filterStyle = ref('')
+const counts = ref<Record<string, number>>({})
+
+onMounted(async () => { counts.value = await fetchLibraryCounts() })
 
 const dims = ['harmonic', 'rhythm', 'register', 'density', 'mix'] as const
 

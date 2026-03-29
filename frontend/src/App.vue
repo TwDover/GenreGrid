@@ -146,6 +146,20 @@ input[type="range"] {
 .download-btn:hover { background: #3a3a54; }
 
 @media (max-width: 700px) {
-  .app-main { grid-template-columns: 1fr; }
+  .app-main {
+    grid-template-columns: 1fr;
+    padding: 1rem;
+    gap: 1.5rem;
+  }
+  .app-header {
+    padding: 1rem 1rem 0.75rem;
+  }
+  .app-header h1 {
+    font-size: 1.4rem;
+  }
+}
+
+@media (max-width: 400px) {
+  .app-main { padding: 0.75rem; }
 }
 </style>
