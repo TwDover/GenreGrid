@@ -16,6 +16,7 @@ export interface GenerateRequest {
   parts: string[]
   mode: string
   seed?: number
+  section_type?: string
 }
 
 export interface RegeneratePartRequest {
@@ -47,6 +48,7 @@ export interface GenerateSummary {
   complexity: number
   variation: number
   mode: string
+  section_type?: string
 }
 
 export interface QualityScore {
@@ -69,6 +71,7 @@ export interface GenerateResponse {
   quality?: QualityScore
   auto_saved: boolean
   progression?: string[]
+  _elapsed?: string
 }
 
 export interface LibraryEntry {

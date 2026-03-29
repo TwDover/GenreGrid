@@ -45,12 +45,28 @@ def generate_arpeggio(
             seq = pitches
         elif pattern == "down":
             seq = list(reversed(pitches))
+        elif pattern == "random":
+            seq = random.sample(pitches, len(pitches))
         else:  # up_down
             seq = pitches + list(reversed(pitches[1:-1])) if len(pitches) > 2 else pitches
 
         bar_start = chord_idx * beats_per_bar
         pos = 0.0
         seq_idx = 0
+
+        if pattern == "chord_burst":
+            for j, pitch in enumerate(pitches):
+                t = bar_start + j * 0.125
+                base_vel = velocity_arc(chord_idx, bars, 74)
+                vel = min(127, base_vel + (8 if j == 0 else 0) + random.randint(-4, 4))
+                events.append(NoteEvent(
+                    pitch=min(127, max(0, pitch)),
+                    start=t,
+                    duration=beats_per_bar * 0.9,
+                    velocity=vel,
+                    channel=3,
+                ))
+            continue  # skip the regular while loop for this bar
 
         while pos <= beats_per_bar - speed * 0.5:
             # Occasional rest for variation
