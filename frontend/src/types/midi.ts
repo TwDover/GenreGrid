@@ -68,4 +68,17 @@ export interface GenerateResponse {
   seed: number
   quality?: QualityScore
   auto_saved: boolean
+  progression?: string[]
+}
+
+export interface LibraryEntry {
+  gen_id: string
+  style_id: string
+  key: string
+  scale: string
+  bpm: number
+  bars: number
+  seed: number
+  saved_at: string
+  quality: QualityScore
 }

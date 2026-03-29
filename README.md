@@ -11,6 +11,8 @@ A style-based MIDI generator. Pick a genre, set your key, BPM, and complexity, a
 - Drums use genre-appropriate elements (ride, clap, crash, tom fills) per style
 - In-browser MIDI preview with play/stop per part
 - Generation history — last 10 results stay accessible in the UI
+- **Generation library** — high-scoring generations are saved locally and used to influence rhythm patterns in future generations, improving style consistency over time
+- **Quality scorer** — every generation is scored across five musical dimensions (harmonic coherence, rhythm fit, register separation, density, mix balance) and returns a 0–1 score, label, and any issue flags alongside the MIDI
 
 ## Styles
 

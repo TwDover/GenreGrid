@@ -12,10 +12,13 @@ Storage layout:
             {gen_id}.json   ← metadata + extracted patterns
 """
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
 from app.core.config import BASE_DIR
+
+_logger = logging.getLogger(__name__)
 
 LIBRARY_DIR = BASE_DIR / "library"
 LIBRARY_DIR.mkdir(exist_ok=True)
@@ -81,8 +84,8 @@ def list_library(style_id: str | None = None) -> list[dict]:
         for f in sorted(d.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
             try:
                 results.append(json.loads(f.read_text()))
-            except Exception:
-                pass
+            except Exception as exc:
+                _logger.warning("Skipping malformed library entry %s: %s", f, exc)
     return results
 
 

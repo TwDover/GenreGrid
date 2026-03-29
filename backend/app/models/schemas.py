@@ -11,7 +11,7 @@ class GenerateRequest(BaseModel):
     complexity: float = Field(default=0.5, ge=0.0, le=1.0)
     variation: float = Field(default=0.4, ge=0.0, le=1.0)
     parts: List[str] = ["chords", "bass", "melody", "drums"]
-    mode: str = "arrangement"   # "arrangement" | "loop"
+    mode: str = "loop"   # "loop" | "arrangement"
     seed: Optional[int] = None
 
 
@@ -72,3 +72,4 @@ class GenerateResponse(BaseModel):
     seed: int
     quality: Optional[QualityScore] = None
     auto_saved: bool = False
+    progression: list[str] = []
