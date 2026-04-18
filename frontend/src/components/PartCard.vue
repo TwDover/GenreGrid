@@ -13,6 +13,14 @@
         <span v-if="regenLoading">...</span>
         <span v-else>⟳</span>
       </button>
+      <div
+        class="drag-handle"
+        :class="{ 'drag-ready': tempFilePath !== null }"
+        draggable="true"
+        @mousedown="onMouseDown"
+        @dragstart="onDragStart"
+        :title="isElectron ? (tempFilePath ? 'Drag into DAW' : 'Preparing…') : 'Drag into DAW (Chrome/Edge)'"
+      >⠿</div>
       <button
         class="save-btn"
         :disabled="saving"
@@ -50,6 +58,9 @@ defineEmits<{ (e: 'regen', part: string): void }>()
 
 const saving = ref(false)
 const saved = ref(false)
+const tempFilePath = ref<string | null>(null)
+
+const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI
 
 // File System Access API — available in Chrome/Edge, not in Firefox/Safari
 const hasPicker = typeof window !== 'undefined' && 'showSaveFilePicker' in window
@@ -58,8 +69,37 @@ const { toggle, currentlyPlaying, isLoading, getMidiData, prefetchMidi } = useMi
 const playing = computed(() => currentlyPlaying.value === props.file.url)
 const midiData = computed(() => getMidiData(props.file.url))
 
-onMounted(() => prefetchMidi(props.file.url))
-watch(() => props.file.url, url => prefetchMidi(url))
+async function cacheTempFile(url: string) {
+  prefetchMidi(url)
+  if (!isElectron) return
+  try {
+    const buf = await fetch(downloadUrl(url)).then(r => r.arrayBuffer())
+    const data = Array.from(new Uint8Array(buf))
+    tempFilePath.value = await (window as any).electronAPI.saveTempFile(props.file.filename, data)
+  } catch {
+    tempFilePath.value = null
+  }
+}
+
+onMounted(() => cacheTempFile(props.file.url))
+watch(() => props.file.url, url => { tempFilePath.value = null; cacheTempFile(url) })
+
+function onMouseDown(e: MouseEvent) {
+  if (!isElectron || e.button !== 0 || !tempFilePath.value) return
+  e.preventDefault()
+  ;(window as any).electronAPI.startDrag(tempFilePath.value)
+}
+
+function onDragStart(e: DragEvent) {
+  if (isElectron) {
+    e.preventDefault()
+    if (tempFilePath.value) (window as any).electronAPI.startDrag(tempFilePath.value)
+    return
+  }
+  const url = downloadUrl(props.file.url)
+  e.dataTransfer!.setData('DownloadURL', `audio/midi:${props.file.filename}:${url}`)
+  e.dataTransfer!.effectAllowed = 'copy'
+}
 
 async function saveTo() {
   saving.value = true
@@ -124,6 +164,26 @@ async function saveTo() {
 .play-btn:disabled, .regen-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .regen-btn { font-size: 1rem; }
+
+.drag-handle {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  background: #2a2a3e;
+  border: 1px solid #3a3a54;
+  border-radius: 6px;
+  color: #a78bfa;
+  font-size: 1.1rem;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  transition: background 0.15s;
+}
+.drag-handle:hover { background: #3a3a54; }
+.drag-handle:active { cursor: grabbing; }
+.drag-handle:not(.drag-ready) { opacity: 0.4; cursor: wait; }
 
 .save-btn {
   flex: 1;

@@ -21,8 +21,17 @@ pip-wheel-metadata/
 # =========================
 node_modules/
 frontend/dist/
+frontend/dist-electron/
+frontend/release/
 .vite/
 *.local
+
+# =========================
+# PyInstaller
+# =========================
+backend/dist/
+backend/build/
+*.spec.bak
 
 # =========================
 # Generated Files (MIDI exports, generation library)
