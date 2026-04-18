@@ -1,16 +1,14 @@
 <template>
-  <div class="part-card" :class="{ playing }">
-    <div class="part-header">
-      <span class="part-name">{{ file.part }}</span>
-      <span class="part-file">{{ file.filename }}</span>
-    </div>
-    <div class="card-actions">
-      <button class="play-btn" :disabled="isLoading" @click="toggle(file.url, styleId)" :title="playing ? 'Stop' : 'Preview'">
-        <span v-if="isLoading && !playing">...</span>
+  <div class="part-track" :class="{ playing }">
+    <span class="part-name">{{ file.part }}</span>
+
+    <div class="track-controls">
+      <button class="icon-btn" :disabled="isLoading" @click="toggle(file.url, styleId)" :title="playing ? 'Stop' : 'Preview'">
+        <span v-if="isLoading && !playing">…</span>
         <span v-else>{{ playing ? '■' : '▶' }}</span>
       </button>
-      <button class="regen-btn" :disabled="regenLoading" @click="$emit('regen', file.part)" title="Regenerate this part">
-        <span v-if="regenLoading">...</span>
+      <button class="icon-btn" :disabled="regenLoading" @click="$emit('regen', file.part)" title="Regenerate">
+        <span v-if="regenLoading">…</span>
         <span v-else>⟳</span>
       </button>
       <div
@@ -25,19 +23,23 @@
         class="save-btn"
         :disabled="saving"
         @click="saveTo"
-        :title="hasPicker ? 'Choose where to save — navigate to your DAW project folder' : 'Download .mid'"
+        :title="hasPicker ? 'Save to DAW project folder' : 'Download .mid'"
       >
-        <span v-if="saving">...</span>
+        <span v-if="saving">…</span>
         <span v-else-if="saved">✓</span>
         <span v-else>{{ hasPicker ? 'Save to…' : '↓ .mid' }}</span>
       </button>
     </div>
-    <PianoRoll
-      v-if="midiData"
-      :notes="midiData.notes"
-      :duration="midiData.duration"
-      :playing="playing"
-    />
+
+    <div class="track-roll">
+      <PianoRoll
+        v-if="midiData"
+        :notes="midiData.notes"
+        :duration="midiData.duration"
+        :playing="playing"
+      />
+      <div v-else class="roll-empty" />
+    </div>
   </div>
 </template>
 
@@ -139,41 +141,67 @@ async function saveTo() {
 </script>
 
 <style scoped>
-.card-actions {
+.part-track {
   display: flex;
-  gap: 0.5rem;
   align-items: center;
+  gap: 0.75rem;
+  background: #1a1a24;
+  border: 1px solid #2a2a3e;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  min-width: 0;
+  transition: border-color 0.15s;
 }
 
-.play-btn, .regen-btn {
-  width: 36px;
-  height: 36px;
+.part-track.playing {
+  border-color: #a78bfa;
+}
+
+.part-name {
+  width: 52px;
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #a78bfa;
+}
+
+.track-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.icon-btn {
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   background: #2a2a3e;
   border: 1px solid #3a3a54;
   border-radius: 6px;
   color: #a78bfa;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: background 0.15s;
 }
-.play-btn:hover:not(:disabled), .regen-btn:hover:not(:disabled) { background: #3a3a54; }
-.play-btn:disabled, .regen-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.regen-btn { font-size: 1rem; }
+.icon-btn:hover:not(:disabled) { background: #3a3a54; }
+.icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.playing .icon-btn:first-child { background: #3b1f6e; border-color: #a78bfa; }
 
 .drag-handle {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   background: #2a2a3e;
   border: 1px solid #3a3a54;
   border-radius: 6px;
   color: #a78bfa;
-  font-size: 1.1rem;
+  font-size: 1rem;
   cursor: grab;
   display: flex;
   align-items: center;
@@ -186,27 +214,29 @@ async function saveTo() {
 .drag-handle:not(.drag-ready) { opacity: 0.4; cursor: wait; }
 
 .save-btn {
-  flex: 1;
-  height: 36px;
+  height: 32px;
   background: #2a2a3e;
   border: 1px solid #3a3a54;
   border-radius: 6px;
   color: #a78bfa;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   cursor: pointer;
-  padding: 0 0.75rem;
+  padding: 0 0.6rem;
   white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition: background 0.15s;
 }
 .save-btn:hover:not(:disabled) { background: #3a3a54; }
 .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.playing .play-btn {
-  background: #3b1f6e;
-  border-color: #a78bfa;
+.track-roll {
+  flex: 1;
+  min-width: 0;
 }
 
-.playing {
-  border-color: #a78bfa;
+.roll-empty {
+  height: 40px;
+  background: #12121a;
+  border-radius: 4px;
+  opacity: 0.4;
 }
 </style>
