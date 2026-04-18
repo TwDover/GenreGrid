@@ -38,11 +38,20 @@ A style-based MIDI generator. Pick a genre, set your key, BPM, and complexity, a
 
 ### Backend
 
+**Windows**
 ```powershell
 cd backend
 python -m venv venv
-venv\Scripts\activate        # Windows
-# source venv/bin/activate   # Linux/macOS
+venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
+
+**Linux / macOS**
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
@@ -51,7 +60,7 @@ The API runs at `http://localhost:8000`.
 
 ### Frontend
 
-```powershell
+```bash
 cd frontend
 npm install
 npm run dev
@@ -65,10 +74,11 @@ The UI runs at `http://localhost:5173`. Run both in separate terminals.
 
 The desktop app bundles the backend into a self-contained executable — no Python or terminal required to run it.
 
-### Building
+> **Important:** PyInstaller must be run on the same OS you are building for. To produce a Windows `.exe`, build on Windows. To produce a Linux `.deb` / AppImage, build on Linux.
 
-**Step 1 — bundle the Python backend** (run once, or after backend changes):
+### Step 1 — bundle the Python backend
 
+**Windows**
 ```powershell
 cd backend
 venv\Scripts\activate
@@ -76,23 +86,45 @@ pip install pyinstaller
 pyinstaller genregrid.spec
 ```
 
+**Linux**
+```bash
+cd backend
+source venv/bin/activate
+pip install pyinstaller
+pyinstaller genregrid.spec
+```
+
 Output: `backend/dist/genregrid-backend/`
 
-**Step 2 — build the Electron app:**
+### Step 2 — build the Electron app
 
-```powershell
+```bash
 cd frontend
 npm install   # if not already done
 npm run build:electron
 ```
 
-Output: `frontend/release/win-unpacked/GenreGrid.exe` (portable, no install needed)
+**Windows output** — `frontend/release/win-unpacked/GenreGrid.exe` (portable) and `frontend/release/GenreGrid Setup x.x.x.exe` (installer)
 
-An NSIS installer (`GenreGrid Setup 0.1.0.exe`) is also produced in `frontend/release/`.
+**Linux output** — `frontend/release/GenreGrid-x.x.x.AppImage` and `frontend/release/genregrid_x.x.x_amd64.deb`
 
-### Running
+### Running on Windows
 
-Launch `frontend/release/win-unpacked/GenreGrid.exe` directly, or run the installer. The backend starts automatically in the background — no separate terminal needed.
+Launch `frontend/release/win-unpacked/GenreGrid.exe` directly, or run the NSIS installer. The backend starts automatically — no separate terminal needed.
+
+### Running on Linux
+
+**AppImage** (portable, no install):
+```bash
+chmod +x "frontend/release/GenreGrid-x.x.x.AppImage"
+./frontend/release/GenreGrid-x.x.x.AppImage
+```
+
+**Debian/Ubuntu package**:
+```bash
+sudo dpkg -i frontend/release/genregrid_x.x.x_amd64.deb
+# Then launch GenreGrid from your application menu
+```
 
 ### Drag to DAW
 
@@ -126,8 +158,16 @@ Key fields:
 
 ## Running tests
 
+**Windows**
 ```powershell
 cd backend
 venv\Scripts\activate
+pytest
+```
+
+**Linux / macOS**
+```bash
+cd backend
+source venv/bin/activate
 pytest
 ```

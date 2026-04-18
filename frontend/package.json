@@ -40,8 +40,9 @@
       "icon": "public/icon.ico"
     },
     "linux": {
-      "target": "AppImage",
-      "icon": "public/icon.png"
+      "target": ["AppImage", "deb"],
+      "icon": "public/icon.png",
+      "category": "AudioVideo"
     },
     "extraResources": [
       {
