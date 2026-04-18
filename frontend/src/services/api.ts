@@ -1,6 +1,11 @@
 import type { StyleInfo, GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, LibraryEntry } from '../types/midi'
 
-const BASE_URL = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8000'
+const BASE_URL = (() => {
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.apiPort) {
+    return `http://127.0.0.1:${(window as any).electronAPI.apiPort}`
+  }
+  return (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8000'
+})()
 
 export async function fetchStyles(): Promise<StyleInfo[]> {
   const res = await fetch(`${BASE_URL}/styles`)
