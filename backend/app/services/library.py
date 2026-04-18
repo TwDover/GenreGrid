@@ -16,12 +16,12 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-from app.core.config import BASE_DIR
+from app.core.config import DATA_DIR
 
 _logger = logging.getLogger(__name__)
 
-LIBRARY_DIR = BASE_DIR / "library"
-LIBRARY_DIR.mkdir(exist_ok=True)
+LIBRARY_DIR = DATA_DIR / "library"
+LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
 
 # How strongly learned patterns pull away from the style JSON defaults.
 # 0.0 = ignore library, 1.0 = ignore style defaults.

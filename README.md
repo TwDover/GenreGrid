@@ -13,6 +13,7 @@ A style-based MIDI generator. Pick a genre, set your key, BPM, and complexity, a
 - Generation history — last 10 results stay accessible in the UI
 - **Generation library** — high-scoring generations are saved locally and used to influence rhythm patterns in future generations, improving style consistency over time
 - **Quality scorer** — every generation is scored across five musical dimensions (harmonic coherence, rhythm fit, register separation, density, mix balance) and returns a 0–1 score, label, and any issue flags alongside the MIDI
+- **Drag to DAW** — in the desktop app, drag any part directly into your DAW (Ableton, FL Studio, Reason, etc.) using the drag handle on each part card
 
 ## Styles
 
@@ -24,8 +25,11 @@ A style-based MIDI generator. Pick a genre, set your key, BPM, and complexity, a
 
 - **Backend** — Python, FastAPI, [mido](https://mido.readthedocs.io/)
 - **Frontend** — Vue 3, TypeScript, Vite, [Tone.js](https://tonejs.github.io/), [@tonejs/midi](https://github.com/Tonejs/Midi)
+- **Desktop** — Electron (Windows & Linux)
 
-## Setup
+---
+
+## Running in the browser
 
 ### Requirements
 
@@ -34,10 +38,11 @@ A style-based MIDI generator. Pick a genre, set your key, BPM, and complexity, a
 
 ### Backend
 
-```bash
+```powershell
 cd backend
-python3 -m venv venv
-source venv/bin/activate
+python -m venv venv
+venv\Scripts\activate        # Windows
+# source venv/bin/activate   # Linux/macOS
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
@@ -46,15 +51,61 @@ The API runs at `http://localhost:8000`.
 
 ### Frontend
 
-```bash
+```powershell
 cd frontend
 npm install
 npm run dev
 ```
 
-The UI runs at `http://localhost:5173`.
+The UI runs at `http://localhost:5173`. Run both in separate terminals.
 
-Run both in separate terminal tabs.
+---
+
+## Desktop app (Electron)
+
+The desktop app bundles the backend into a self-contained executable — no Python or terminal required to run it.
+
+### Building
+
+**Step 1 — bundle the Python backend** (run once, or after backend changes):
+
+```powershell
+cd backend
+venv\Scripts\activate
+pip install pyinstaller
+pyinstaller genregrid.spec
+```
+
+Output: `backend/dist/genregrid-backend/`
+
+**Step 2 — build the Electron app:**
+
+```powershell
+cd frontend
+npm install   # if not already done
+npm run build:electron
+```
+
+Output: `frontend/release/win-unpacked/GenreGrid.exe` (portable, no install needed)
+
+An NSIS installer (`GenreGrid Setup 0.1.0.exe`) is also produced in `frontend/release/`.
+
+### Running
+
+Launch `frontend/release/win-unpacked/GenreGrid.exe` directly, or run the installer. The backend starts automatically in the background — no separate terminal needed.
+
+### Drag to DAW
+
+Each part card has a **⠿ drag handle**. Once a generation is ready, drag the handle directly into your DAW's track area to drop the `.mid` file. The handle dims briefly while the file is being prepared, then becomes fully opaque when ready to drag.
+
+### User data
+
+The desktop app stores exports and the generation library in:
+
+- **Windows:** `%APPDATA%\genregrid-frontend\backend-data\`
+- **Linux:** `~/.config/genregrid-frontend/backend-data/`
+
+---
 
 ## Adding a style
 
@@ -75,8 +126,8 @@ Key fields:
 
 ## Running tests
 
-```bash
+```powershell
 cd backend
-source venv/bin/activate
+venv\Scripts\activate
 pytest
 ```
