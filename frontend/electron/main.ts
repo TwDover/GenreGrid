@@ -104,7 +104,6 @@ async function createWindow(): Promise<void> {
     win.loadURL('app://./index.html')
   }
 
-  win.webContents.openDevTools({ mode: 'detach' })
 }
 
 app.whenReady().then(() => {

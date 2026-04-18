@@ -337,9 +337,9 @@ async function handleRegen(response: GenerateResponse, part: string) {
 }
 
 .part-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
 }
 
 .progression-row {
