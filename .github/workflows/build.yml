@@ -1,0 +1,97 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build backend (PyInstaller)
+        run: |
+          cd backend
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install -q -r requirements.txt
+          pip install -q pyinstaller
+          pyinstaller genregrid.spec --distpath dist --workpath build/pyinstaller --noconfirm
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Type-check frontend
+        run: cd frontend && npx vue-tsc --noEmit
+
+      - name: Package Electron app
+        run: cd frontend && npm run build:electron
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: GenreGrid-linux
+          path: |
+            frontend/release/*.AppImage
+            frontend/release/*.deb
+          if-no-files-found: warn
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build backend (PyInstaller)
+        run: |
+          cd backend
+          python -m venv .venv
+          .venv\Scripts\activate
+          pip install -q -r requirements.txt
+          pip install -q pyinstaller
+          pyinstaller genregrid.spec --distpath dist --workpath build/pyinstaller --noconfirm
+        shell: pwsh
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Type-check frontend
+        run: cd frontend && npx vue-tsc --noEmit
+
+      - name: Package Electron app
+        run: cd frontend && npm run build:electron
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: GenreGrid-windows
+          path: |
+            frontend/release/*.exe
+          if-no-files-found: warn

@@ -32,8 +32,11 @@ const LOFI_STYLES = new Set(['lofi', 'cloud_rap'])
 const currentlyPlaying = ref<string | null>(null)
 const isLoading = ref(false)
 
-// Master volume: 0–100 maps to dB via gainToDb
-const volume = ref(80)
+// Master volume: 0–100 maps to dB via gainToDb, persisted across sessions
+const _savedVolume = typeof localStorage !== 'undefined'
+  ? Number(localStorage.getItem('genregrid_volume') ?? 80)
+  : 80
+const volume = ref(isNaN(_savedVolume) ? 80 : _savedVolume)
 
 function applyVolume(v: number) {
   Tone.getDestination().volume.value = v === 0 ? -Infinity : Tone.gainToDb(v / 100)
@@ -271,7 +274,23 @@ export function useMidiPlayer() {
   function setVolume(v: number) {
     volume.value = v
     applyVolume(v)
+    try { localStorage.setItem('genregrid_volume', String(v)) } catch { /* storage unavailable */ }
   }
 
-  return { toggle, stop, currentlyPlaying, isLoading, getMidiData, prefetchMidi, volume, setVolume }
+  // Warm up samplers in the background as soon as a generation result arrives,
+  // so the first play button click has no loading delay.
+  function prefetchSamplers(styleId?: string) {
+    const isSynth = styleId ? SYNTH_STYLES.has(styleId) : false
+    const isPad   = styleId ? PAD_STYLES.has(styleId)   : false
+    const isLofi  = styleId ? LOFI_STYLES.has(styleId)  : false
+    // Synth/pad/lofi styles use in-memory oscillators — nothing to fetch
+    if (isSynth || isPad || isLofi) return
+    Promise.all([
+      getDrumKit(styleId),
+      getBassSampler(styleId),
+      getMelodicSampler(styleId),
+    ]).catch(() => { /* best-effort, ignore network errors */ })
+  }
+
+  return { toggle, stop, currentlyPlaying, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume }
 }

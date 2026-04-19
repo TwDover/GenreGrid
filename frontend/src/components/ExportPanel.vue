@@ -215,6 +215,7 @@ async function handleRegen(response: GenerateResponse, part: string) {
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem 1rem;
+  min-height: 3rem;
   background: none;
   border: none;
   color: #e0e0e8;

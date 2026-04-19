@@ -13,6 +13,7 @@ Storage layout:
 """
 import json
 import logging
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -28,6 +29,8 @@ LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
 _LEARNED_WEIGHT = 0.40
 # Minimum saved examples before we start blending.
 _MIN_EXAMPLES = 2
+
+_write_lock = threading.Lock()
 
 
 def _style_dir(style_id: str) -> Path:
@@ -60,9 +63,10 @@ def save_generation(
         "quality":  quality_raw,
         "patterns": patterns,
     }
-    (_style_dir(style_id) / f"{gen_id}.json").write_text(
-        json.dumps(entry, indent=2)
-    )
+    with _write_lock:
+        (_style_dir(style_id) / f"{gen_id}.json").write_text(
+            json.dumps(entry, indent=2)
+        )
 
 
 def is_saved(style_id: str, gen_id: str) -> bool:
