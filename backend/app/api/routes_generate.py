@@ -1,3 +1,4 @@
+import concurrent.futures
 import logging
 import random
 import secrets
@@ -356,6 +357,7 @@ def _plan_sections(total_bars: int, complexity: float, requested_parts: list[str
 
 _MAX_QUALITY_ATTEMPTS = 5
 _GREEN_THRESHOLD = 0.82
+_GENERATION_TIMEOUT_S = 30
 _QUALITY_DIMS = ("harmonic", "register", "rhythm", "density", "mix")
 
 
@@ -569,7 +571,8 @@ def _run_attempt(
             _scored_events, scoring_style or style,
             req.key, req.scale, req.bars, progression, req.complexity
         )
-    except Exception:
+    except Exception as exc:
+        logger.error("Quality scoring failed (seed=%s): %s", seed, exc, exc_info=True)
         quality_raw = None
 
     return all_events, cc_parts, pb_parts, progression, quality_raw, patterns
@@ -602,30 +605,34 @@ def generate(req: GenerateRequest):
     # Start with the requested seed (or a fresh random one)
     base_seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
 
-    best_events = best_cc = best_pb = best_progression = best_quality_raw = best_patterns = None
-    best_seed = base_seed
+    def _run_best_attempt():
+        _best_events = _best_cc = _best_pb = _best_progression = _best_quality_raw = _best_patterns = None
+        _best_seed = base_seed
+        for attempt in range(_MAX_QUALITY_ATTEMPTS):
+            attempt_seed = base_seed if attempt == 0 else random.randint(0, 2**31 - 1)
+            _evts, _cc, _pb, _prog, _qraw, _pats = _run_attempt(
+                req, style, attempt_seed, is_loop, groove_push, secondary_dominants, tritone_sub,
+                scoring_style=scoring_style,
+            )
+            if _best_quality_raw is None or (
+                _qraw is not None and _qraw.get("total", 0) > _best_quality_raw.get("total", 0)
+            ):
+                _best_events, _best_cc, _best_pb = _evts, _cc, _pb
+                _best_progression, _best_quality_raw = _prog, _qraw
+                _best_patterns = _pats
+                _best_seed = attempt_seed
+            if _qraw is not None and _all_green(_qraw):
+                _best_seed = attempt_seed
+                break
+        return _best_events, _best_cc, _best_pb, _best_progression, _best_quality_raw, _best_patterns, _best_seed
 
-    for attempt in range(_MAX_QUALITY_ATTEMPTS):
-        attempt_seed = base_seed if attempt == 0 else random.randint(0, 2**31 - 1)
-        all_events, cc_parts, pb_parts, progression, quality_raw, patterns = _run_attempt(
-            req, style, attempt_seed, is_loop, groove_push, secondary_dominants, tritone_sub,
-            scoring_style=scoring_style,
-        )
-
-        # Keep the best result seen so far (by total score)
-        if best_quality_raw is None or (
-            quality_raw is not None and
-            quality_raw.get("total", 0) > best_quality_raw.get("total", 0)
-        ):
-            best_events, best_cc, best_pb = all_events, cc_parts, pb_parts
-            best_progression, best_quality_raw = progression, quality_raw
-            best_patterns = patterns
-            best_seed = attempt_seed
-
-        # Accept as soon as all dimensions are in the green
-        if quality_raw is not None and _all_green(quality_raw):
-            best_seed = attempt_seed
-            break
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _pool:
+            _fut = _pool.submit(_run_best_attempt)
+            (best_events, best_cc, best_pb, best_progression,
+             best_quality_raw, best_patterns, best_seed) = _fut.result(timeout=_GENERATION_TIMEOUT_S)
+    except concurrent.futures.TimeoutError:
+        raise HTTPException(status_code=504, detail=f"Generation timed out after {_GENERATION_TIMEOUT_S}s")
 
     all_events  = best_events
     cc_parts    = best_cc

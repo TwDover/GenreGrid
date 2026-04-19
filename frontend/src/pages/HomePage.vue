@@ -41,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import GenerateForm from '../components/GenerateForm.vue'
 import ExportPanel from '../components/ExportPanel.vue'
 import LibraryPanel from '../components/LibraryPanel.vue'
@@ -49,7 +49,7 @@ import { fetchStyles, generate } from '../services/api'
 import type { StyleInfo, GenerateRequest, GenerateResponse, FileInfo, LibraryEntry } from '../types/midi'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 
-const { volume, setVolume } = useMidiPlayer()
+const { volume, setVolume, prefetchSamplers, stop, currentlyPlaying } = useMidiPlayer()
 
 const styles = ref<StyleInfo[]>([])
 const loading = ref(false)
@@ -69,6 +69,17 @@ const activePanel = ref<'history' | 'library'>('history')
 watch(history, (val) => {
   localStorage.setItem('genregrid_history', JSON.stringify(val))
 }, { immediate: false, deep: true })
+
+function onKeyDown(e: KeyboardEvent) {
+  const tag = (e.target as HTMLElement).tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+  if (e.key === ' ' && currentlyPlaying.value) {
+    e.preventDefault()
+    stop()
+  }
+}
+onMounted(() => window.addEventListener('keydown', onKeyDown))
+onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
 
 onMounted(async () => {
   try {
@@ -106,6 +117,7 @@ async function handleGenerate(form: GenerateRequest) {
     const result = await generate(form)
     result._elapsed = ((Date.now() - t0) / 1000).toFixed(1)
     history.value = [result, ...history.value].slice(0, 10)
+    prefetchSamplers(result.style)
     activePanel.value = 'history'
     const params = new URLSearchParams({
       style: result.style,
