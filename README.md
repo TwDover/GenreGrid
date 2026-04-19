@@ -41,8 +41,8 @@ A style-based MIDI generator. Pick a genre, set your key, BPM, and complexity, a
 **Windows**
 ```powershell
 cd backend
-python -m venv venv
-venv\Scripts\activate
+python -m venv .venv
+.venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
@@ -50,8 +50,8 @@ uvicorn app.main:app --reload
 **Linux / macOS**
 ```bash
 cd backend
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
@@ -76,37 +76,35 @@ The desktop app bundles the backend into a self-contained executable — no Pyth
 
 > **Important:** PyInstaller must be run on the same OS you are building for. To produce a Windows `.exe`, build on Windows. To produce a Linux `.deb` / AppImage, build on Linux.
 
-### Step 1 — bundle the Python backend
+### Build (Linux — one command)
 
-**Windows**
+```bash
+./build.sh
+```
+
+`build.sh` handles everything: creates a Python venv if needed, installs dependencies, compiles the backend with PyInstaller, and packages the Electron app. On first run it will take a few minutes; subsequent runs are faster as the venv is reused.
+
+**Output** — `frontend/release/GenreGrid-x.x.x.AppImage` and `frontend/release/genregrid_x.x.x_amd64.deb`
+
+### Build (Windows — manual steps)
+
 ```powershell
+# 1. Bundle the Python backend
 cd backend
-venv\Scripts\activate
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
 pip install pyinstaller
 pyinstaller genregrid.spec
-```
+deactivate
 
-**Linux**
-```bash
-cd backend
-source venv/bin/activate
-pip install pyinstaller
-pyinstaller genregrid.spec
-```
-
-Output: `backend/dist/genregrid-backend/`
-
-### Step 2 — build the Electron app
-
-```bash
-cd frontend
-npm install   # if not already done
+# 2. Build the Electron app
+cd ..\frontend
+npm install
 npm run build:electron
 ```
 
-**Windows output** — `frontend/release/win-unpacked/GenreGrid.exe` (portable) and `frontend/release/GenreGrid Setup x.x.x.exe` (installer)
-
-**Linux output** — `frontend/release/GenreGrid-x.x.x.AppImage` and `frontend/release/genregrid_x.x.x_amd64.deb`
+**Output** — `frontend/release/win-unpacked/GenreGrid.exe` (portable) and `frontend/release/GenreGrid Setup x.x.x.exe` (installer)
 
 ### Running on Windows
 
@@ -161,13 +159,13 @@ Key fields:
 **Windows**
 ```powershell
 cd backend
-venv\Scripts\activate
+.venv\Scripts\activate
 pytest
 ```
 
 **Linux / macOS**
 ```bash
 cd backend
-source venv/bin/activate
+source .venv/bin/activate
 pytest
 ```

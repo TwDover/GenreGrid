@@ -2,6 +2,12 @@
   "name": "genregrid-frontend",
   "private": true,
   "version": "0.1.0",
+  "description": "Genregrid — A Midi Loop Generator",
+  "author": {
+    "name": "TwDover",
+    "email": "twdover@gmail.com"
+  },
+  "homepage": "https://github.com/TwDover/GenreGrid",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
