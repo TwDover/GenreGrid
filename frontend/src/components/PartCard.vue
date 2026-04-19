@@ -3,13 +3,16 @@
     <span class="part-name">{{ file.part }}</span>
 
     <div class="track-controls">
-      <button class="icon-btn" :disabled="isLoading" @click="toggle(file.url, styleId)" :title="playing ? 'Stop' : 'Preview'">
+      <button class="icon-btn" :disabled="isLoading && !playing" @click="toggle(file.url, styleId, file.part)" :title="playing ? 'Stop' : 'Preview'">
         <span v-if="isLoading && !playing">…</span>
         <span v-else>{{ playing ? '■' : '▶' }}</span>
       </button>
-      <button class="icon-btn" :disabled="regenLoading" @click="$emit('regen', file.part)" title="Regenerate">
+      <button class="icon-btn" :disabled="regenLoading || locked" @click="$emit('regen', file.part)" :title="locked ? 'Locked — unlock to regenerate' : 'Regenerate'">
         <span v-if="regenLoading">…</span>
         <span v-else>⟳</span>
+      </button>
+      <button class="icon-btn lock-btn" :class="{ locked }" @click="$emit('toggle-lock', file.part)" :title="locked ? 'Unlock part' : 'Lock part (keeps it when regenerating others)'">
+        {{ locked ? '🔒' : '🔓' }}
       </button>
       <div
         class="drag-handle"
@@ -54,9 +57,13 @@ const props = defineProps<{
   file: FileInfo
   styleId?: string
   regenLoading?: boolean
+  locked?: boolean
 }>()
 
-defineEmits<{ (e: 'regen', part: string): void }>()
+defineEmits<{
+  (e: 'regen', part: string): void
+  (e: 'toggle-lock', part: string): void
+}>()
 
 const saving = ref(false)
 const saved = ref(false)
@@ -192,6 +199,8 @@ async function saveTo() {
 .icon-btn:hover:not(:disabled) { background: #122f40; }
 .icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .playing .icon-btn:first-child { background: #003450; border-color: #00c8ff; }
+.lock-btn { font-size: 0.75rem; }
+.lock-btn.locked { background: #001e35; border-color: #00c8ff55; }
 
 .drag-handle {
   width: 32px;

@@ -1,13 +1,32 @@
 <template>
-  <form class="generate-form" @submit.prevent="$emit('submit', form)">
+  <form class="generate-form" @submit.prevent="emit('submit', form)">
     <div class="style-field">
-      <StyleSelector v-model="form.style_id" :styles="styles" />
+      <div class="style-selector-row">
+        <StyleSelector v-model="form.style_id" :styles="styles" />
+        <button type="button" class="browse-btn" @click="showBrowser = true" :disabled="styles.length === 0">Browse</button>
+        <button type="button" class="edit-style-btn" @click="showEditor = true" :disabled="!selectedStyle" title="Edit this style's parameters">Edit</button>
+      </div>
       <div v-if="selectedStyle" class="style-info">
         <span>{{ selectedStyle.bpm_range[0] }}–{{ selectedStyle.bpm_range[1] }} BPM</span>
         <span class="dot">·</span>
         <span>{{ selectedStyle.default_scale }}</span>
       </div>
     </div>
+
+    <StyleBrowser
+      v-if="showBrowser"
+      v-model="form.style_id"
+      :styles="styles"
+      @close="showBrowser = false"
+    />
+
+    <StyleEditor
+      v-if="showEditor"
+      :styleId="form.style_id"
+      :baseStyleName="selectedStyle?.name ?? form.style_id"
+      @close="showEditor = false"
+      @saved="onStyleSaved"
+    />
 
     <div class="field-row">
       <div class="field">
@@ -126,6 +145,45 @@
     </div>
 
     <div class="field">
+      <label>Blend with <span class="hint">optional — mix two styles together</span></label>
+      <div class="blend-row">
+        <select v-model="form.blend_style_id" class="blend-select">
+          <option :value="undefined">None</option>
+          <option v-for="s in styles.filter(s => s.id !== form.style_id)" :key="s.id" :value="s.id">{{ s.name }}</option>
+        </select>
+        <input
+          v-if="form.blend_style_id"
+          type="range"
+          v-model.number="form.blend_amount"
+          min="0" max="1" step="0.01"
+          class="blend-slider"
+          :title="`Blend: ${Math.round(form.blend_amount * 100)}% ${styles.find(s => s.id === form.blend_style_id)?.name ?? ''}`"
+        />
+        <span v-if="form.blend_style_id" class="blend-pct">{{ Math.round(form.blend_amount * 100) }}%</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Feel <span class="value">{{ feelLabel }}</span></label>
+      <input type="range" v-model.number="form.humanize" min="0" max="1" step="0.01" />
+    </div>
+
+    <div class="field">
+      <label>
+        Progression
+        <span class="hint">optional — e.g. i VII III VI</span>
+      </label>
+      <input
+        type="text"
+        v-model="customProgressionRaw"
+        placeholder="i VII III VI (leave blank to use style defaults)"
+        class="progression-input"
+        @blur="parseProgression"
+      />
+      <div v-if="progressionError" class="field-error">{{ progressionError }}</div>
+    </div>
+
+    <div class="field">
       <label>Seed <span class="hint">optional — leave blank for random</span></label>
       <input type="number" v-model.number="form.seed" placeholder="e.g. 1234567890" min="0" />
     </div>
@@ -137,6 +195,12 @@
       <button type="submit" :disabled="loading" class="generate-btn">
         {{ loading ? 'Generating...' : 'Generate' }}
       </button>
+      <div class="batch-row">
+        <button type="button" class="batch-btn" :disabled="loading" @click="emit('batch', form, batchCount)">
+          Batch ×{{ batchCount }}
+        </button>
+        <input type="number" v-model.number="batchCount" min="2" max="10" class="batch-count" />
+      </div>
     </div>
 
     <div class="preset-row">
@@ -182,6 +246,8 @@ const SCALE_INTERVALS: Record<string, number[]> = {
   whole_tone:        [0,2,4,6,8,10],
 }
 import StyleSelector from './StyleSelector.vue'
+import StyleBrowser from './StyleBrowser.vue'
+import StyleEditor from './StyleEditor.vue'
 import type { StyleInfo, GenerateRequest, GenerateResponse } from '../types/midi'
 
 const props = defineProps<{
@@ -190,7 +256,11 @@ const props = defineProps<{
   replayData?: GenerateResponse | null
 }>()
 
-defineEmits<{ (e: 'submit', form: GenerateRequest): void }>()
+const emit = defineEmits<{
+  (e: 'submit', form: GenerateRequest): void
+  (e: 'batch', form: GenerateRequest, count: number): void
+  (e: 'refresh-styles'): void
+}>()
 
 const keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const allParts = ['chords', 'bass', 'melody', 'drums', 'arpeggio']
@@ -207,6 +277,10 @@ const form = reactive<GenerateRequest>({
   mode: 'loop',
   seed: undefined,
   section_type: undefined,
+  humanize: 0.5,
+  custom_progression: undefined,
+  blend_style_id: undefined,
+  blend_amount: 0.5,
 })
 
 const selectedStyle = computed(() => props.styles.find(s => s.id === form.style_id))
@@ -267,6 +341,14 @@ const scaleNotes = computed(() => {
   return intervals.map(iv => CHROMATIC[(rootIdx + iv) % 12])
 })
 
+const showBrowser = ref(false)
+const showEditor = ref(false)
+const batchCount = ref(4)
+
+function onStyleSaved(newStyleId: string) {
+  emit('refresh-styles')
+  form.style_id = newStyleId
+}
 const tapTimes = ref<number[]>([])
 let tapResetTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -315,6 +397,36 @@ function deletePreset() {
   selectedPreset.value = ''
 }
 
+const feelLabel = computed(() => {
+  const v = form.humanize
+  if (v <= 0.2) return 'Quantized'
+  if (v <= 0.4) return 'Tight'
+  if (v <= 0.6) return 'Natural'
+  if (v <= 0.8) return 'Loose'
+  return 'Raw'
+})
+
+const customProgressionRaw = ref('')
+const progressionError = ref('')
+const VALID_ROMAN = /^(b?VII|b?VI|b?V|b?IV|b?III|b?II|b?I|b?vii|b?vi|b?v|b?iv|b?iii|b?ii|b?i)(°|dim|aug|sus[24]?|maj7?|m7?|7)?$/i
+
+function parseProgression() {
+  const raw = customProgressionRaw.value.trim()
+  if (!raw) {
+    form.custom_progression = undefined
+    progressionError.value = ''
+    return
+  }
+  const tokens = raw.split(/[\s,]+/).filter(Boolean)
+  const invalid = tokens.filter(t => !VALID_ROMAN.test(t))
+  if (invalid.length) {
+    progressionError.value = `Unrecognised: ${invalid.join(', ')}`
+    return
+  }
+  form.custom_progression = tokens
+  progressionError.value = ''
+}
+
 function randomize() {
   if (props.styles.length === 0) return
   const style = props.styles[Math.floor(Math.random() * props.styles.length)]
@@ -335,6 +447,40 @@ function randomize() {
   gap: 0.3rem;
 }
 
+.style-selector-row {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.browse-btn {
+  font-size: 0.75rem;
+  padding: 0 0.75rem;
+  background: #0d2535;
+  border: 1px solid #122f40;
+  border-radius: 6px;
+  color: #4a7080;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.browse-btn:hover { background: #122f40; color: #e0e0e8; }
+
+.edit-style-btn {
+  font-size: 0.75rem;
+  padding: 0 0.65rem;
+  background: #0d2535;
+  border: 1px solid #122f40;
+  border-radius: 6px;
+  color: #4a7080;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.edit-style-btn:hover:not(:disabled) { background: #003450; border-color: #00c8ff44; color: #00c8ff; }
+.edit-style-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
 .style-info {
   display: flex;
   gap: 0.4rem;
@@ -345,6 +491,42 @@ function randomize() {
 }
 
 .dot { color: #122f40; }
+
+.blend-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.blend-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.blend-slider {
+  flex: 1;
+  min-width: 0;
+}
+
+.blend-pct {
+  font-size: 0.72rem;
+  color: #4a7080;
+  font-family: monospace;
+  width: 2.5rem;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.progression-input {
+  font-family: monospace;
+  letter-spacing: 0.04em;
+}
+
+.field-error {
+  font-size: 0.7rem;
+  color: #ff6060;
+  margin-top: 0.25rem;
+}
 
 .hint {
   font-size: 0.7rem;
@@ -359,6 +541,38 @@ function randomize() {
   display: flex;
   gap: 0.75rem;
   margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.batch-row {
+  display: flex;
+  gap: 0.3rem;
+  align-items: stretch;
+}
+
+.batch-btn {
+  background: #060f14;
+  border: 1px solid #0d2535;
+  color: #4a7080;
+  padding: 0.75rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+.batch-btn:hover:not(:disabled) { border-color: #00c8ff44; color: #7ae8ff; }
+.batch-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.batch-count {
+  width: 3rem;
+  background: #040a0e;
+  border: 1px solid #0d2535;
+  border-radius: 6px;
+  color: #4a7080;
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 0 0.4rem;
 }
 
 .randomize-btn {

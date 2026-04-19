@@ -21,4 +21,7 @@ else:
 EXPORTS_DIR = DATA_DIR / "exports"
 EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
+CUSTOM_STYLES_DIR = DATA_DIR / "custom_styles"
+CUSTOM_STYLES_DIR.mkdir(parents=True, exist_ok=True)
+
 EXPORT_TTL_SECONDS = int(os.environ.get("EXPORT_TTL_SECONDS", "3600"))

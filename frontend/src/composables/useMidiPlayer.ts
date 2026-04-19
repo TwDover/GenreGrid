@@ -30,7 +30,11 @@ const LOFI_STYLES = new Set(['lofi', 'cloud_rap'])
 
 // Global so only one track plays at a time
 const currentlyPlaying = ref<string | null>(null)
+const nowPlayingLabel = ref<string | null>(null)
 const isLoading = ref(false)
+
+// Abort token — incremented on every new play; stale toggles bail out after each await
+let _playToken = 0
 
 // Master volume: 0–100 maps to dB via gainToDb, persisted across sessions
 const _savedVolume = typeof localStorage !== 'undefined'
@@ -59,6 +63,7 @@ function cleanup() {
   scheduledParts = []
   disposables = []
   currentlyPlaying.value = null
+  nowPlayingLabel.value = null
 }
 
 // Synth lead: sawtooth + chorus + ping-pong delay (house, techno, synthwave, etc.)
@@ -105,17 +110,21 @@ function makeLofiSynth(): Tone.PolySynth {
 }
 
 export function useMidiPlayer() {
-  async function toggle(url: string, styleId?: string) {
+  async function toggle(url: string, styleId?: string, label?: string) {
     if (currentlyPlaying.value === url) {
       cleanup()
       return
     }
 
     cleanup()
+    const token = ++_playToken
     isLoading.value = true
+    nowPlayingLabel.value = label ?? url.split('/').pop() ?? url
 
     try {
       await Tone.start()
+      if (token !== _playToken) return
+
       applyVolume(volume.value)
 
       const isSynth = styleId ? SYNTH_STYLES.has(styleId) : false
@@ -133,6 +142,8 @@ export function useMidiPlayer() {
         getBassSampler(styleId),
         melodicSamplerPromise ?? Promise.resolve(null),
       ])
+
+      if (token !== _playToken) return
 
       const midi = new Midi(buf)
 
@@ -292,5 +303,5 @@ export function useMidiPlayer() {
     ]).catch(() => { /* best-effort, ignore network errors */ })
   }
 
-  return { toggle, stop, currentlyPlaying, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume }
+  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume }
 }

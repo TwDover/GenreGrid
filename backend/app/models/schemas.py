@@ -14,6 +14,10 @@ class GenerateRequest(BaseModel):
     mode: str = "loop"   # "loop" | "arrangement"
     seed: Optional[int] = None
     section_type: Optional[str] = None  # intro | verse | pre_chorus | chorus | post_chorus | bridge | instrumental_solo | outro
+    humanize: float = Field(default=0.5, ge=0.0, le=1.0)  # 0 = quantized, 1 = loose
+    custom_progression: Optional[List[str]] = None  # e.g. ["i", "VI", "III", "VII"]
+    blend_style_id: Optional[str] = None   # second style to blend with
+    blend_amount: float = Field(default=0.5, ge=0.0, le=1.0)  # 0 = all primary, 1 = all blend
 
 
 class RegeneratePartRequest(BaseModel):
@@ -35,6 +39,7 @@ class StyleInfo(BaseModel):
     name: str
     bpm_range: List[int] = [40, 240]
     default_scale: str = "minor"
+    custom: bool = False
 
 
 class FileInfo(BaseModel):
@@ -64,6 +69,11 @@ class QualityScore(BaseModel):
     mix: float
     label: str
     flags: List[str]
+
+
+class BatchGenerateRequest(BaseModel):
+    base: "GenerateRequest"
+    count: int = Field(default=4, ge=2, le=10)
 
 
 class GenerateResponse(BaseModel):
