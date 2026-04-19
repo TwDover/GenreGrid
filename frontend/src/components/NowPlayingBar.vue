@@ -1,15 +1,23 @@
 <template>
   <div v-if="isLoading || currentlyPlaying" class="now-playing-bar">
     <span class="np-icon">{{ isLoading ? '⟳' : '▶' }}</span>
-    <span class="np-label">{{ nowPlayingLabel ?? '…' }}</span>
-    <button class="np-stop" @click="stop" title="Stop playback (Space)">■</button>
+    <span v-if="isRecording" class="np-rec">● REC</span>
+    <span v-else class="np-label">{{ nowPlayingLabel ?? '…' }}</span>
+    <button
+      class="np-loop"
+      :class="{ active: looping }"
+      @click="setLooping(!looping)"
+      :disabled="isRecording"
+      title="Toggle loop"
+    >{{ looping ? '↻' : '↺' }}</button>
+    <button class="np-stop" :disabled="isRecording" @click="stop" title="Stop playback (Space)">■</button>
   </div>
 </template>
 
 <script setup lang="ts">
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 
-const { currentlyPlaying, nowPlayingLabel, isLoading, stop } = useMidiPlayer()
+const { currentlyPlaying, nowPlayingLabel, isLoading, stop, looping, setLooping, isRecording } = useMidiPlayer()
 </script>
 
 <style scoped>
@@ -22,7 +30,7 @@ const { currentlyPlaying, nowPlayingLabel, isLoading, stop } = useMidiPlayer()
   border: 1px solid #00c8ff44;
   border-radius: 6px;
   min-width: 0;
-  max-width: 200px;
+  max-width: 220px;
 }
 
 .np-icon {
@@ -48,6 +56,33 @@ const { currentlyPlaying, nowPlayingLabel, isLoading, stop } = useMidiPlayer()
   text-transform: capitalize;
 }
 
+.np-rec {
+  font-size: 0.72rem;
+  color: #f87171;
+  font-family: monospace;
+  flex: 1;
+  animation: blink 1s step-start infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0.4; }
+}
+
+.np-loop {
+  background: none;
+  border: none;
+  color: #4a7080;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0;
+  flex-shrink: 0;
+  line-height: 1;
+  transition: color 0.15s;
+}
+.np-loop:hover:not(:disabled) { color: #00c8ff; }
+.np-loop.active { color: #00c8ff; }
+.np-loop:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .np-stop {
   background: none;
   border: none;
@@ -59,5 +94,6 @@ const { currentlyPlaying, nowPlayingLabel, isLoading, stop } = useMidiPlayer()
   line-height: 1;
   transition: color 0.15s;
 }
-.np-stop:hover { color: #f87171; }
+.np-stop:hover:not(:disabled) { color: #f87171; }
+.np-stop:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

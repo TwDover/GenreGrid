@@ -11,6 +11,7 @@
         <span v-if="regenLoading">…</span>
         <span v-else>⟳</span>
       </button>
+      <button v-if="hasUndo" class="icon-btn" @click="$emit('undo')" title="Undo last regeneration">↩</button>
       <button class="icon-btn lock-btn" :class="{ locked }" @click="$emit('toggle-lock', file.part)" :title="locked ? 'Unlock part' : 'Lock part (keeps it when regenerating others)'">
         {{ locked ? '🔒' : '🔓' }}
       </button>
@@ -58,11 +59,13 @@ const props = defineProps<{
   styleId?: string
   regenLoading?: boolean
   locked?: boolean
+  hasUndo?: boolean
 }>()
 
 defineEmits<{
   (e: 'regen', part: string): void
   (e: 'toggle-lock', part: string): void
+  (e: 'undo'): void
 }>()
 
 const saving = ref(false)

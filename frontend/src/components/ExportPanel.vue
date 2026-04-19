@@ -75,6 +75,18 @@
               download
               title="Download per-section stems as ZIP"
             >Sections ZIP</a>
+            <template v-if="response.files.some(f => f.part === 'combined')">
+              <div v-if="exportingId === response.generation_id" class="export-progress">
+                {{ Math.round(exportProgress * 100) }}%
+              </div>
+              <button
+                v-else
+                class="seed-action"
+                :disabled="isRecording"
+                @click.stop="handleExportAudio(response)"
+                title="Export as audio (WebM/OGG)"
+              >Audio</button>
+            </template>
           </div>
           <div v-if="response.progression?.length" class="progression-row">
             <span class="prog-label">Progression</span>
@@ -90,8 +102,10 @@
               :styleId="response.style"
               :regenLoading="regenLoadingKey === `${response.generation_id}:${file.part}`"
               :locked="lockedParts[response.generation_id]?.has(file.part) ?? false"
+              :hasUndo="!!undoFiles[`${response.generation_id}:${file.part}`]"
               @regen="handleRegen(response, file.part)"
               @toggle-lock="toggleLock(response.generation_id, file.part)"
+              @undo="handleUndo(response, file.part)"
             />
           </div>
         </div>
@@ -107,6 +121,7 @@ import PartCard from './PartCard.vue'
 import QualityBadge from './QualityBadge.vue'
 import type { GenerateResponse, FileInfo } from '../types/midi'
 import { regeneratePart, saveToLibrary, bundleUrl, sectionsUrl } from '../services/api'
+import { useMidiPlayer } from '../composables/useMidiPlayer'
 
 const props = defineProps<{ history: GenerateResponse[]; loading?: boolean; starredIds?: Set<string> }>()
 const emit = defineEmits<{
@@ -114,6 +129,11 @@ const emit = defineEmits<{
   (e: 'part-regenned', genId: string, file: FileInfo): void
   (e: 'toggle-star', genId: string): void
 }>()
+
+const { exportAudio, isRecording } = useMidiPlayer()
+const exportingId = ref<string | null>(null)
+const exportProgress = ref(0)
+const undoFiles = ref<Record<string, FileInfo>>({})
 
 const expandedId = ref<string | null>(null)
 const lockedParts = ref<Record<string, Set<string>>>({})
@@ -186,6 +206,7 @@ async function handleRegen(response: GenerateResponse, part: string) {
   regenLoadingKey.value = key
   regenError.value = null
   try {
+    const oldFile = response.files.find(f => f.part === part)
     const newFile = await regeneratePart({
       generation_id: response.generation_id,
       part,
@@ -199,11 +220,50 @@ async function handleRegen(response: GenerateResponse, part: string) {
       mode: response.summary.mode,
       seed: response.seed,
     })
+    if (oldFile) undoFiles.value = { ...undoFiles.value, [key]: oldFile }
     emit('part-regenned', response.generation_id, newFile)
   } catch (e: any) {
     regenError.value = e.message ?? 'Regeneration failed'
   } finally {
     regenLoadingKey.value = null
+  }
+}
+
+function handleUndo(response: GenerateResponse, part: string) {
+  const key = `${response.generation_id}:${part}`
+  const old = undoFiles.value[key]
+  if (!old) return
+  const { [key]: _, ...rest } = undoFiles.value
+  undoFiles.value = rest
+  emit('part-regenned', response.generation_id, old)
+}
+
+async function handleExportAudio(response: GenerateResponse) {
+  const combinedFile = response.files.find(f => f.part === 'combined')
+  if (!combinedFile) return
+  exportingId.value = response.generation_id
+  exportProgress.value = 0
+  try {
+    const duration = response.summary.bars * (4 * 60 / response.summary.bpm)
+    const blob = await exportAudio(
+      combinedFile.url,
+      response.style,
+      duration,
+      `${response.style}_${response.generation_id.slice(0, 8)}`,
+      v => { exportProgress.value = v }
+    )
+    const ext = blob.type.includes('ogg') ? 'ogg' : 'webm'
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${response.style}_${response.generation_id.slice(0, 8)}.${ext}`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e: any) {
+    regenError.value = e.message ?? 'Export failed'
+  } finally {
+    exportingId.value = null
+    exportProgress.value = 0
   }
 }
 </script>
@@ -423,6 +483,16 @@ async function handleRegen(response: GenerateResponse, part: string) {
 }
 
 .seed-action:disabled { opacity: 0.6; cursor: default; }
+
+.export-progress {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+  background: #001520;
+  border: 1px solid #00c8ff44;
+  border-radius: 4px;
+  color: #00c8ff;
+  font-family: monospace;
+}
 
 .regen-error {
   font-size: 0.75rem;

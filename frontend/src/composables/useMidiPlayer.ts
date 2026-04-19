@@ -32,9 +32,13 @@ const LOFI_STYLES = new Set(['lofi', 'cloud_rap'])
 const currentlyPlaying = ref<string | null>(null)
 const nowPlayingLabel = ref<string | null>(null)
 const isLoading = ref(false)
+const looping = ref(false)
+const isRecording = ref(false)
 
 // Abort token — incremented on every new play; stale toggles bail out after each await
 let _playToken = 0
+// Duration of the currently loaded track — used by setLooping to apply loopEnd live
+let _currentDuration = 0
 
 // Master volume: 0–100 maps to dB via gainToDb, persisted across sessions
 const _savedVolume = typeof localStorage !== 'undefined'
@@ -58,10 +62,12 @@ let disposables: Tone.ToneAudioNode[] = []
 function cleanup() {
   Tone.getTransport().stop()
   Tone.getTransport().cancel()
+  Tone.getTransport().loop = false
   scheduledParts.forEach(p => p.dispose())
   disposables.forEach(d => d.dispose())
   scheduledParts = []
   disposables = []
+  _currentDuration = 0
   currentlyPlaying.value = null
   nowPlayingLabel.value = null
 }
@@ -236,17 +242,80 @@ export function useMidiPlayer() {
         }
       }
 
+      _currentDuration = midi.duration
       currentlyPlaying.value = url
+
+      if (looping.value) {
+        Tone.getTransport().loop = true
+        Tone.getTransport().loopStart = 0
+        Tone.getTransport().loopEnd = midi.duration
+      } else {
+        Tone.getTransport().loop = false
+      }
+
       Tone.getTransport().start()
 
-      Tone.getTransport().scheduleOnce(() => {
-        cleanup()
-      }, midi.duration + 1)
+      if (!looping.value) {
+        Tone.getTransport().scheduleOnce(() => { cleanup() }, midi.duration + 1)
+      }
     } catch (e) {
       console.error('MIDI playback error:', e)
       cleanup()
     } finally {
-      isLoading.value = false
+      // Only clear loading state if this toggle is still the active one.
+      // A stale (token-mismatched) toggle must NOT clear isLoading — the
+      // newer toggle is still loading and needs isLoading to stay true so
+      // that play buttons remain disabled until the new track is ready.
+      if (token === _playToken) isLoading.value = false
+    }
+  }
+
+  function setLooping(v: boolean) {
+    looping.value = v
+    if (v && _currentDuration > 0) {
+      Tone.getTransport().loopStart = 0
+      Tone.getTransport().loopEnd = _currentDuration
+    }
+    Tone.getTransport().loop = v
+  }
+
+  async function exportAudio(
+    url: string,
+    styleId: string | undefined,
+    durationSeconds: number,
+    label: string,
+    onProgress?: (v: number) => void,
+  ): Promise<Blob> {
+    isRecording.value = true
+    try {
+      const wasLooping = looping.value
+      looping.value = false
+      await toggle(url, styleId, label)
+      looping.value = wasLooping
+
+      const comp = getMasterCompressor()
+      const recorder = new Tone.Recorder()
+      comp.connect(recorder)
+      recorder.start()
+
+      const totalMs = (durationSeconds + 1.5) * 1000
+      await new Promise<void>(resolve => {
+        const start = Date.now()
+        const iv = setInterval(() => {
+          const elapsed = Date.now() - start
+          onProgress?.(Math.min(elapsed / totalMs, 0.99))
+          if (elapsed >= totalMs) { clearInterval(iv); resolve() }
+        }, 200)
+      })
+
+      const blob = await recorder.stop()
+      comp.disconnect(recorder)
+      recorder.dispose()
+      onProgress?.(1)
+      cleanup()
+      return blob
+    } finally {
+      isRecording.value = false
     }
   }
 
@@ -303,5 +372,5 @@ export function useMidiPlayer() {
     ]).catch(() => { /* best-effort, ignore network errors */ })
   }
 
-  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume }
+  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, looping, setLooping, isRecording, exportAudio }
 }

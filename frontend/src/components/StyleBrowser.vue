@@ -30,13 +30,20 @@
           <span class="card-desc">{{ STYLE_DESCRIPTIONS[style.id] ?? '' }}</span>
         </button>
       </div>
+
+      <div v-if="selectedDetail" class="selected-preview">
+        <span class="preview-label">Style DNA</span>
+        <StyleRadar :style="selectedDetail" />
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { StyleInfo } from '../types/midi'
+import { fetchStyleDetail } from '../services/api'
+import StyleRadar from './StyleRadar.vue'
 
 const props = defineProps<{ styles: StyleInfo[]; modelValue: string }>()
 const emit = defineEmits<{
@@ -91,6 +98,18 @@ const STYLE_DESCRIPTIONS: Record<string, string> = {
   ambient: 'Slow-evolving pads, minimal rhythm, and textural melody',
   dark_ambient: 'Dissonant drones, sparse percussion, and eerie atmosphere',
 }
+
+const selectedDetail = ref<Record<string, any> | null>(null)
+
+watch(() => props.modelValue, async (id) => {
+  selectedDetail.value = null
+  if (!id) return
+  try {
+    selectedDetail.value = await fetchStyleDetail(id)
+  } catch {
+    // silently ignore — radar just won't show
+  }
+}, { immediate: true })
 
 const ALL_CATS = 'All'
 const categories = [ALL_CATS, 'Electronic', 'Hip-Hop', 'Soul / R&B', 'Global', 'Latin / Jazz', 'Cinematic']
@@ -227,5 +246,23 @@ function select(id: string) {
   color: #2a4550;
   line-height: 1.35;
   margin-top: 0.2rem;
+}
+
+.selected-preview {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.75rem 1.25rem;
+  background: #040a0e;
+  border-top: 1px solid #0d2535;
+}
+
+.preview-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #2a4550;
 }
 </style>
