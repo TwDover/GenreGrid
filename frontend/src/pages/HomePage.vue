@@ -3,8 +3,12 @@
     <header class="app-header">
       <div class="header-title">
         <h1>GenreGrid</h1>
-        <p class="subtitle">Style-based MIDI generator</p>
+        <p class="subtitle">
+          <span class="subtitle-text" :class="{ hidden: showCredit }">Style-based MIDI generator</span>
+          <span class="subtitle-credit" :class="{ visible: showCredit }">by TW Dover</span>
+        </p>
       </div>
+      <NowPlayingBar />
       <div class="volume-control">
         <span class="vol-icon">{{ volume === 0 ? '🔇' : volume < 40 ? '🔈' : '🔊' }}</span>
         <input
@@ -21,7 +25,11 @@
 
     <main class="app-main">
       <section class="form-section">
-        <GenerateForm :styles="styles" :loading="loading" :replayData="replayData" @submit="handleGenerate" />
+        <GenerateForm :styles="styles" :loading="loading || batchLoading" :replayData="replayData" @submit="handleGenerate" @batch="handleBatch" @refresh-styles="refreshStyles" />
+        <div v-if="genProgress && loading" class="progress-row">
+          <span class="progress-text">{{ genProgress }}</span>
+          <div class="progress-dots"><span>.</span><span>.</span><span>.</span></div>
+        </div>
         <div v-if="error && !loading" class="error-row">
           <p class="error-msg">{{ error }}</p>
           <button class="retry-btn" @click="retryFetch">Retry</button>
@@ -33,7 +41,7 @@
           <button class="panel-tab" :class="{ active: activePanel === 'history' }" @click="activePanel = 'history'">History</button>
           <button class="panel-tab" :class="{ active: activePanel === 'library' }" @click="activePanel = 'library'">Library</button>
         </div>
-        <ExportPanel v-if="activePanel === 'history'" :history="history" @replay="handleReplay" @part-regenned="handlePartRegenned" />
+        <ExportPanel v-if="activePanel === 'history'" :history="history" :loading="loading" :starredIds="starredIds" @replay="handleReplay" @part-regenned="handlePartRegenned" @toggle-star="handleToggleStar" />
         <LibraryPanel v-else :styles="styles" @replay="handleLibraryReplay" />
       </section>
     </main>
@@ -45,14 +53,20 @@ import { ref, watch, onMounted, onUnmounted } from 'vue'
 import GenerateForm from '../components/GenerateForm.vue'
 import ExportPanel from '../components/ExportPanel.vue'
 import LibraryPanel from '../components/LibraryPanel.vue'
-import { fetchStyles, generate } from '../services/api'
+import NowPlayingBar from '../components/NowPlayingBar.vue'
+import { fetchStyles, generate, batchGenerate } from '../services/api'
 import type { StyleInfo, GenerateRequest, GenerateResponse, FileInfo, LibraryEntry } from '../types/midi'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 
 const { volume, setVolume, prefetchSamplers, stop, currentlyPlaying } = useMidiPlayer()
 
+const showCredit = ref(false)
+let _creditTimer: ReturnType<typeof setTimeout> | null = null
+
 const styles = ref<StyleInfo[]>([])
 const loading = ref(false)
+const batchLoading = ref(false)
+const genProgress = ref<string | null>(null)
 const error = ref<string | null>(null)
 
 const loadHistory = (): GenerateResponse[] => {
@@ -62,13 +76,33 @@ const loadHistory = (): GenerateResponse[] => {
     return []
   }
 }
+const loadStarred = (): Set<string> => {
+  try {
+    return new Set(JSON.parse(localStorage.getItem('genregrid_starred') ?? '[]'))
+  } catch {
+    return new Set()
+  }
+}
+
 const history = ref<GenerateResponse[]>(loadHistory())
+const starredIds = ref<Set<string>>(loadStarred())
 const replayData = ref<GenerateResponse | null>(null)
 const activePanel = ref<'history' | 'library'>('history')
 
 watch(history, (val) => {
   localStorage.setItem('genregrid_history', JSON.stringify(val))
 }, { immediate: false, deep: true })
+
+watch(starredIds, (val) => {
+  localStorage.setItem('genregrid_starred', JSON.stringify([...val]))
+}, { deep: true })
+
+function handleToggleStar(genId: string) {
+  const next = new Set(starredIds.value)
+  if (next.has(genId)) next.delete(genId)
+  else next.add(genId)
+  starredIds.value = next
+}
 
 function onKeyDown(e: KeyboardEvent) {
   const tag = (e.target as HTMLElement).tagName
@@ -78,8 +112,17 @@ function onKeyDown(e: KeyboardEvent) {
     stop()
   }
 }
-onMounted(() => window.addEventListener('keydown', onKeyDown))
-onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
+onMounted(() => {
+  window.addEventListener('keydown', onKeyDown)
+  _creditTimer = setTimeout(() => {
+    showCredit.value = true
+    _creditTimer = setTimeout(() => { showCredit.value = false }, 3500)
+  }, 2000)
+})
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeyDown)
+  if (_creditTimer) clearTimeout(_creditTimer)
+})
 
 onMounted(async () => {
   try {
@@ -112,11 +155,17 @@ onMounted(async () => {
 async function handleGenerate(form: GenerateRequest) {
   loading.value = true
   error.value = null
+  genProgress.value = null
   try {
     const t0 = Date.now()
-    const result = await generate(form)
+    const result = await generate(form, (attempt, total) => {
+      genProgress.value = `Attempt ${attempt}/${total}…`
+    })
     result._elapsed = ((Date.now() - t0) / 1000).toFixed(1)
-    history.value = [result, ...history.value].slice(0, 10)
+    const merged = [result, ...history.value]
+    const starred = merged.filter(r => starredIds.value.has(r.generation_id))
+    const unstarred = merged.filter(r => !starredIds.value.has(r.generation_id)).slice(0, 10)
+    history.value = [...starred, ...unstarred].slice(0, 50)
     prefetchSamplers(result.style)
     activePanel.value = 'history'
     const params = new URLSearchParams({
@@ -133,6 +182,7 @@ async function handleGenerate(form: GenerateRequest) {
     error.value = e.message ?? 'Unknown error'
   } finally {
     loading.value = false
+    genProgress.value = null
   }
 }
 
@@ -159,6 +209,8 @@ async function handleLibraryReplay(entry: LibraryEntry) {
     bars: entry.bars,
     complexity: 0.5,
     variation: 0.4,
+    humanize: 0.5,
+    blend_amount: 0.5,
     parts: ['chords', 'bass', 'melody', 'drums'],
     mode: 'loop',
     seed: entry.seed,
@@ -178,6 +230,35 @@ async function handleLibraryReplay(entry: LibraryEntry) {
     }
   }, 0)
   await handleGenerate(req)
+}
+
+async function handleBatch(form: GenerateRequest, count: number) {
+  batchLoading.value = true
+  error.value = null
+  try {
+    const results = await batchGenerate({ base: form, count })
+    for (const result of results) {
+      result._elapsed = undefined
+      const merged = [result, ...history.value]
+      const starred = merged.filter(r => starredIds.value.has(r.generation_id))
+      const unstarred = merged.filter(r => !starredIds.value.has(r.generation_id)).slice(0, 10)
+      history.value = [...starred, ...unstarred].slice(0, 50)
+    }
+    prefetchSamplers(form.style_id)
+    activePanel.value = 'history'
+  } catch (e: any) {
+    error.value = e.message ?? 'Batch generation failed'
+  } finally {
+    batchLoading.value = false
+  }
+}
+
+async function refreshStyles() {
+  try {
+    styles.value = await fetchStyles()
+  } catch {
+    // ignore — styles list is stale but still usable
+  }
 }
 
 function handlePartRegenned(genId: string, newFile: FileInfo) {
@@ -210,6 +291,30 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
 .header-title .subtitle {
   margin: 0;
 }
+
+.subtitle {
+  position: relative;
+  height: 1.2em;
+}
+
+.subtitle-text,
+.subtitle-credit {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transition: opacity 0.8s ease;
+  white-space: nowrap;
+}
+
+.subtitle-text { opacity: 1; }
+.subtitle-text.hidden { opacity: 0; }
+
+.subtitle-credit {
+  opacity: 0;
+  color: #2a6070;
+  font-style: italic;
+}
+.subtitle-credit.visible { opacity: 1; }
 
 .volume-control {
   display: flex;
@@ -253,6 +358,22 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
   cursor: pointer;
   border: none;
 }
+
+.progress-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: #00c8ff;
+}
+
+@keyframes dot-blink {
+  0%, 80%, 100% { opacity: 0.2; }
+  40% { opacity: 1; }
+}
+.progress-dots span { animation: dot-blink 1.4s infinite; }
+.progress-dots span:nth-child(2) { animation-delay: 0.2s; }
+.progress-dots span:nth-child(3) { animation-delay: 0.4s; }
 
 .error-row {
   display: flex;

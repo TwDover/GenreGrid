@@ -56,6 +56,11 @@ def micro_jitter(ticks_per_beat: int = 480, max_ticks: int = 3) -> float:
     return random.randint(-max_ticks, max_ticks) / ticks_per_beat
 
 
+def _humanize_scale(style: dict) -> float:
+    """Return the user-requested humanize multiplier (0=tight, 1=loose), defaulting to 0.5."""
+    return float(style.get("_humanize_scale", 0.5))
+
+
 def style_jitter(style: dict) -> float:
     """Return a timing jitter amount scaled to the style's feel.
 
@@ -77,7 +82,10 @@ def style_jitter(style: dict) -> float:
         "cinematic": 0.025, "epic_orchestral": 0.022, "synthwave": 0.012,
     }
     style_id = style.get("id", "")
-    return jitter_map.get(style_id, 0.018)
+    base = jitter_map.get(style_id, 0.018)
+    # Scale: at humanize=0 → 25% of base; at humanize=1 → 175% of base
+    scale = 0.25 + _humanize_scale(style) * 1.5
+    return base * scale
 
 
 def style_velocity_variation(style: dict) -> int:
@@ -101,4 +109,6 @@ def style_velocity_variation(style: dict) -> int:
         "cinematic": 7, "epic_orchestral": 7,
     }
     style_id = style.get("id", "")
-    return variation_map.get(style_id, 8)
+    base = variation_map.get(style_id, 8)
+    scale = 0.25 + _humanize_scale(style) * 1.5
+    return max(1, int(base * scale))

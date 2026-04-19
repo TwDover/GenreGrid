@@ -3,6 +3,7 @@ export interface StyleInfo {
   name: string
   bpm_range: [number, number]
   default_scale: string
+  custom?: boolean
 }
 
 export interface GenerateRequest {
@@ -17,6 +18,10 @@ export interface GenerateRequest {
   mode: string
   seed?: number
   section_type?: string
+  humanize: number
+  custom_progression?: string[]
+  blend_style_id?: string
+  blend_amount: number
 }
 
 export interface RegeneratePartRequest {
@@ -72,6 +77,11 @@ export interface GenerateResponse {
   auto_saved: boolean
   progression?: string[]
   _elapsed?: string
+}
+
+export interface BatchGenerateRequest {
+  base: GenerateRequest
+  count: number
 }
 
 export interface LibraryEntry {

@@ -1,5 +1,18 @@
 <template>
-  <div v-if="history.length" class="export-panel">
+  <div v-if="loading && !history.length" class="export-panel">
+    <div class="skeleton-card">
+      <div class="skeleton-row">
+        <div class="skeleton-block" style="width:30%"></div>
+        <div class="skeleton-block" style="width:45%"></div>
+      </div>
+      <div class="skeleton-row">
+        <div class="skeleton-block" style="width:20%"></div>
+        <div class="skeleton-block" style="width:55%"></div>
+      </div>
+    </div>
+  </div>
+  <div v-else-if="history.length" class="export-panel">
+    <div v-if="loading" class="generating-banner">Generating…</div>
     <div class="history-header">
       <span class="history-title">Generations</span>
       <span class="history-count">{{ history.length }}</span>
@@ -12,6 +25,12 @@
         :class="{ expanded: expandedId === response.generation_id }"
       >
         <button class="history-row" @click="toggle(response.generation_id)">
+          <button
+            class="star-btn"
+            :class="{ starred: starredIds?.has(response.generation_id) }"
+            @click.stop="emit('toggle-star', response.generation_id)"
+            :title="starredIds?.has(response.generation_id) ? 'Unpin' : 'Pin — keeps this entry past the 10-item cap'"
+          >{{ starredIds?.has(response.generation_id) ? '★' : '☆' }}</button>
           <span class="entry-style">{{ formatStyle(response.style) }}</span>
           <span class="entry-meta">
             <span v-if="response.summary.section_type" class="entry-section">{{ formatSection(response.summary.section_type) }}</span>
@@ -49,6 +68,13 @@
               download
               title="Download all parts as ZIP"
             >Download All</a>
+            <a
+              v-if="response.summary.mode === 'arrangement'"
+              class="seed-action"
+              :href="sectionsUrl(response.generation_id)"
+              download
+              title="Download per-section stems as ZIP"
+            >Sections ZIP</a>
           </div>
           <div v-if="response.progression?.length" class="progression-row">
             <span class="prog-label">Progression</span>
@@ -63,7 +89,9 @@
               :file="file"
               :styleId="response.style"
               :regenLoading="regenLoadingKey === `${response.generation_id}:${file.part}`"
+              :locked="lockedParts[response.generation_id]?.has(file.part) ?? false"
               @regen="handleRegen(response, file.part)"
+              @toggle-lock="toggleLock(response.generation_id, file.part)"
             />
           </div>
         </div>
@@ -72,20 +100,31 @@
   </div>
 </template>
 
+
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import PartCard from './PartCard.vue'
 import QualityBadge from './QualityBadge.vue'
 import type { GenerateResponse, FileInfo } from '../types/midi'
-import { regeneratePart, saveToLibrary, bundleUrl } from '../services/api'
+import { regeneratePart, saveToLibrary, bundleUrl, sectionsUrl } from '../services/api'
 
-const props = defineProps<{ history: GenerateResponse[] }>()
+const props = defineProps<{ history: GenerateResponse[]; loading?: boolean; starredIds?: Set<string> }>()
 const emit = defineEmits<{
   (e: 'replay', response: GenerateResponse): void
   (e: 'part-regenned', genId: string, file: FileInfo): void
+  (e: 'toggle-star', genId: string): void
 }>()
 
 const expandedId = ref<string | null>(null)
+const lockedParts = ref<Record<string, Set<string>>>({})
+
+function toggleLock(genId: string, part: string) {
+  const cur = lockedParts.value[genId] ?? new Set<string>()
+  const next = new Set(cur)
+  if (next.has(part)) next.delete(part)
+  else next.add(part)
+  lockedParts.value = { ...lockedParts.value, [genId]: next }
+}
 const copied = ref<number | null>(null)
 const shared = ref<string | null>(null)
 const regenLoadingKey = ref<string | null>(null)
@@ -142,6 +181,7 @@ async function handleSave(response: GenerateResponse) {
 }
 
 async function handleRegen(response: GenerateResponse, part: string) {
+  if (lockedParts.value[response.generation_id]?.has(part)) return
   const key = `${response.generation_id}:${part}`
   regenLoadingKey.value = key
   regenError.value = null
@@ -169,6 +209,47 @@ async function handleRegen(response: GenerateResponse, part: string) {
 </script>
 
 <style scoped>
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.skeleton-card {
+  background: #060f14;
+  border: 1px solid #0d2535;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.skeleton-row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.skeleton-block {
+  height: 0.75rem;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #0d2535 25%, #122f40 50%, #0d2535 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+
+.generating-banner {
+  font-size: 0.72rem;
+  color: #00c8ff;
+  text-align: center;
+  padding: 0.35rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid #00c8ff33;
+  border-radius: 6px;
+  background: #001520;
+  animation: shimmer 2s infinite linear;
+  background-size: 800px 100%;
+}
+
 .history-header {
   display: flex;
   align-items: center;
@@ -224,6 +305,20 @@ async function handleRegen(response: GenerateResponse, part: string) {
 }
 
 .history-row:hover { background: #081620; }
+
+.star-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  color: #2a4550;
+  padding: 0 0.1rem;
+  line-height: 1;
+  transition: color 0.15s, transform 0.1s;
+  flex-shrink: 0;
+}
+.star-btn:hover { color: #f0c040; transform: scale(1.2); }
+.star-btn.starred { color: #f0c040; }
 
 .entry-style {
   font-weight: 600;
