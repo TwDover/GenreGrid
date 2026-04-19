@@ -127,6 +127,19 @@ export async function fetchStyleDetail(styleId: string): Promise<Record<string, 
   return res.json()
 }
 
+export async function arrangeDownload(entries: { generation_id: string; filename: string }[]): Promise<Blob> {
+  const res = await fetch(`${BASE_URL}/arrange`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Failed to build arrangement')
+  }
+  return res.blob()
+}
+
 export async function saveCustomStyle(style: Record<string, any>): Promise<Record<string, any>> {
   const res = await fetch(`${BASE_URL}/styles/custom`, {
     method: 'POST',

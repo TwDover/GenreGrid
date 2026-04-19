@@ -34,6 +34,7 @@ const nowPlayingLabel = ref<string | null>(null)
 const isLoading = ref(false)
 const looping = ref(false)
 const isRecording = ref(false)
+const channelMuted = ref({ drums: false, bass: false, melodic: false })
 
 // Abort token — incremented on every new play; stale toggles bail out after each await
 let _playToken = 0
@@ -203,6 +204,7 @@ export function useMidiPlayer() {
         if (isPerc) {
           const notes = track.notes.map(n => ({ time: n.time, midi: n.midi, velocity: n.velocity }))
           const part = new Tone.Part<{ time: number; midi: number; velocity: number }>((time, note) => {
+            if (channelMuted.value.drums) return
             const sampleName = DRUM_PITCH_TO_SAMPLE[note.midi] ?? 'hihat'
             const player = drumKit.player(sampleName)
             player.volume.value = Tone.gainToDb(note.velocity)
@@ -217,6 +219,7 @@ export function useMidiPlayer() {
             time: n.time, midi: n.midi, duration: n.duration, velocity: n.velocity,
           }))
           const part = new Tone.Part<{ time: number; midi: number; duration: number; velocity: number }>((time, note) => {
+            if (channelMuted.value.bass) return
             bassSampler.triggerAttackRelease(
               Tone.Frequency(note.midi, 'midi').toNote(),
               note.duration, time, note.velocity,
@@ -232,6 +235,7 @@ export function useMidiPlayer() {
             time: n.time, midi: n.midi, duration: n.duration, velocity: n.velocity,
           }))
           const part = new Tone.Part<{ time: number; midi: number; duration: number; velocity: number }>((time, note) => {
+            if (channelMuted.value.melodic) return
             instrument.triggerAttackRelease(
               Tone.Frequency(note.midi, 'midi').toNote(),
               note.duration, time, note.velocity,
@@ -351,6 +355,10 @@ export function useMidiPlayer() {
     }
   }
 
+  function toggleMute(ch: 'drums' | 'bass' | 'melodic') {
+    channelMuted.value = { ...channelMuted.value, [ch]: !channelMuted.value[ch] }
+  }
+
   function setVolume(v: number) {
     volume.value = v
     applyVolume(v)
@@ -372,5 +380,5 @@ export function useMidiPlayer() {
     ]).catch(() => { /* best-effort, ignore network errors */ })
   }
 
-  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, looping, setLooping, isRecording, exportAudio }
+  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, looping, setLooping, isRecording, exportAudio, channelMuted, toggleMute }
 }

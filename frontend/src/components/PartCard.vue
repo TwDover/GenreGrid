@@ -41,6 +41,8 @@
         :notes="midiData.notes"
         :duration="midiData.duration"
         :playing="playing"
+        :keyRoot="keyRoot"
+        :scale="scale"
       />
       <div v-else class="roll-empty" />
     </div>
@@ -60,6 +62,8 @@ const props = defineProps<{
   regenLoading?: boolean
   locked?: boolean
   hasUndo?: boolean
+  keyRoot?: string
+  scale?: string
 }>()
 
 defineEmits<{

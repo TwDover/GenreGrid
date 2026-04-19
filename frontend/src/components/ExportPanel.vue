@@ -16,7 +16,11 @@
     <div class="history-header">
       <span class="history-title">Generations</span>
       <span class="history-count">{{ history.length }}</span>
+      <button class="arrange-toggle" :class="{ active: showArrange }" @click="showArrange = !showArrange" title="Open arrangement builder">
+        {{ showArrange ? '▲ Arrange' : '▼ Arrange' }}
+      </button>
     </div>
+    <ArrangementBuilder v-if="showArrange" ref="arrangeRef" />
     <div class="history-list">
       <div
         v-for="response in history"
@@ -75,6 +79,12 @@
               download
               title="Download per-section stems as ZIP"
             >Sections ZIP</a>
+            <button
+              v-if="response.files.some(f => f.part === 'combined')"
+              class="seed-action"
+              @click.stop="addToArrange(response)"
+              title="Add to arrangement builder"
+            >+ Arrange</button>
             <template v-if="response.files.some(f => f.part === 'combined')">
               <div v-if="exportingId === response.generation_id" class="export-progress">
                 {{ Math.round(exportProgress * 100) }}%
@@ -90,7 +100,27 @@
           </div>
           <div v-if="response.progression?.length" class="progression-row">
             <span class="prog-label">Progression</span>
-            <span class="prog-chords">{{ response.progression.join(' → ') }}</span>
+            <div class="prog-stack">
+              <span class="prog-chords">{{ response.progression.join(' → ') }}</span>
+              <span class="prog-resolved">
+                {{ resolveProgression(response.progression, response.summary.key_root, response.summary.scale).join(' → ') }}
+              </span>
+            </div>
+          </div>
+          <div class="rating-row">
+            <span class="rating-label">Rate</span>
+            <button
+              class="rate-btn"
+              :class="{ active: ratings[response.generation_id] === 'up' }"
+              @click.stop="rate(response.generation_id, 'up')"
+              title="Good generation"
+            >👍</button>
+            <button
+              class="rate-btn"
+              :class="{ active: ratings[response.generation_id] === 'down' }"
+              @click.stop="rate(response.generation_id, 'down')"
+              title="Poor generation"
+            >👎</button>
           </div>
           <QualityBadge v-if="response.quality" :score="response.quality" />
           <div v-if="regenError" class="regen-error">{{ regenError }}</div>
@@ -103,6 +133,8 @@
               :regenLoading="regenLoadingKey === `${response.generation_id}:${file.part}`"
               :locked="lockedParts[response.generation_id]?.has(file.part) ?? false"
               :hasUndo="!!undoFiles[`${response.generation_id}:${file.part}`]"
+              :keyRoot="response.summary.key_root"
+              :scale="response.summary.scale"
               @regen="handleRegen(response, file.part)"
               @toggle-lock="toggleLock(response.generation_id, file.part)"
               @undo="handleUndo(response, file.part)"
@@ -119,9 +151,11 @@
 import { ref, watch } from 'vue'
 import PartCard from './PartCard.vue'
 import QualityBadge from './QualityBadge.vue'
+import ArrangementBuilder from './ArrangementBuilder.vue'
 import type { GenerateResponse, FileInfo } from '../types/midi'
 import { regeneratePart, saveToLibrary, bundleUrl, sectionsUrl } from '../services/api'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
+import { resolveProgression } from '../utils/chordResolver'
 
 const props = defineProps<{ history: GenerateResponse[]; loading?: boolean; starredIds?: Set<string> }>()
 const emit = defineEmits<{
@@ -131,9 +165,32 @@ const emit = defineEmits<{
 }>()
 
 const { exportAudio, isRecording } = useMidiPlayer()
+const showArrange = ref(false)
+const arrangeRef = ref<InstanceType<typeof ArrangementBuilder> | null>(null)
+
+function addToArrange(response: GenerateResponse) {
+  showArrange.value = true
+  arrangeRef.value?.addGeneration(response)
+}
 const exportingId = ref<string | null>(null)
 const exportProgress = ref(0)
 const undoFiles = ref<Record<string, FileInfo>>({})
+
+const ratings = ref<Record<string, 'up' | 'down'>>({})
+try {
+  const saved = localStorage.getItem('genregrid_ratings')
+  if (saved) ratings.value = JSON.parse(saved)
+} catch {}
+
+function rate(genId: string, vote: 'up' | 'down') {
+  if (ratings.value[genId] === vote) {
+    const { [genId]: _, ...rest } = ratings.value
+    ratings.value = rest
+  } else {
+    ratings.value = { ...ratings.value, [genId]: vote }
+  }
+  try { localStorage.setItem('genregrid_ratings', JSON.stringify(ratings.value)) } catch {}
+}
 
 const expandedId = ref<string | null>(null)
 const lockedParts = ref<Record<string, Set<string>>>({})
@@ -332,6 +389,20 @@ async function handleExportAudio(response: GenerateResponse) {
   padding: 0.1rem 0.5rem;
 }
 
+.arrange-toggle {
+  margin-left: auto;
+  font-size: 0.68rem;
+  padding: 0.2rem 0.6rem;
+  background: #040a0e;
+  border: 1px solid #0d2535;
+  border-radius: 4px;
+  color: #4a7080;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.arrange-toggle:hover { background: #081620; color: #e0e0e8; }
+.arrange-toggle.active { border-color: #00c8ff44; color: #00c8ff; }
+
 .history-list {
   display: flex;
   flex-direction: column;
@@ -526,10 +597,51 @@ async function handleExportAudio(response: GenerateResponse) {
   flex-shrink: 0;
 }
 
+.prog-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
 .prog-chords {
   font-family: monospace;
   font-size: 0.82rem;
   color: #7ae8ff;
   letter-spacing: 0.03em;
 }
+
+.prog-resolved {
+  font-family: monospace;
+  font-size: 0.72rem;
+  color: #4a7080;
+  letter-spacing: 0.02em;
+}
+
+.rating-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.75rem;
+}
+
+.rating-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #2a4550;
+}
+
+.rate-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.1rem 0.35rem;
+  opacity: 0.4;
+  transition: opacity 0.15s, border-color 0.15s;
+  line-height: 1;
+}
+.rate-btn:hover { opacity: 0.8; }
+.rate-btn.active { opacity: 1; border-color: #00c8ff44; }
 </style>

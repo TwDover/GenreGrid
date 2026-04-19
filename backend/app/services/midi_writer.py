@@ -122,6 +122,77 @@ def write_midi(
     mid.save(str(output_path))
 
 
+def concatenate_midi_files(paths: list[Path], out_ticks: int = TICKS_PER_BEAT) -> mido.MidiFile:
+    """Sequentially concatenate MIDI files into a single arrangement.
+
+    Each file starts immediately after the previous one ends. Tracks from
+    different files are kept separate, which DAWs handle well in type-1 MIDI.
+    """
+    out = mido.MidiFile(type=1, ticks_per_beat=out_ticks)
+    tempo = mido.bpm2tempo(120)
+
+    if paths:
+        first = mido.MidiFile(str(paths[0]))
+        for track in first.tracks:
+            for msg in track:
+                if msg.type == "set_tempo":
+                    tempo = msg.tempo
+                    break
+            else:
+                continue
+            break
+
+    t_track = mido.MidiTrack()
+    t_track.append(mido.MetaMessage("time_signature", numerator=4, denominator=4,
+                                    clocks_per_click=24, notated_32nd_notes_per_beat=8, time=0))
+    t_track.append(mido.MetaMessage("set_tempo", tempo=tempo, time=0))
+    t_track.append(mido.MetaMessage("end_of_track", time=0))
+    out.tracks.append(t_track)
+
+    offset_ticks = 0
+    for path in paths:
+        mid = mido.MidiFile(str(path))
+        scale = out_ticks / mid.ticks_per_beat
+
+        max_abs = 0
+        for track in mid.tracks:
+            abs_t = 0
+            for msg in track:
+                abs_t += msg.time
+            max_abs = max(max_abs, abs_t)
+        file_dur = int(max_abs * scale)
+
+        for track in mid.tracks:
+            has_notes = any(
+                msg.type not in ("set_tempo", "end_of_track", "time_signature",
+                                 "key_signature", "track_name", "instrument_name")
+                for msg in track
+            )
+            if not has_notes:
+                continue
+
+            abs_msgs: list[tuple[int, object]] = []
+            abs_t = 0
+            for msg in track:
+                abs_t += msg.time
+                if msg.type == "end_of_track":
+                    continue
+                abs_msgs.append((offset_ticks + int(abs_t * scale), msg))
+
+            abs_msgs.sort(key=lambda x: x[0])
+            new_track = mido.MidiTrack()
+            prev = 0
+            for t, msg in abs_msgs:
+                new_track.append(msg.copy(time=t - prev))
+                prev = t
+            new_track.append(mido.MetaMessage("end_of_track", time=0))
+            out.tracks.append(new_track)
+
+        offset_ticks += file_dur
+
+    return out
+
+
 def rebuild_combined_from_parts(output_dir: Path, bpm: int, ticks_per_beat: int = TICKS_PER_BEAT) -> None:
     """Rebuild combined.mid by merging all per-part .mid files present in output_dir.
 

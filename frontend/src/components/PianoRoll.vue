@@ -3,21 +3,28 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import * as Tone from 'tone'
 import type { ParsedNote } from '../composables/useMidiPlayer'
+import { scaleNotes } from '../utils/chordResolver'
 
 const props = defineProps<{
   notes: ParsedNote[]
   duration: number
   playing: boolean
+  keyRoot?: string
+  scale?: string
 }>()
 
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 let rafId: number | null = null
 let ro: ResizeObserver | null = null
 
-// Pitch range of melodic notes (with a little padding)
+const inScaleSet = computed<Set<number>>(() => {
+  if (!props.keyRoot || !props.scale) return new Set()
+  return scaleNotes(props.keyRoot, props.scale)
+})
+
 function getPitchRange() {
   const melodic = props.notes.filter(n => !n.isPercussion)
   if (melodic.length === 0) return { min: 48, max: 84 }
@@ -39,22 +46,29 @@ function draw(playheadTime = 0) {
   const { min: minP, max: maxP } = getPitchRange()
   const pitchRange = maxP - minP || 1
 
-  // Background
   ctx.fillStyle = '#020608'
   ctx.fillRect(0, 0, w, h)
 
-  // Subtle horizontal pitch lines
-  ctx.strokeStyle = '#051015'
-  ctx.lineWidth = 1
+  const noteH = Math.max(2, (h / pitchRange) * 0.85)
+  const inScale = inScaleSet.value
+
   for (let p = minP; p <= maxP; p++) {
-    const y = h - ((p - minP) / pitchRange) * h
+    const y = h - ((p - minP + 1) / pitchRange) * h
+
+    // Scale row highlight
+    if (inScale.size > 0 && inScale.has(p % 12)) {
+      ctx.fillStyle = '#00c8ff0a'
+      ctx.fillRect(0, y, w, noteH + 1)
+    }
+
+    // Pitch grid line
+    ctx.strokeStyle = '#051015'
+    ctx.lineWidth = 1
     ctx.beginPath()
-    ctx.moveTo(0, y)
-    ctx.lineTo(w, y)
+    ctx.moveTo(0, y + noteH)
+    ctx.lineTo(w, y + noteH)
     ctx.stroke()
   }
-
-  const noteH = Math.max(2, (h / pitchRange) * 0.85)
 
   for (const note of props.notes) {
     const x = (note.time / dur) * w
@@ -62,7 +76,6 @@ function draw(playheadTime = 0) {
     const alpha = 0.45 + note.velocity * 0.55
 
     if (note.isPercussion) {
-      // Drum hits: short vertical tick at the bottom
       ctx.fillStyle = `rgba(251, 191, 36, ${alpha})`
       ctx.fillRect(x, h - 6, Math.max(2, noteW * 0.3), 6)
     } else {
@@ -72,10 +85,8 @@ function draw(playheadTime = 0) {
     }
   }
 
-  // Playhead
   if (props.playing || playheadTime > 0) {
     const px = Math.min(w - 1, (playheadTime / dur) * w)
-    // Glow effect
     const grad = ctx.createLinearGradient(px - 4, 0, px + 4, 0)
     grad.addColorStop(0, 'rgba(255,255,255,0)')
     grad.addColorStop(0.5, 'rgba(255,255,255,0.7)')
@@ -111,15 +122,11 @@ function syncCanvasSize() {
 }
 
 watch(() => props.playing, (isPlaying) => {
-  if (isPlaying) {
-    startRaf()
-  } else {
-    stopRaf()
-    draw(0)
-  }
+  if (isPlaying) startRaf()
+  else { stopRaf(); draw(0) }
 })
 
-watch(() => props.notes, () => draw(0))
+watch(() => [props.notes, props.keyRoot, props.scale], () => draw(0))
 
 onMounted(() => {
   syncCanvasSize()
