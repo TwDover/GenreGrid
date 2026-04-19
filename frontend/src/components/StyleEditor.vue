@@ -4,6 +4,7 @@
       <div class="editor-header">
         <span class="editor-title">Style Editor</span>
         <span class="editor-base">Based on: {{ baseStyleName }}</span>
+        <StyleRadar v-if="!loading && !error" :style="(draft as any)" :size="72" :editable="true" @update:style="onRadarDrag" />
         <button class="close-btn" @click="$emit('close')">✕</button>
       </div>
 
@@ -155,6 +156,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { fetchStyleDetail, saveCustomStyle } from '../services/api'
+import StyleRadar from './StyleRadar.vue'
 
 const props = defineProps<{ styleId: string; baseStyleName: string }>()
 const emit = defineEmits<{
@@ -234,6 +236,17 @@ async function load() {
 watch(() => props.styleId, load, { immediate: true })
 
 function pct(v: number) { return `${Math.round(v * 100)}%` }
+
+function onRadarDrag(newStyle: Record<string, any>) {
+  draft.value = {
+    ...draft.value,
+    groove_push: newStyle.groove_push ?? draft.value.groove_push,
+    drums: { ...draft.value.drums, ...newStyle.drums },
+    melody: { ...draft.value.melody, ...newStyle.melody },
+    bass: { ...draft.value.bass, ...newStyle.bass },
+    chord_extensions: { ...draft.value.chord_extensions, ...newStyle.chord_extensions },
+  }
+}
 
 async function handleSave() {
   saveError.value = null

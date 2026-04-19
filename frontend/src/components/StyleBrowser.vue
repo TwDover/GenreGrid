@@ -24,7 +24,16 @@
           :class="{ selected: modelValue === style.id }"
           @click="select(style.id)"
         >
-          <span class="card-name">{{ style.name }}</span>
+          <div class="card-top">
+            <span class="card-name">{{ style.name }}</span>
+            <button
+              class="card-play"
+              :class="{ playing: isPlayingStyle(style.id) }"
+              :disabled="isLoading && !isPlayingStyle(style.id)"
+              @click.stop="togglePreview(style.id)"
+              :title="isPlayingStyle(style.id) ? 'Stop preview' : 'Preview style'"
+            >{{ isPlayingStyle(style.id) ? '■' : '▶' }}</button>
+          </div>
           <span class="card-bpm">{{ style.bpm_range[0] }}–{{ style.bpm_range[1] }} BPM</span>
           <span class="card-scale">{{ style.default_scale }}</span>
           <span class="card-desc">{{ STYLE_DESCRIPTIONS[style.id] ?? '' }}</span>
@@ -38,6 +47,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { StyleInfo } from '../types/midi'
+import { useMidiPlayer } from '../composables/useMidiPlayer'
 
 const props = defineProps<{ styles: StyleInfo[]; modelValue: string }>()
 const emit = defineEmits<{
@@ -98,6 +108,20 @@ const categories = [ALL_CATS, 'Electronic', 'Hip-Hop', 'Soul / R&B', 'Global', '
 const activeCategory = ref(
   props.modelValue ? (STYLE_CATEGORIES[props.modelValue] ?? ALL_CATS) : ALL_CATS
 )
+
+const { toggle, currentlyPlaying, isLoading } = useMidiPlayer()
+
+function previewUrl(styleId: string): string {
+  return `/styles/${styleId}/preview`
+}
+
+function isPlayingStyle(styleId: string): boolean {
+  return currentlyPlaying.value === previewUrl(styleId)
+}
+
+async function togglePreview(styleId: string) {
+  await toggle(previewUrl(styleId), styleId, styleId.replace(/_/g, ' '))
+}
 
 const filteredStyles = computed(() =>
   activeCategory.value === ALL_CATS
@@ -209,11 +233,38 @@ function select(id: string) {
 .style-card:hover { background: #081620; border-color: #1a4560; }
 .style-card.selected { border-color: #00c8ff; background: #001e35; }
 
+.card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+}
+
 .card-name {
   font-size: 0.85rem;
   font-weight: 600;
   color: #e0e0e8;
 }
+
+.card-play {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  background: #0d2535;
+  border: 1px solid #122f40;
+  border-radius: 4px;
+  color: #00c8ff;
+  font-size: 0.6rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s;
+}
+.card-play:hover:not(:disabled) { background: #003450; }
+.card-play.playing { background: #003450; border-color: #00c8ff; }
+.card-play:disabled { opacity: 0.5; cursor: not-allowed; }
 .card-bpm {
   font-size: 0.65rem;
   color: #00c8ff;
