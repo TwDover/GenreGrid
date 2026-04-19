@@ -8,6 +8,10 @@
     "email": "twdover@gmail.com"
   },
   "homepage": "https://github.com/TwDover/GenreGrid",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TwDover/GenreGrid.git"
+  },
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -34,6 +38,7 @@
   "build": {
     "appId": "com.genregrid.app",
     "productName": "GenreGrid",
+    "publish": null,
     "directories": {
       "output": "release"
     },
