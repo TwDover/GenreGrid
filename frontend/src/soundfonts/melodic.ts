@@ -28,9 +28,9 @@ const STYLE_TO_INSTRUMENT: Record<string, string> = {
 }
 
 const MELODIC_SAMPLE_MAP: Record<string, string> = {
-  A2: 'A2.mp3', C3: 'C3.mp3', E3: 'E3.mp3',
-  A3: 'A3.mp3', C4: 'C4.mp3', E4: 'E4.mp3',
-  A4: 'A4.mp3', C5: 'C5.mp3', E5: 'E5.mp3',
+  A2: 'A2.mp3', C3: 'C3.mp3', E3: 'E3.mp3', G3: 'G3.mp3',
+  A3: 'A3.mp3', C4: 'C4.mp3', E4: 'E4.mp3', G4: 'G4.mp3',
+  A4: 'A4.mp3', C5: 'C5.mp3', E5: 'E5.mp3', G5: 'G5.mp3',
   A5: 'A5.mp3',
 }
 
