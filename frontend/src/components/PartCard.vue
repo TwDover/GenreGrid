@@ -145,8 +145,8 @@ async function saveTo() {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  background: #1a1a24;
-  border: 1px solid #2a2a3e;
+  background: #060f14;
+  border: 1px solid #0d2535;
   border-radius: 8px;
   padding: 0.5rem 0.75rem;
   min-width: 0;
@@ -154,7 +154,7 @@ async function saveTo() {
 }
 
 .part-track.playing {
-  border-color: #a78bfa;
+  border-color: #00c8ff;
 }
 
 .part-name {
@@ -164,7 +164,7 @@ async function saveTo() {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #a78bfa;
+  color: #00c8ff;
 }
 
 .track-controls {
@@ -178,10 +178,10 @@ async function saveTo() {
   width: 32px;
   height: 32px;
   flex-shrink: 0;
-  background: #2a2a3e;
-  border: 1px solid #3a3a54;
+  background: #0d2535;
+  border: 1px solid #122f40;
   border-radius: 6px;
-  color: #a78bfa;
+  color: #00c8ff;
   font-size: 0.85rem;
   cursor: pointer;
   display: flex;
@@ -189,18 +189,18 @@ async function saveTo() {
   justify-content: center;
   transition: background 0.15s;
 }
-.icon-btn:hover:not(:disabled) { background: #3a3a54; }
+.icon-btn:hover:not(:disabled) { background: #122f40; }
 .icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.playing .icon-btn:first-child { background: #3b1f6e; border-color: #a78bfa; }
+.playing .icon-btn:first-child { background: #003450; border-color: #00c8ff; }
 
 .drag-handle {
   width: 32px;
   height: 32px;
   flex-shrink: 0;
-  background: #2a2a3e;
-  border: 1px solid #3a3a54;
+  background: #0d2535;
+  border: 1px solid #122f40;
   border-radius: 6px;
-  color: #a78bfa;
+  color: #00c8ff;
   font-size: 1rem;
   cursor: grab;
   display: flex;
@@ -209,23 +209,23 @@ async function saveTo() {
   user-select: none;
   transition: background 0.15s;
 }
-.drag-handle:hover { background: #3a3a54; }
+.drag-handle:hover { background: #122f40; }
 .drag-handle:active { cursor: grabbing; }
 .drag-handle:not(.drag-ready) { opacity: 0.4; cursor: wait; }
 
 .save-btn {
   height: 32px;
-  background: #2a2a3e;
-  border: 1px solid #3a3a54;
+  background: #0d2535;
+  border: 1px solid #122f40;
   border-radius: 6px;
-  color: #a78bfa;
+  color: #00c8ff;
   font-size: 0.75rem;
   cursor: pointer;
   padding: 0 0.6rem;
   white-space: nowrap;
   transition: background 0.15s;
 }
-.save-btn:hover:not(:disabled) { background: #3a3a54; }
+.save-btn:hover:not(:disabled) { background: #122f40; }
 .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .track-roll {
@@ -235,7 +235,7 @@ async function saveTo() {
 
 .roll-empty {
   height: 40px;
-  background: #12121a;
+  background: #040a0e;
   border-radius: 4px;
   opacity: 0.4;
 }

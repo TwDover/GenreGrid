@@ -83,7 +83,7 @@ function pct(v: number): number {
 
 function dimColor(v: number): string {
   if (v >= 0.82) return '#34d399'
-  if (v >= 0.68) return '#60a5fa'
+  if (v >= 0.68) return '#00c8ff'
   if (v >= 0.52) return '#fbbf24'
   return '#f87171'
 }
@@ -103,8 +103,8 @@ function dimColor(v: number): string {
 }
 
 .style-filter {
-  background: #1a1a24;
-  border: 1px solid #2a2a3e;
+  background: #060f14;
+  border: 1px solid #0d2535;
   border-radius: 6px;
   color: #e0e0e8;
   font-size: 0.8rem;
@@ -113,17 +113,17 @@ function dimColor(v: number): string {
   flex: 1;
 }
 
-.style-filter:focus { outline: none; border-color: #a78bfa; }
+.style-filter:focus { outline: none; border-color: #00c8ff; }
 
 .lib-count {
   font-size: 0.72rem;
-  color: #55556a;
+  color: #2a4550;
   white-space: nowrap;
 }
 
 .lib-empty {
   font-size: 0.82rem;
-  color: #55556a;
+  color: #2a4550;
   text-align: center;
   padding: 2rem 1rem;
 }
@@ -137,8 +137,8 @@ function dimColor(v: number): string {
 }
 
 .lib-entry {
-  background: #1a1a24;
-  border: 1px solid #2a2a3e;
+  background: #060f14;
+  border: 1px solid #0d2535;
   border-radius: 8px;
   padding: 0.65rem 0.85rem;
   display: flex;
@@ -161,13 +161,13 @@ function dimColor(v: number): string {
 
 .lib-meta {
   font-size: 0.78rem;
-  color: #8888a0;
+  color: #4a7080;
   flex: 1;
 }
 
 .lib-date {
   font-size: 0.72rem;
-  color: #55556a;
+  color: #2a4550;
 }
 
 .lib-entry-footer {
@@ -193,20 +193,20 @@ function dimColor(v: number): string {
 .lib-total {
   font-size: 0.72rem;
   font-family: monospace;
-  color: #a78bfa;
+  color: #00c8ff;
   margin-left: 0.3rem;
 }
 
 .lib-replay {
   font-size: 0.75rem;
   padding: 0.2rem 0.65rem;
-  background: #2a2a3e;
-  border: 1px solid #a78bfa44;
+  background: #0d2535;
+  border: 1px solid #00c8ff44;
   border-radius: 4px;
-  color: #a78bfa;
+  color: #00c8ff;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
 
-.lib-replay:hover { background: #3b1f6e; color: #c4b5fd; }
+.lib-replay:hover { background: #003450; color: #7ae8ff; }
 </style>
