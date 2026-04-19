@@ -32,8 +32,8 @@ const STYLE_TO_INSTRUMENT: Record<string, string> = {
 const DEFAULT_INSTRUMENT = 'electric_bass_finger'
 
 const BASS_SAMPLE_MAP: Record<string, string> = {
-  A1: 'A1.mp3', C2: 'C2.mp3', E2: 'E2.mp3',
-  A2: 'A2.mp3', C3: 'C3.mp3', E3: 'E3.mp3', A3: 'A3.mp3',
+  A1: 'A1.mp3', C2: 'C2.mp3', E2: 'E2.mp3', G2: 'G2.mp3',
+  A2: 'A2.mp3', C3: 'C3.mp3', E3: 'E3.mp3', G3: 'G3.mp3', A3: 'A3.mp3',
 }
 
 // Warm instruments get a gentle low-pass to smooth the top end
