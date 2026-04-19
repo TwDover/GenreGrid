@@ -141,10 +141,11 @@ export function useMidiPlayer() {
       // Pre-load all samplers + MIDI in parallel
       const melodicSamplerPromise = getMelodicSampler(styleId)
 
+      const fetchUrl = url.startsWith('blob:') || url.startsWith('data:') ? url : downloadUrl(url)
       const [, buf, drumKit, bassSampler, melodicSampler] = await Promise.all([
         // Piano only needed as fallback for styles without a melodic sampler and no synth
         (!isSynth && !isPad && !isLofi && !melodicSamplerPromise) ? getPianoSampler() : Promise.resolve(null),
-        fetch(downloadUrl(url)).then(r => r.arrayBuffer()),
+        fetch(fetchUrl).then(r => r.arrayBuffer()),
         getDrumKit(styleId),
         getBassSampler(styleId),
         melodicSamplerPromise ?? Promise.resolve(null),
@@ -334,7 +335,8 @@ export function useMidiPlayer() {
   async function prefetchMidi(url: string): Promise<void> {
     if (midiStore.value[url]) return
     try {
-      const buf = await fetch(downloadUrl(url)).then(r => r.arrayBuffer())
+      const fetchUrl = url.startsWith('blob:') || url.startsWith('data:') ? url : downloadUrl(url)
+      const buf = await fetch(fetchUrl).then(r => r.arrayBuffer())
       const midi = new Midi(buf)
       const allNotes: ParsedNote[] = []
       for (const track of midi.tracks) {

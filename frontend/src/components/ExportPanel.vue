@@ -16,6 +16,7 @@
     <div class="history-header">
       <span class="history-title">Generations</span>
       <span class="history-count">{{ history.length }}</span>
+      <input v-model="searchQuery" type="text" class="history-search" placeholder="Filter…" />
       <button class="arrange-toggle" :class="{ active: showArrange }" @click="showArrange = !showArrange" title="Open arrangement builder">
         {{ showArrange ? '▲ Arrange' : '▼ Arrange' }}
       </button>
@@ -23,7 +24,7 @@
     <ArrangementBuilder v-if="showArrange" ref="arrangeRef" />
     <div class="history-list">
       <div
-        v-for="response in history"
+        v-for="response in filteredHistory"
         :key="response.generation_id"
         class="history-entry"
         :class="{ expanded: expandedId === response.generation_id }"
@@ -36,6 +37,15 @@
             :title="starredIds?.has(response.generation_id) ? 'Unpin' : 'Pin — keeps this entry past the 10-item cap'"
           >{{ starredIds?.has(response.generation_id) ? '★' : '☆' }}</button>
           <span class="entry-style">{{ formatStyle(response.style) }}</span>
+          <span
+            class="entry-name"
+            :class="{ 'has-name': !!genNames[response.generation_id] }"
+            :contenteditable="editingName === response.generation_id ? 'true' : 'false'"
+            @click.stop="startEditName(response.generation_id)"
+            @blur="saveName(response.generation_id, $event)"
+            @keydown.enter.prevent="($event.target as HTMLElement).blur()"
+            :title="'Double-click to name this generation'"
+          >{{ genNames[response.generation_id] ?? '' }}</span>
           <span class="entry-meta">
             <span v-if="response.summary.section_type" class="entry-section">{{ formatSection(response.summary.section_type) }}</span>
             {{ response.summary.key }} · {{ response.summary.bpm }} BPM · {{ response.summary.bars }} bars<span v-if="response._elapsed"> · {{ response._elapsed }}s</span>
@@ -148,7 +158,7 @@
 
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import PartCard from './PartCard.vue'
 import QualityBadge from './QualityBadge.vue'
 import ArrangementBuilder from './ArrangementBuilder.vue'
@@ -167,6 +177,43 @@ const emit = defineEmits<{
 const { exportAudio, isRecording } = useMidiPlayer()
 const showArrange = ref(false)
 const arrangeRef = ref<InstanceType<typeof ArrangementBuilder> | null>(null)
+
+// Search
+const searchQuery = ref('')
+const filteredHistory = computed(() => {
+  const q = searchQuery.value.toLowerCase().trim()
+  if (!q) return props.history
+  return props.history.filter(r =>
+    r.style.toLowerCase().includes(q) ||
+    r.summary.key.toLowerCase().includes(q) ||
+    (genNames.value[r.generation_id] ?? '').toLowerCase().includes(q)
+  )
+})
+
+// Generation naming
+const genNames = ref<Record<string, string>>({})
+try {
+  const saved = localStorage.getItem('genregrid_gen_names')
+  if (saved) genNames.value = JSON.parse(saved)
+} catch {}
+
+const editingName = ref<string | null>(null)
+
+function startEditName(genId: string) {
+  editingName.value = genId
+}
+
+function saveName(genId: string, evt: Event) {
+  const name = (evt.target as HTMLElement).textContent?.trim() ?? ''
+  if (name) {
+    genNames.value = { ...genNames.value, [genId]: name }
+  } else {
+    const { [genId]: _, ...rest } = genNames.value
+    genNames.value = rest
+  }
+  editingName.value = null
+  try { localStorage.setItem('genregrid_gen_names', JSON.stringify(genNames.value)) } catch {}
+}
 
 function addToArrange(response: GenerateResponse) {
   showArrange.value = true
@@ -388,6 +435,38 @@ async function handleExportAudio(response: GenerateResponse) {
   border-radius: 10px;
   padding: 0.1rem 0.5rem;
 }
+
+.history-search {
+  flex: 1;
+  max-width: 120px;
+  background: #040a0e;
+  border: 1px solid #0d2535;
+  border-radius: 4px;
+  color: #e0e0e8;
+  font-size: 0.72rem;
+  padding: 0.2rem 0.5rem;
+  outline: none;
+}
+.history-search:focus { border-color: #00c8ff55; }
+.history-search::placeholder { color: #2a4550; }
+
+.entry-name {
+  font-size: 0.7rem;
+  color: #2a4550;
+  cursor: text;
+  padding: 0.05rem 0.25rem;
+  border-radius: 3px;
+  min-width: 20px;
+  outline: none;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.entry-name.has-name { color: #4a7080; }
+.entry-name:focus { border-color: #00c8ff44; background: #040a0e; color: #e0e0e8; }
+.entry-name[contenteditable="true"] { cursor: text; }
 
 .arrange-toggle {
   margin-left: auto;

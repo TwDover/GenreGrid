@@ -16,6 +16,16 @@
     <div v-else class="lib-list">
       <div v-for="entry in entries" :key="entry.gen_id" class="lib-entry">
         <div class="lib-entry-main">
+          <button
+            class="lib-play"
+            :class="{ playing: isPlayingEntry(entry.gen_id) }"
+            :disabled="isLoading && !isPlayingEntry(entry.gen_id)"
+            @click="toggleEntry(entry)"
+            :title="isPlayingEntry(entry.gen_id) ? 'Stop' : 'Preview'"
+          >
+            <span v-if="isLoading && !isPlayingEntry(entry.gen_id)">…</span>
+            <span v-else>{{ isPlayingEntry(entry.gen_id) ? '■' : '▶' }}</span>
+          </button>
           <span class="lib-style">{{ formatStyle(entry.style_id) }}</span>
           <span class="lib-meta">{{ entry.key }} {{ entry.scale }} · {{ entry.bpm }} BPM · {{ entry.bars }} bars</span>
           <span class="lib-date">{{ formatDate(entry.saved_at) }}</span>
@@ -33,6 +43,15 @@
           </div>
           <button class="lib-replay" @click="$emit('replay', entry)">Replay</button>
         </div>
+        <div class="lib-roll" v-if="getMidiData(entryUrl(entry.gen_id))">
+          <PianoRoll
+            :notes="getMidiData(entryUrl(entry.gen_id))!.notes"
+            :duration="getMidiData(entryUrl(entry.gen_id))!.duration"
+            :playing="isPlayingEntry(entry.gen_id)"
+            :keyRoot="entry.key.split(' ')[0]"
+            :scale="entry.scale"
+          />
+        </div>
       </div>
     </div>
   </div>
@@ -41,6 +60,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { fetchLibrary, fetchLibraryCounts } from '../services/api'
+import { useMidiPlayer } from '../composables/useMidiPlayer'
+import PianoRoll from './PianoRoll.vue'
 import type { LibraryEntry, StyleInfo } from '../types/midi'
 
 defineProps<{ styles: StyleInfo[] }>()
@@ -52,9 +73,23 @@ const error = ref<string | null>(null)
 const filterStyle = ref('')
 const counts = ref<Record<string, number>>({})
 
+const { toggle, currentlyPlaying, isLoading, getMidiData, prefetchMidi } = useMidiPlayer()
+
 onMounted(async () => { counts.value = await fetchLibraryCounts() })
 
 const dims = ['harmonic', 'rhythm', 'register', 'density', 'mix'] as const
+
+function entryUrl(gen_id: string): string {
+  return `/exports/${gen_id}/combined.mid`
+}
+
+function isPlayingEntry(gen_id: string): boolean {
+  return currentlyPlaying.value === entryUrl(gen_id)
+}
+
+async function toggleEntry(entry: LibraryEntry) {
+  await toggle(entryUrl(entry.gen_id), entry.style_id, formatStyle(entry.style_id))
+}
 
 async function load() {
   if (!filterStyle.value) return
@@ -62,6 +97,8 @@ async function load() {
   error.value = null
   try {
     entries.value = await fetchLibrary(filterStyle.value)
+    // Prefetch MIDI for piano rolls
+    for (const e of entries.value) prefetchMidi(entryUrl(e.gen_id))
   } catch {
     error.value = 'Could not load library'
   } finally {
@@ -77,9 +114,7 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-function pct(v: number): number {
-  return Math.round(v * 100)
-}
+function pct(v: number): number { return Math.round(v * 100) }
 
 function dimColor(v: number): string {
   if (v >= 0.82) return '#34d399'
@@ -112,7 +147,6 @@ function dimColor(v: number): string {
   cursor: pointer;
   flex: 1;
 }
-
 .style-filter:focus { outline: none; border-color: #00c8ff; }
 
 .lib-count {
@@ -127,7 +161,6 @@ function dimColor(v: number): string {
   text-align: center;
   padding: 2rem 1rem;
 }
-
 .lib-error { color: #f87171; }
 
 .lib-list {
@@ -144,6 +177,11 @@ function dimColor(v: number): string {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
+  transition: border-color 0.15s;
+}
+
+.lib-entry:has(.lib-play.playing) {
+  border-color: #00c8ff44;
 }
 
 .lib-entry-main {
@@ -152,6 +190,26 @@ function dimColor(v: number): string {
   gap: 0.6rem;
   flex-wrap: wrap;
 }
+
+.lib-play {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  background: #0d2535;
+  border: 1px solid #122f40;
+  border-radius: 5px;
+  color: #00c8ff;
+  font-size: 0.75rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s;
+}
+.lib-play:hover:not(:disabled) { background: #122f40; }
+.lib-play.playing { background: #003450; border-color: #00c8ff; }
+.lib-play:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .lib-style {
   font-weight: 600;
@@ -207,6 +265,9 @@ function dimColor(v: number): string {
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
-
 .lib-replay:hover { background: #003450; color: #7ae8ff; }
+
+.lib-roll {
+  margin-top: -0.1rem;
+}
 </style>
