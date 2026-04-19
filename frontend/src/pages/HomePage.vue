@@ -9,6 +9,14 @@
         </p>
       </div>
       <NowPlayingBar />
+      <div class="header-actions">
+        <button class="hdr-btn" @click="saveSession" title="Save session (Ctrl+S)">Save</button>
+        <label class="hdr-btn" title="Load session from file">
+          Load
+          <input ref="loadInput" type="file" accept=".json" style="display:none" @change="loadSession" />
+        </label>
+        <button class="hdr-btn hdr-help" @click="showShortcuts = !showShortcuts" title="Keyboard shortcuts">?</button>
+      </div>
       <div class="volume-control">
         <span class="vol-icon">{{ volume === 0 ? '🔇' : volume < 40 ? '🔈' : '🔊' }}</span>
         <input
@@ -45,6 +53,22 @@
         <LibraryPanel v-else :styles="styles" @replay="handleLibraryReplay" />
       </section>
     </main>
+
+    <div v-if="showShortcuts" class="shortcuts-overlay" @click.self="showShortcuts = false">
+      <div class="shortcuts-modal">
+        <div class="shortcuts-header">
+          <span class="shortcuts-title">Keyboard Shortcuts</span>
+          <button class="close-btn" @click="showShortcuts = false">✕</button>
+        </div>
+        <table class="shortcuts-table">
+          <tbody>
+            <tr><td class="shortcut-key">Space</td><td class="shortcut-desc">Stop playback</td></tr>
+            <tr><td class="shortcut-key">Ctrl+S</td><td class="shortcut-desc">Save session</td></tr>
+            <tr><td class="shortcut-key">?</td><td class="shortcut-desc">Show shortcuts</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -61,6 +85,8 @@ import { useMidiPlayer } from '../composables/useMidiPlayer'
 const { volume, setVolume, prefetchSamplers, stop, currentlyPlaying } = useMidiPlayer()
 
 const showCredit = ref(false)
+const showShortcuts = ref(false)
+const loadInput = ref<HTMLInputElement | null>(null)
 let _creditTimer: ReturnType<typeof setTimeout> | null = null
 
 const styles = ref<StyleInfo[]>([])
@@ -104,12 +130,49 @@ function handleToggleStar(genId: string) {
   starredIds.value = next
 }
 
+function saveSession() {
+  const data = JSON.stringify({
+    version: 1,
+    history: history.value,
+    starred: [...starredIds.value],
+  }, null, 2)
+  const blob = new Blob([data], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `genregrid-session-${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function loadSession(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target?.result as string)
+      if (data.history) history.value = data.history
+      if (data.starred) starredIds.value = new Set(data.starred)
+    } catch { /* ignore malformed */ }
+  }
+  reader.readAsText(file)
+}
+
 function onKeyDown(e: KeyboardEvent) {
   const tag = (e.target as HTMLElement).tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
   if (e.key === ' ' && currentlyPlaying.value) {
     e.preventDefault()
     stop()
+  }
+  if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault()
+    saveSession()
+  }
+  if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
+    e.preventDefault()
+    showShortcuts.value = !showShortcuts.value
   }
 }
 onMounted(() => {
@@ -315,6 +378,102 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
   font-style: italic;
 }
 .subtitle-credit.visible { opacity: 1; }
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.hdr-btn {
+  font-size: 0.72rem;
+  padding: 0.25rem 0.6rem;
+  background: #060f14;
+  border: 1px solid #0d2535;
+  border-radius: 5px;
+  color: #4a7080;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+  user-select: none;
+}
+.hdr-btn:hover { background: #0d2535; color: #e0e0e8; }
+
+.hdr-help {
+  font-weight: 700;
+  width: 24px;
+  padding: 0.25rem 0;
+  text-align: center;
+}
+
+.shortcuts-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.shortcuts-modal {
+  background: #060f14;
+  border: 1px solid #0d2535;
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  min-width: 280px;
+}
+
+.shortcuts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.shortcuts-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #e0e0e8;
+  letter-spacing: 0.04em;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: #4a7080;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+.close-btn:hover { color: #e0e0e8; }
+
+.shortcuts-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.shortcut-key {
+  font-family: monospace;
+  font-size: 0.78rem;
+  color: #00c8ff;
+  background: #001520;
+  border: 1px solid #0d2535;
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+  white-space: nowrap;
+}
+
+.shortcut-desc {
+  font-size: 0.8rem;
+  color: #7ae8ff;
+  padding-left: 1rem;
+}
+
+.shortcuts-table tr { height: 2rem; }
 
 .volume-control {
   display: flex;
