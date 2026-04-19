@@ -3,6 +3,16 @@
     <span class="np-icon">{{ isLoading ? '⟳' : '▶' }}</span>
     <span v-if="isRecording" class="np-rec">● REC</span>
     <span v-else class="np-label">{{ nowPlayingLabel ?? '…' }}</span>
+    <template v-if="currentlyPlaying && !isRecording">
+      <button
+        v-for="ch in (['drums', 'bass', 'melodic'] as const)"
+        :key="ch"
+        class="np-mute"
+        :class="{ muted: channelMuted[ch] }"
+        @click="toggleMute(ch)"
+        :title="`${channelMuted[ch] ? 'Unmute' : 'Mute'} ${ch}`"
+      >{{ ch[0].toUpperCase() }}</button>
+    </template>
     <button
       class="np-loop"
       :class="{ active: looping }"
@@ -17,7 +27,7 @@
 <script setup lang="ts">
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 
-const { currentlyPlaying, nowPlayingLabel, isLoading, stop, looping, setLooping, isRecording } = useMidiPlayer()
+const { currentlyPlaying, nowPlayingLabel, isLoading, stop, looping, setLooping, isRecording, channelMuted, toggleMute } = useMidiPlayer()
 </script>
 
 <style scoped>
@@ -30,7 +40,7 @@ const { currentlyPlaying, nowPlayingLabel, isLoading, stop, looping, setLooping,
   border: 1px solid #00c8ff44;
   border-radius: 6px;
   min-width: 0;
-  max-width: 220px;
+  max-width: 280px;
 }
 
 .np-icon {
@@ -66,6 +76,32 @@ const { currentlyPlaying, nowPlayingLabel, isLoading, stop, looping, setLooping,
 
 @keyframes blink {
   50% { opacity: 0.4; }
+}
+
+.np-mute {
+  background: #0d2535;
+  border: 1px solid #122f40;
+  border-radius: 4px;
+  color: #4a7080;
+  font-size: 0.6rem;
+  font-weight: 700;
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  line-height: 1;
+}
+.np-mute:hover { color: #e0e0e8; }
+.np-mute.muted {
+  background: #001520;
+  border-color: #00c8ff55;
+  color: #2a4550;
+  text-decoration: line-through;
 }
 
 .np-loop {

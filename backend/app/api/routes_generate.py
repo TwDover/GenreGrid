@@ -1,15 +1,18 @@
 import concurrent.futures
+import io
 import logging
 import random
+import re
 import secrets
 import uuid
 import json as _json_module
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
+from pydantic import BaseModel
 
 from app.models.schemas import GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, GenerateSummary, QualityScore, BatchGenerateRequest
 from app.services.style_loader import load_style
-from app.services.midi_writer import NoteEvent, ControlEvent, PitchBendEvent, write_midi, write_combined_midi, rebuild_combined_from_parts
+from app.services.midi_writer import NoteEvent, ControlEvent, PitchBendEvent, write_midi, write_combined_midi, rebuild_combined_from_parts, concatenate_midi_files
 from app.generators.chords import generate_chords, resolve_progression
 from app.generators.bass import generate_bass
 from app.generators.melody import generate_melody
@@ -1051,3 +1054,47 @@ def download_export(gen_id: str, filename: str):
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(str(file_path), media_type="audio/midi", filename=filename)
+
+
+_SAFE_PATH = re.compile(r'^[a-zA-Z0-9_\-]{1,80}$')
+
+
+class ArrangeEntry(BaseModel):
+    generation_id: str
+    filename: str
+
+
+class ArrangeRequest(BaseModel):
+    entries: list[ArrangeEntry]
+
+
+@router.post("/arrange")
+def arrange(req: ArrangeRequest):
+    """Concatenate multiple MIDI files sequentially into an arrangement."""
+    if not req.entries:
+        raise HTTPException(400, "No entries provided")
+
+    paths = []
+    for entry in req.entries:
+        if not _SAFE_PATH.match(entry.generation_id):
+            raise HTTPException(400, f"Invalid generation_id: {entry.generation_id!r}")
+        safe_name = entry.filename.replace("/", "").replace("\\", "")
+        path = EXPORTS_DIR / entry.generation_id / safe_name
+        if not path.exists():
+            raise HTTPException(404, f"File not found: {entry.generation_id}/{safe_name}")
+        paths.append(path)
+
+    try:
+        out_mid = concatenate_midi_files(paths)
+    except Exception as exc:
+        logger.error("arrange failed: %s", exc)
+        raise HTTPException(500, "Failed to build arrangement") from exc
+
+    buf = io.BytesIO()
+    out_mid.save(file=buf)
+    buf.seek(0)
+    return Response(
+        content=buf.read(),
+        media_type="audio/midi",
+        headers={"Content-Disposition": "attachment; filename=arrangement.mid"},
+    )

@@ -10,6 +10,11 @@
         <span>{{ selectedStyle.bpm_range[0] }}–{{ selectedStyle.bpm_range[1] }} BPM</span>
         <span class="dot">·</span>
         <span>{{ selectedStyle.default_scale }}</span>
+        <span v-if="selectedStyle.custom" class="custom-badge">custom</span>
+        <div class="style-dna">
+          <StyleRadar v-if="styleDetail" :style="styleDetail" :size="64" />
+          <span class="dna-label">DNA</span>
+        </div>
       </div>
     </div>
 
@@ -215,7 +220,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, shallowRef } from 'vue'
 
 interface SectionProfile { label: string; bars: [number, number]; desc: string }
 const SECTION_PROFILES: Record<string, SectionProfile> = {
@@ -248,6 +253,8 @@ const SCALE_INTERVALS: Record<string, number[]> = {
 import StyleSelector from './StyleSelector.vue'
 import StyleBrowser from './StyleBrowser.vue'
 import StyleEditor from './StyleEditor.vue'
+import StyleRadar from './StyleRadar.vue'
+import { fetchStyleDetail } from '../services/api'
 import type { StyleInfo, GenerateRequest, GenerateResponse } from '../types/midi'
 
 const props = defineProps<{
@@ -343,6 +350,13 @@ const scaleNotes = computed(() => {
 
 const showBrowser = ref(false)
 const showEditor = ref(false)
+const styleDetail = shallowRef<Record<string, any> | null>(null)
+
+watch(() => form.style_id, async (id) => {
+  styleDetail.value = null
+  if (!id) return
+  try { styleDetail.value = await fetchStyleDetail(id) } catch { /* radar just won't show */ }
+}, { immediate: true })
 const batchCount = ref(4)
 
 function onStyleSaved(newStyleId: string) {
@@ -491,6 +505,29 @@ function randomize() {
 }
 
 .dot { color: #122f40; }
+
+.custom-badge {
+  font-size: 0.6rem;
+  background: #003450;
+  color: #00c8ff;
+  border: 1px solid #00c8ff44;
+  border-radius: 3px;
+  padding: 0.05rem 0.35rem;
+}
+
+.style-dna {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.dna-label {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #2a4550;
+}
 
 .blend-row {
   display: flex;
