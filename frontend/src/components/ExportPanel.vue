@@ -97,15 +97,22 @@
             >+ Arrange</button>
             <template v-if="response.files.some(f => f.part === 'combined')">
               <div v-if="exportingId === response.generation_id" class="export-progress">
-                {{ Math.round(exportProgress * 100) }}%
+                {{ exportStem ? `${exportStem} ` : '' }}{{ Math.round(exportProgress * 100) }}%
               </div>
-              <button
-                v-else
-                class="seed-action"
-                :disabled="isRecording"
-                @click.stop="handleExportAudio(response)"
-                title="Export as audio (WebM/OGG)"
-              >Audio</button>
+              <template v-else>
+                <button
+                  class="seed-action"
+                  :disabled="isRendering || isRecording"
+                  @click.stop="handleOfflineExport(response, 'wav')"
+                  title="Offline render — full mix as WAV (fast)"
+                >WAV ⚡</button>
+                <button
+                  class="seed-action"
+                  :disabled="isRendering || isRecording"
+                  @click.stop="handleOfflineExport(response, 'stems')"
+                  title="Offline render — drums / bass / melodic as separate WAV files (fast)"
+                >Stems ⚡</button>
+              </template>
             </template>
           </div>
           <div v-if="response.progression?.length" class="progression-row">
@@ -174,7 +181,7 @@ const emit = defineEmits<{
   (e: 'toggle-star', genId: string): void
 }>()
 
-const { exportAudio, isRecording } = useMidiPlayer()
+const { isRecording, offlineRender, isRendering } = useMidiPlayer()
 const showArrange = ref(false)
 const arrangeRef = ref<InstanceType<typeof ArrangementBuilder> | null>(null)
 
@@ -342,32 +349,47 @@ function handleUndo(response: GenerateResponse, part: string) {
   emit('part-regenned', response.generation_id, old)
 }
 
-async function handleExportAudio(response: GenerateResponse) {
+const exportStem = ref<string | null>(null)
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+async function handleOfflineExport(response: GenerateResponse, mode: 'wav' | 'stems') {
   const combinedFile = response.files.find(f => f.part === 'combined')
   if (!combinedFile) return
   exportingId.value = response.generation_id
   exportProgress.value = 0
+  exportStem.value = null
+  const label = `${response.style}_${response.generation_id.slice(0, 8)}`
+  const durationSeconds = response.summary.bars * (4 * 60 / response.summary.bpm)
   try {
-    const duration = response.summary.bars * (4 * 60 / response.summary.bpm)
-    const blob = await exportAudio(
-      combinedFile.url,
-      response.style,
-      duration,
-      `${response.style}_${response.generation_id.slice(0, 8)}`,
-      v => { exportProgress.value = v }
-    )
-    const ext = blob.type.includes('ogg') ? 'ogg' : 'webm'
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${response.style}_${response.generation_id.slice(0, 8)}.${ext}`
-    a.click()
-    URL.revokeObjectURL(url)
+    if (mode === 'wav') {
+      const blob = await offlineRender(combinedFile.url, response.style, durationSeconds, 'all', v => { exportProgress.value = v })
+      triggerDownload(blob, `${label}.wav`)
+    } else {
+      const stems = ['drums', 'bass', 'melodic'] as const
+      for (let i = 0; i < stems.length; i++) {
+        const stem = stems[i]
+        exportStem.value = stem
+        exportProgress.value = 0
+        const blob = await offlineRender(combinedFile.url, response.style, durationSeconds, stem, v => {
+          exportProgress.value = (i + v) / stems.length
+        })
+        triggerDownload(blob, `${label}_${stem}.wav`)
+      }
+    }
   } catch (e: any) {
     regenError.value = e.message ?? 'Export failed'
   } finally {
     exportingId.value = null
     exportProgress.value = 0
+    exportStem.value = null
   }
 }
 </script>
