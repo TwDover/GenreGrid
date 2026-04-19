@@ -11,28 +11,28 @@ import HomePage from './pages/HomePage.vue'
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #0f0f13;
+  background: #000000;
   color: #e0e0e8;
   min-height: 100vh;
 }
 
 .app-header {
   padding: 2rem 2rem 1rem;
-  border-bottom: 1px solid #1e1e2e;
+  border-bottom: 1px solid #081822;
 }
 
 .app-header h1 {
   font-size: 2rem;
   font-weight: 700;
   letter-spacing: -0.5px;
-  background: linear-gradient(135deg, #a78bfa, #60a5fa);
+  background: linear-gradient(135deg, #00c8ff, #00ff80);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .subtitle {
   font-size: 0.85rem;
-  color: #6b6b80;
+  color: #3a5a68;
   margin-top: 0.25rem;
 }
 
@@ -48,14 +48,14 @@ body {
 .generate-form { display: flex; flex-direction: column; gap: 1rem; }
 
 .field { display: flex; flex-direction: column; gap: 0.35rem; }
-.field label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: #8888a0; }
-.field .value { color: #a78bfa; margin-left: 0.5rem; }
+.field label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: #4a7080; }
+.field .value { color: #00c8ff; margin-left: 0.5rem; }
 
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 
 select, input[type="number"] {
-  background: #1a1a24;
-  border: 1px solid #2a2a3e;
+  background: #060f14;
+  border: 1px solid #0d2535;
   color: #e0e0e8;
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
@@ -65,7 +65,7 @@ select, input[type="number"] {
 
 input[type="range"] {
   width: 100%;
-  accent-color: #a78bfa;
+  accent-color: #00c8ff;
 }
 
 .part-toggles { display: flex; gap: 0.75rem; flex-wrap: wrap; }
@@ -76,14 +76,14 @@ input[type="range"] {
   font-size: 0.85rem;
   cursor: pointer;
   padding: 0.35rem 0.75rem;
-  border: 1px solid #2a2a3e;
+  border: 1px solid #0d2535;
   border-radius: 20px;
   transition: border-color 0.15s;
 }
-.toggle:has(input:checked) { border-color: #a78bfa; color: #a78bfa; }
+.toggle:has(input:checked) { border-color: #00c8ff; color: #00c8ff; }
 
 .generate-btn {
-  background: linear-gradient(135deg, #7c3aed, #2563eb);
+  background: linear-gradient(135deg, #0080cc, #00aa55);
   color: white;
   border: none;
   padding: 0.75rem 1.5rem;
@@ -106,11 +106,11 @@ input[type="range"] {
   display: flex;
   gap: 1.25rem;
   font-size: 0.85rem;
-  color: #8888a0;
+  color: #4a7080;
   padding: 0.75rem 1rem;
-  background: #1a1a24;
+  background: #060f14;
   border-radius: 8px;
-  border: 1px solid #2a2a3e;
+  border: 1px solid #0d2535;
 }
 
 .gen-id { margin-left: auto; font-family: monospace; }
@@ -118,8 +118,8 @@ input[type="range"] {
 .part-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.75rem; }
 
 .part-card {
-  background: #1a1a24;
-  border: 1px solid #2a2a3e;
+  background: #060f14;
+  border: 1px solid #0d2535;
   border-radius: 10px;
   padding: 1rem;
   display: flex;
@@ -129,21 +129,21 @@ input[type="range"] {
 
 .part-header { display: flex; flex-direction: column; gap: 0.2rem; }
 .part-name { font-weight: 600; text-transform: capitalize; }
-.part-file { font-size: 0.75rem; color: #6b6b80; font-family: monospace; }
+.part-file { font-size: 0.75rem; color: #3a5a68; font-family: monospace; }
 
 .download-btn {
   display: block;
   text-align: center;
   padding: 0.45rem;
-  background: #2a2a3e;
-  color: #a78bfa;
+  background: #0d2535;
+  color: #00c8ff;
   border-radius: 6px;
   text-decoration: none;
   font-size: 0.82rem;
   font-weight: 500;
   transition: background 0.15s;
 }
-.download-btn:hover { background: #3a3a54; }
+.download-btn:hover { background: #122f40; }
 
 @media (max-width: 700px) {
   .app-main {

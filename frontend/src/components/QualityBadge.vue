@@ -68,7 +68,7 @@ function pct(v: number): number {
 
 function barColor(v: number): string {
   if (v >= 0.82) return '#34d399'   // green
-  if (v >= 0.68) return '#60a5fa'   // blue
+  if (v >= 0.68) return '#00c8ff'   // cyan
   if (v >= 0.52) return '#fbbf24'   // amber
   return '#f87171'                   // red
 }
@@ -77,9 +77,9 @@ function barColor(v: number): string {
 <style scoped>
 .quality-panel {
   padding: 0.6rem 0.75rem;
-  background: #12121a;
+  background: #040a0e;
   border-radius: 6px;
-  border: 1px solid #2a2a3e;
+  border: 1px solid #0d2535;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -95,7 +95,7 @@ function barColor(v: number): string {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #55556a;
+  color: #2a4550;
 }
 
 .quality-badge {
@@ -107,14 +107,14 @@ function barColor(v: number): string {
 }
 
 .label-excellent { background: #064e3b; color: #34d399; }
-.label-good      { background: #1e3a5f; color: #60a5fa; }
+.label-good      { background: #001e35; color: #00c8ff; }
 .label-fair      { background: #451a03; color: #fbbf24; }
 .label-weak      { background: #3b0f0f; color: #f87171; }
 
 .quality-total {
   font-size: 0.82rem;
   font-family: monospace;
-  color: #a78bfa;
+  color: #00c8ff;
   margin-left: auto;
 }
 
@@ -132,7 +132,7 @@ function barColor(v: number): string {
 
 .dim-name {
   font-size: 0.7rem;
-  color: #8888a0;
+  color: #4a7080;
   width: 52px;
   flex-shrink: 0;
 }
@@ -140,7 +140,7 @@ function barColor(v: number): string {
 .dim-bar-track {
   flex: 1;
   height: 4px;
-  background: #2a2a3e;
+  background: #0d2535;
   border-radius: 2px;
   overflow: hidden;
 }
@@ -154,7 +154,7 @@ function barColor(v: number): string {
 .dim-value {
   font-size: 0.68rem;
   font-family: monospace;
-  color: #55556a;
+  color: #2a4550;
   width: 24px;
   text-align: right;
 }
@@ -179,7 +179,7 @@ function barColor(v: number): string {
 .flag-tip {
   display: block;
   font-size: 0.65rem;
-  color: #55556a;
+  color: #2a4550;
   margin-top: 0.1rem;
   font-style: italic;
 }

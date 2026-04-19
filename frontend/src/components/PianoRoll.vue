@@ -40,11 +40,11 @@ function draw(playheadTime = 0) {
   const pitchRange = maxP - minP || 1
 
   // Background
-  ctx.fillStyle = '#0d0d16'
+  ctx.fillStyle = '#020608'
   ctx.fillRect(0, 0, w, h)
 
   // Subtle horizontal pitch lines
-  ctx.strokeStyle = '#1a1a2e'
+  ctx.strokeStyle = '#051015'
   ctx.lineWidth = 1
   for (let p = minP; p <= maxP; p++) {
     const y = h - ((p - minP) / pitchRange) * h
@@ -67,7 +67,7 @@ function draw(playheadTime = 0) {
       ctx.fillRect(x, h - 6, Math.max(2, noteW * 0.3), 6)
     } else {
       const y = h - ((note.midi - minP + 1) / pitchRange) * h
-      ctx.fillStyle = `rgba(167, 139, 250, ${alpha})`
+      ctx.fillStyle = `rgba(0, 200, 255, ${alpha})`
       ctx.fillRect(x, y, noteW, noteH)
     }
   }

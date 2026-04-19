@@ -89,7 +89,7 @@ async function createWindow(): Promise<void> {
     height: 900,
     minWidth: 900,
     minHeight: 600,
-    backgroundColor: '#1a1a2e',
+    backgroundColor: '#000000',
     title: 'GenreGrid',
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
@@ -147,9 +147,9 @@ function makeDragIcon(): ReturnType<typeof nativeImage.createFromBuffer> {
   const size = 32
   const buf = Buffer.alloc(size * size * 4)
   for (let i = 0; i < size * size; i++) {
-    buf[i * 4 + 0] = 167  // R
-    buf[i * 4 + 1] = 139  // G
-    buf[i * 4 + 2] = 250  // B
+    buf[i * 4 + 0] = 0    // R
+    buf[i * 4 + 1] = 200  // G
+    buf[i * 4 + 2] = 255  // B
     buf[i * 4 + 3] = 255  // A
   }
   return nativeImage.createFromBuffer(buf, { width: size, height: size })
