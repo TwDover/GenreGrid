@@ -1,5 +1,5 @@
 <template>
-  <svg viewBox="0 0 120 120" width="120" height="120" xmlns="http://www.w3.org/2000/svg">
+  <svg viewBox="0 0 120 120" :width="size" :height="size" xmlns="http://www.w3.org/2000/svg">
     <!-- Background web rings -->
     <polygon
       v-for="ring in [0.33, 0.66, 1.0]"
@@ -49,7 +49,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-const props = defineProps<{ style: Record<string, any> }>()
+const props = defineProps<{ style: Record<string, any>; size?: number }>()
+const size = computed(() => props.size ?? 120)
 
 const RADIUS = 45
 const CENTER = 60
