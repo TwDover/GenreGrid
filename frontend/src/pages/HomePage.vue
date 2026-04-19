@@ -218,7 +218,7 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
   width: 90px;
   height: 4px;
   border-radius: 2px;
-  background: #3a3a54;
+  background: #122f40;
   outline: none;
   cursor: pointer;
 }
@@ -229,7 +229,7 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #a78bfa;
+  background: #00c8ff;
   cursor: pointer;
 }
 
@@ -237,7 +237,7 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #a78bfa;
+  background: #00c8ff;
   cursor: pointer;
   border: none;
 }
@@ -251,17 +251,17 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
 .retry-btn {
   font-size: 0.75rem;
   padding: 0.2rem 0.6rem;
-  background: #2a2a3e;
-  border: 1px solid #3a3a54;
+  background: #0d2535;
+  border: 1px solid #122f40;
   border-radius: 4px;
-  color: #8888a0;
+  color: #4a7080;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
   white-space: nowrap;
 }
 
 .retry-btn:hover {
-  background: #3a3a54;
+  background: #122f40;
   color: #e0e0e8;
 }
 
@@ -274,19 +274,19 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
 .panel-tab {
   font-size: 0.78rem;
   padding: 0.3rem 0.9rem;
-  background: #1a1a24;
-  border: 1px solid #2a2a3e;
+  background: #060f14;
+  border: 1px solid #0d2535;
   border-radius: 6px;
-  color: #8888a0;
+  color: #4a7080;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
-.panel-tab:hover { background: #22223a; color: #e0e0e8; }
+.panel-tab:hover { background: #081620; color: #e0e0e8; }
 
 .panel-tab.active {
-  background: #2a1a4e;
-  border-color: #a78bfa;
-  color: #c4b5fd;
+  background: #001e35;
+  border-color: #00c8ff;
+  color: #7ae8ff;
 }
 </style>

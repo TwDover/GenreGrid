@@ -180,13 +180,13 @@ async function handleRegen(response: GenerateResponse, part: string) {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #8888a0;
+  color: #4a7080;
 }
 
 .history-count {
   font-size: 0.7rem;
-  background: #2a2a3e;
-  color: #8888a0;
+  background: #0d2535;
+  color: #4a7080;
   border-radius: 10px;
   padding: 0.1rem 0.5rem;
 }
@@ -198,15 +198,15 @@ async function handleRegen(response: GenerateResponse, part: string) {
 }
 
 .history-entry {
-  background: #1a1a24;
-  border: 1px solid #2a2a3e;
+  background: #060f14;
+  border: 1px solid #0d2535;
   border-radius: 10px;
   overflow: hidden;
   transition: border-color 0.15s;
 }
 
 .history-entry.expanded {
-  border-color: #a78bfa;
+  border-color: #00c8ff;
 }
 
 .history-row {
@@ -222,7 +222,7 @@ async function handleRegen(response: GenerateResponse, part: string) {
   text-align: left;
 }
 
-.history-row:hover { background: #22223a; }
+.history-row:hover { background: #081620; }
 
 .entry-style {
   font-weight: 600;
@@ -232,7 +232,7 @@ async function handleRegen(response: GenerateResponse, part: string) {
 
 .entry-meta {
   font-size: 0.8rem;
-  color: #8888a0;
+  color: #4a7080;
   flex: 1;
   display: flex;
   align-items: center;
@@ -243,9 +243,9 @@ async function handleRegen(response: GenerateResponse, part: string) {
 .entry-section {
   font-size: 0.65rem;
   font-weight: 600;
-  color: #a78bfa;
-  background: #1e1430;
-  border: 1px solid #a78bfa44;
+  color: #00c8ff;
+  background: #001520;
+  border: 1px solid #00c8ff44;
   border-radius: 3px;
   padding: 0.05rem 0.4rem;
   white-space: nowrap;
@@ -254,12 +254,12 @@ async function handleRegen(response: GenerateResponse, part: string) {
 .entry-id {
   font-size: 0.72rem;
   font-family: monospace;
-  color: #55556a;
+  color: #2a4550;
 }
 
 .entry-chevron {
   font-size: 0.65rem;
-  color: #55556a;
+  color: #2a4550;
 }
 
 .entry-body {
@@ -274,44 +274,44 @@ async function handleRegen(response: GenerateResponse, part: string) {
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
-  background: #12121a;
+  background: #040a0e;
   border-radius: 6px;
-  border: 1px solid #2a2a3e;
+  border: 1px solid #0d2535;
 }
 
 .seed-label {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #55556a;
+  color: #2a4550;
 }
 
 .seed-value {
   font-family: monospace;
   font-size: 0.82rem;
-  color: #a78bfa;
+  color: #00c8ff;
   flex: 1;
 }
 
 .seed-action {
   font-size: 0.75rem;
   padding: 0.2rem 0.6rem;
-  background: #2a2a3e;
-  border: 1px solid #3a3a54;
+  background: #0d2535;
+  border: 1px solid #122f40;
   border-radius: 4px;
-  color: #8888a0;
+  color: #4a7080;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
 
-.seed-action:hover { background: #3a3a54; color: #e0e0e8; }
+.seed-action:hover { background: #122f40; color: #e0e0e8; }
 
 .seed-action.replay {
-  color: #a78bfa;
-  border-color: #a78bfa44;
+  color: #00c8ff;
+  border-color: #00c8ff44;
 }
 
-.seed-action.replay:hover { background: #3b1f6e; color: #c4b5fd; }
+.seed-action.replay:hover { background: #003450; color: #7ae8ff; }
 
 .seed-action.save {
   color: #34d399;
@@ -321,8 +321,8 @@ async function handleRegen(response: GenerateResponse, part: string) {
 .seed-action.save:hover:not(:disabled) { background: #064e3b; color: #6ee7b7; }
 
 .seed-action.save.saved {
-  color: #55556a;
-  border-color: #2a2a3e;
+  color: #2a4550;
+  border-color: #0d2535;
   cursor: default;
 }
 
@@ -347,23 +347,23 @@ async function handleRegen(response: GenerateResponse, part: string) {
   align-items: center;
   gap: 0.5rem;
   padding: 0.4rem 0.75rem;
-  background: #12121a;
+  background: #040a0e;
   border-radius: 6px;
-  border: 1px solid #2a2a3e;
+  border: 1px solid #0d2535;
 }
 
 .prog-label {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #55556a;
+  color: #2a4550;
   flex-shrink: 0;
 }
 
 .prog-chords {
   font-family: monospace;
   font-size: 0.82rem;
-  color: #c4b5fd;
+  color: #7ae8ff;
   letter-spacing: 0.03em;
 }
 </style>
