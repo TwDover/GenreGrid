@@ -403,8 +403,12 @@ def generate_melody(
             active_range = note_range_hi if use_hi_register else note_range
             pitch = max(active_range[0], min(active_range[1], pitch))
 
-        # Sparse styles mix short and medium notes; dense styles favor quick notes
-        if density < 0.45:
+        # Chord tones landing on chord downbeats get longer values — structural arrivals ring out
+        _chord_pcs = {p % 12 for p in roman_to_chord(current_roman, key, mel_scale, octave=4)}
+        _is_structural = is_chord_downbeat and (pitch % 12) in _chord_pcs
+        if _is_structural:
+            dur_steps = random.choices([1, 2, 3, 4], weights=[0.15, 0.38, 0.32, 0.15])[0]
+        elif density < 0.45:
             dur_steps = random.choices([1, 2, 3, 4], weights=[0.35, 0.38, 0.18, 0.09])[0]
         else:
             dur_steps = random.choices([1, 2, 3, 4], weights=[0.48, 0.35, 0.13, 0.04])[0]

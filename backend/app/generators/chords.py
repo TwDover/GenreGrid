@@ -78,6 +78,24 @@ def _drop_2(pitches: list[int]) -> list[int]:
     return sorted(s)
 
 
+def _voice_vel_offset(note_idx: int, n_notes: int) -> int:
+    """Velocity offset per voice for natural piano/keyboard balance.
+
+    Bass note anchors, inner voices recede significantly, soprano note stays
+    present. This mimics how a pianist voices a chord: the two outer voices
+    carry the harmony while inner voices provide harmonic color without cluttering
+    the texture. Replacing the old linear strum taper (which made inner voices
+    nearly as loud as the bass) with this model keeps the mix clear.
+    """
+    if n_notes <= 1:
+        return 0
+    if note_idx == 0:
+        return 8     # bass note: grounded foundation
+    if note_idx == n_notes - 1:
+        return 2     # soprano note: present but supportive
+    return -6        # inner voices: recede to clear space for melody
+
+
 def _apply_substitution(roman: str, scale: str, complexity: float, secondary_dominants: bool = False, tritone_sub: bool = False) -> str:
     """Probabilistic harmonic color substitutions at higher complexity."""
     if complexity < 0.4 or not should_trigger(0.25):
@@ -131,6 +149,7 @@ def generate_chords(
     progression: list | None = None,
     resolved_progression: list | None = None,
     melody_ceiling: int | None = None,
+    kick_times: list[float] | None = None,
 ) -> List[NoteEvent]:
     events: List[NoteEvent] = []
     if progression is None:
@@ -317,12 +336,14 @@ def generate_chords(
                 ta_pitches = _clamp_register(ta_pitches, low=ch_low, high=ch_high)
                 prev_pitches = sorted(ta_pitches)
                 ta_vel = vel - random.randint(2, 8)
-                for note_idx, pitch in enumerate(sorted(ta_pitches)):
+                ta_sorted = sorted(ta_pitches)
+                n_ta = len(ta_sorted)
+                for note_idx, pitch in enumerate(ta_sorted):
                     events.append(NoteEvent(
                         pitch=min(127, max(0, pitch)),
                         start=max(0.0, _swing(ta_start) + timing_jitter(0.012) + note_idx * strum_speed),
                         duration=min(ta_dur * 0.75, 1.5),
-                        velocity=max(1, min(127, ta_vel)),
+                        velocity=max(1, min(127, ta_vel + _voice_vel_offset(note_idx, n_ta))),
                         channel=0,
                     ))
         else:
@@ -355,14 +376,14 @@ def generate_chords(
                         if staccato_factor < 1.0:
                             duration = max(step * 0.5, duration * staccato_factor)
 
-                    hit_start = _swing(start_beat + s * step) + timing_jitter(style_jitter(style))
-                    hit_vel = vel - random.randint(0, 10)
+                    beat_of_hit = start_beat + s * step
+                    kick_boost = 8 if kick_times and any(abs(k - beat_of_hit) < 0.12 for k in kick_times) else 0
+                    hit_start = _swing(beat_of_hit) + timing_jitter(style_jitter(style))
+                    hit_vel = vel + kick_boost - random.randint(0, 10)
                     sorted_pitches_hit = sorted(pitches)
                     n_hit = len(sorted_pitches_hit)
                     for note_idx, pitch in enumerate(sorted_pitches_hit):
-                        # Lower notes slightly louder, upper notes softer — natural strum taper
-                        strum_vel_offset = int((n_hit - 1 - note_idx) * 5)
-                        # Strum timing: each note arrives slightly after the previous (simulates strum)
+                        strum_vel_offset = _voice_vel_offset(note_idx, n_hit)
                         strum_time = note_idx * strum_speed
                         events.append(NoteEvent(
                             pitch=min(127, max(0, pitch)),
@@ -379,7 +400,7 @@ def generate_chords(
                 sorted_pitches = sorted(pitches)
                 n = len(sorted_pitches)
                 for note_idx, pitch in enumerate(sorted_pitches):
-                    strum_vel_off = int((n - 1 - note_idx) * 5)
+                    strum_vel_off = _voice_vel_offset(note_idx, n)
                     strum_time = note_idx * 0.010
                     events.append(NoteEvent(
                         pitch=min(127, max(0, pitch)),

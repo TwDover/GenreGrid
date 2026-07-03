@@ -1,101 +1,102 @@
 {
-  "id": "bossa_nova",
-  "name": "Bossa Nova",
-  "bpm_range": [
-    75,
-    110
-  ],
-  "default_scale": "major",
-  "preferred_keys": [
-    "C",
-    "F",
-    "G",
-    "D",
-    "A",
-    "Eb"
-  ],
-  "progression_templates": [
-    [
-      "I",
-      "vi",
-      "ii",
-      "V"
+    "id": "bossa_nova",
+    "name": "Bossa Nova",
+    "bpm_range": [
+        75,
+        110
     ],
-    [
-      "ii",
-      "V",
-      "I",
-      "IV"
+    "default_scale": "major",
+    "preferred_keys": [
+        "C",
+        "F",
+        "G",
+        "D",
+        "A",
+        "Eb"
     ],
-    [
-      "I",
-      "IV",
-      "iii",
-      "vi"
-    ]
-  ],
-  "chord_extensions": {
-    "allow_7th": 1.0,
-    "allow_9th": 0.8
-  },
-  "blue_notes": true,
-  "grace_notes": true,
-  "secondary_dominants": true,
-  "tritone_substitution": true,
-  "syncopation_prob": 0.18,
-  "strum_speed": 0.016,
-  "comp_style": "bossa_comp",
-  "chord_rhythm": [
-    1,
-    0,
-    0,
-    0,
-    0,
-    1,
-    0,
-    0,
-    0,
-    0,
-    1,
-    0,
-    0,
-    0,
-    1,
-    0
-  ],
-  "open_voicing_prob": 0.35,
-  "turnaround_prob": 0.35,
-  "drop_2_prob": 0.3,
-  "passing_chord_prob": 0.12,
-  "bass": {
-    "bass_style": "walking",
-    "pattern_density": 0.9,
-    "octave_jumps": 0.1,
-    "sustain_bias": 0.4
-  },
-  "melody": {
-    "density": 0.55,
-    "stepwise_motion": 0.7,
-    "leap_probability": 0.15,
-    "rest_probability": 0.3,
-    "range": [
-      60,
-      80
-    ]
-  },
-  "drums": {
-    "hat_density": 0.5,
-    "triplet_probability": 0.4,
-    "snare_standard_beats": [
-      2,
-      4
+    "progression_templates": [
+        [
+            "I",
+            "vi",
+            "ii",
+            "V"
+        ],
+        [
+            "ii",
+            "V",
+            "I",
+            "IV"
+        ],
+        [
+            "I",
+            "IV",
+            "iii",
+            "vi"
+        ]
     ],
-    "swing": 0.45,
-    "use_ride": true,
-    "perc_layers": [
-      "shaker",
-      "tambourine"
-    ]
-  },
-  "groove_push": -0.006
+    "chord_extensions": {
+        "allow_7th": 1.0,
+        "allow_9th": 0.8
+    },
+    "blue_notes": true,
+    "grace_notes": true,
+    "secondary_dominants": true,
+    "tritone_substitution": true,
+    "syncopation_prob": 0.18,
+    "strum_speed": 0.016,
+    "comp_style": "bossa_comp",
+    "chord_rhythm": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0
+    ],
+    "open_voicing_prob": 0.35,
+    "turnaround_prob": 0.35,
+    "drop_2_prob": 0.3,
+    "passing_chord_prob": 0.12,
+    "bass": {
+        "bass_style": "walking",
+        "pattern_density": 0.9,
+        "octave_jumps": 0.1,
+        "sustain_bias": 0.4
+    },
+    "melody": {
+        "density": 0.55,
+        "stepwise_motion": 0.7,
+        "leap_probability": 0.15,
+        "rest_probability": 0.3,
+        "range": [
+            60,
+            80
+        ]
+    },
+    "drums": {
+        "hat_density": 0.5,
+        "triplet_probability": 0.4,
+        "snare_standard_beats": [
+            2,
+            4
+        ],
+        "swing": 0.45,
+        "use_ride": true,
+        "perc_layers": [
+            "shaker",
+            "tambourine"
+        ],
+        "flam_prob": 0.1
+    },
+    "groove_push": -0.006
 }

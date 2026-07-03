@@ -26,6 +26,12 @@
     "rest_probability": 0.3,
     "range": [60, 80]
   },
+  "arpeggio": {
+    "pattern": "up",
+    "speed": 0.25,
+    "include_octave": true,
+    "allow_7th": false
+  },
   "chord_rhythm": [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
   "drums": {
     "kick_pattern": [1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,0],

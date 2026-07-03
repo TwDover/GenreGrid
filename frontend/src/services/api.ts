@@ -1,4 +1,4 @@
-import type { StyleInfo, GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, LibraryEntry, BatchGenerateRequest } from '../types/midi'
+import type { StyleInfo, GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, LibraryEntry, BatchGenerateRequest, BuildSongRequest, BuildSongResponse } from '../types/midi'
 
 const BASE_URL = (() => {
   if (typeof window !== 'undefined' && (window as any).electronAPI?.apiPort) {
@@ -138,6 +138,19 @@ export async function arrangeDownload(entries: { generation_id: string; filename
     throw new Error(err.detail ?? 'Failed to build arrangement')
   }
   return res.blob()
+}
+
+export async function buildSong(req: BuildSongRequest): Promise<BuildSongResponse> {
+  const res = await fetch(`${BASE_URL}/build-song`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Song generation failed')
+  }
+  return res.json()
 }
 
 export async function saveCustomStyle(style: Record<string, any>): Promise<Record<string, any>> {

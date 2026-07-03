@@ -5,7 +5,7 @@ from app.services.midi_writer import NoteEvent
 from app.theory.chords import roman_to_chord
 from app.theory.scales import build_scale
 from app.services.variation import should_trigger
-from app.services.humanize import micro_jitter
+from app.services.humanize import micro_jitter, phrase_breath_factor, timing_jitter, style_jitter
 from app.theory.rhythm import apply_swing
 
 
@@ -78,9 +78,11 @@ def _generate_walking_bass(
         if bar % 2 == 0:
             pair_direction = random.choice([-1, 1])
 
+        phrase_dyn = phrase_breath_factor(bar)
+
         # Beat 1: root — anchor
         kb = 8 if _on_kick(bar_start, kick_times) else 0
-        vel = min(127, 100 + kb + random.randint(-5, 5))
+        vel = min(127, int((100 + kb) * phrase_dyn) + random.randint(-5, 5))
         events.append(NoteEvent(pitch=root, start=_swing(_snap_to_kick(bar_start, kick_times)), duration=0.88, velocity=vel, channel=1))
 
         # Beat 2: 3rd or 5th
@@ -96,7 +98,7 @@ def _generate_walking_bass(
             # Descending arc: start mid-high (5th) so there's room to fall
             p2 = fifth if should_trigger(0.62) else third
         events.append(NoteEvent(pitch=p2, start=_swing(beat2), duration=0.88,
-                                velocity=min(127, 86 + kb2 + random.randint(-8, 8)), channel=1))
+                                velocity=min(127, int((86 + kb2) * phrase_dyn) + random.randint(-8, 8)), channel=1))
 
         # Beat 3: 5th or scalar passing note
         beat3 = bar_start + 2.0
@@ -116,7 +118,7 @@ def _generate_walking_bass(
             p3 = min(p2, third) if should_trigger(0.55) else third
             p3 = max(28, min(52, p3))
         events.append(NoteEvent(pitch=p3, start=_swing(beat3), duration=0.88,
-                                velocity=min(127, 84 + kb3 + random.randint(-8, 8)), channel=1))
+                                velocity=min(127, int((84 + kb3) * phrase_dyn) + random.randint(-8, 8)), channel=1))
 
         # Beat 4: chromatic or scale-step approach to next bar root
         beat4 = bar_start + 3.0
@@ -136,9 +138,10 @@ def _generate_walking_bass(
             approach = (next_root - 2) if nr2_down_ok else (next_root + 2)
         approach = max(28, min(52, approach))
         events.append(NoteEvent(pitch=approach, start=_swing(beat4), duration=0.88,
-                                velocity=min(127, 88 + kb4 + random.randint(-8, 8)), channel=1))
+                                velocity=min(127, int((88 + kb4) * phrase_dyn) + random.randint(-8, 8)), channel=1))
 
-    return [NoteEvent(e.pitch, max(0.0, e.start + micro_jitter()), e.duration, e.velocity, e.channel) for e in events]
+    bass_jitter = style_jitter(style) * 0.55
+    return [NoteEvent(e.pitch, max(0.0, e.start + timing_jitter(bass_jitter)), e.duration, e.velocity, e.channel) for e in events]
 
 
 # Each pattern is a list of (beat_offset, velocity_scale) tuples.
@@ -196,6 +199,8 @@ def _generate_808_bass(
             elif len(bar_pattern) == 1 and should_trigger(0.25):
                 bar_pattern = bar_pattern + [(2.0, 0.84)]  # add simple mid-bar hit
 
+        phrase_dyn = phrase_breath_factor(bar)
+
         for i, (beat_offset, vel_scale) in enumerate(bar_pattern):
             t = _snap_to_kick(bar_start + beat_offset, kick_times)
             # Duration fills to next hit (or bar end) with a small gap
@@ -208,7 +213,7 @@ def _generate_808_bass(
 
             kick_boost = 8 if _on_kick(t, kick_times) else 0
             base_vel = 108 if i == 0 else 94
-            vel = min(127, int(base_vel * vel_scale) + kick_boost + random.randint(-6, 6))
+            vel = min(127, int(base_vel * vel_scale * phrase_dyn) + kick_boost + random.randint(-6, 6))
             events.append(NoteEvent(pitch=root, start=t, duration=duration, velocity=vel, channel=1))
 
     return [NoteEvent(e.pitch, max(0.0, e.start + micro_jitter()), e.duration, e.velocity, e.channel) for e in events]
@@ -278,8 +283,8 @@ def generate_bass(
 
         next_root = max(24, min(48, next_pitches[0]))
         chord_start = chord_idx * beats_per_chord
-        # two-bar pattern variation: second bar of each 2-bar phrase
-        bar_in_pair = int(chord_start / beats_per_bar) % 2
+        bar_num = int(chord_start / beats_per_bar)
+        phrase_dyn = phrase_breath_factor(bar_num)
 
         for step in range(subdivisions):
             beat = chord_start + step * step_size
@@ -293,7 +298,7 @@ def generate_bass(
                 dur = min(dur, beats_per_chord * 0.9)
                 events.append(NoteEvent(
                     pitch=root, start=_swing(_snap_to_kick(beat, kick_times)), duration=dur * 0.9,
-                    velocity=min(127, 92 + kick_boost + random.randint(-4, 4)), channel=1,
+                    velocity=min(127, int((92 + kick_boost) * phrase_dyn) + random.randint(-4, 4)), channel=1,
                 ))
 
             elif steps_to_next == 0 and should_trigger(0.7):
@@ -301,14 +306,14 @@ def generate_bass(
                 pitch = next_root if should_trigger(0.5) else _approach(root, next_root, 1)
                 events.append(NoteEvent(
                     pitch=pitch, start=_swing(beat), duration=step_size * 0.8,
-                    velocity=min(127, 76 + kick_boost + random.randint(-6, 6)), channel=1,
+                    velocity=min(127, int((76 + kick_boost) * phrase_dyn) + random.randint(-6, 6)), channel=1,
                 ))
 
             elif steps_to_next == 1 and complexity > 0.5 and should_trigger(0.5):
                 pitch = _approach(root, next_root, 2)
                 events.append(NoteEvent(
                     pitch=pitch, start=_swing(beat), duration=step_size * 0.8,
-                    velocity=min(127, 70 + kick_boost + random.randint(-6, 6)), channel=1,
+                    velocity=min(127, int((70 + kick_boost) * phrase_dyn) + random.randint(-6, 6)), channel=1,
                 ))
 
             elif step == subdivisions // 2 and should_trigger(density):
@@ -318,14 +323,14 @@ def generate_bass(
                 dur = min(dur, beats_per_chord * 0.5)
                 events.append(NoteEvent(
                     pitch=pitch, start=_swing(beat), duration=dur * 0.9,
-                    velocity=min(127, 80 + kick_boost + random.randint(-8, 8)), channel=1,
+                    velocity=min(127, int((80 + kick_boost) * phrase_dyn) + random.randint(-8, 8)), channel=1,
                 ))
 
             elif step in (subdivisions // 4, subdivisions * 3 // 4) and complexity > 0.5 and should_trigger(density * 0.65):
                 pitch = random.choice([root, fifth, third])
                 events.append(NoteEvent(
                     pitch=pitch, start=_swing(beat), duration=step_size * 0.85,
-                    velocity=min(127, 74 + kick_boost + random.randint(-8, 8)), channel=1,
+                    velocity=min(127, int((74 + kick_boost) * phrase_dyn) + random.randint(-8, 8)), channel=1,
                 ))
 
             elif step not in (0, subdivisions // 2) and should_trigger(density * (0.4 + complexity * 0.3)):
@@ -334,7 +339,7 @@ def generate_bass(
                 pitch = fifth if should_trigger(0.3) else root
                 events.append(NoteEvent(
                     pitch=pitch, start=_swing(beat), duration=step_size * 0.75,
-                    velocity=min(127, 66 + kick_boost + random.randint(-8, 8)), channel=1,
+                    velocity=min(127, int((66 + kick_boost) * phrase_dyn) + random.randint(-8, 8)), channel=1,
                 ))
 
     # ── Call-response fills during melody rests ───────────────────────────────
@@ -369,4 +374,5 @@ def generate_bass(
                     ))
         events.extend(fill_events)
 
-    return [NoteEvent(e.pitch, max(0.0, e.start + micro_jitter()), e.duration, e.velocity, e.channel) for e in events]
+    bass_jitter = style_jitter(style) * 0.55
+    return [NoteEvent(e.pitch, max(0.0, e.start + timing_jitter(bass_jitter)), e.duration, e.velocity, e.channel) for e in events]

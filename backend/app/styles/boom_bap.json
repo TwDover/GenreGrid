@@ -1,119 +1,137 @@
 {
-  "id": "boom_bap",
-  "name": "Boom Bap",
-  "bpm_range": [
-    85,
-    100
-  ],
-  "default_scale": "minor",
-  "preferred_keys": [
-    "C",
-    "D",
-    "F",
-    "G",
-    "A"
-  ],
-  "progression_templates": [
-    [
-      "i",
-      "iv",
-      "v",
-      "i"
+    "id": "boom_bap",
+    "name": "Boom Bap",
+    "bpm_range": [
+        85,
+        100
     ],
-    [
-      "i",
-      "VI",
-      "VII",
-      "i"
+    "default_scale": "minor",
+    "preferred_keys": [
+        "C",
+        "D",
+        "F",
+        "G",
+        "A"
     ],
-    [
-      "i",
-      "III",
-      "VII",
-      "VI"
+    "progression_templates": [
+        [
+            "i",
+            "iv",
+            "v",
+            "i"
+        ],
+        [
+            "i",
+            "VI",
+            "VII",
+            "i"
+        ],
+        [
+            "i",
+            "III",
+            "VII",
+            "VI"
+        ],
+        [
+            "i",
+            "bVII",
+            "bVI",
+            "bVII"
+        ],
+        [
+            "i",
+            "bIII",
+            "bVII",
+            "iv"
+        ],
+        [
+            "i",
+            "v",
+            "bVI",
+            "bVII"
+        ],
+        [
+            "i",
+            "bVI",
+            "bIII",
+            "iv"
+        ],
+        [
+            "i",
+            "iv",
+            "bVII",
+            "i"
+        ]
     ],
-    [
-      "i",
-      "bVII",
-      "bVI",
-      "bVII"
+    "chord_extensions": {
+        "allow_7th": 0.65,
+        "allow_9th": 0.3
+    },
+    "melody_scale": "pentatonic_minor",
+    "blue_notes": true,
+    "chord_rhythm": [
+        1,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0
     ],
-    [
-      "i",
-      "bIII",
-      "bVII",
-      "iv"
-    ],
-    [
-      "i",
-      "v",
-      "bVI",
-      "bVII"
-    ],
-    [
-      "i",
-      "bVI",
-      "bIII",
-      "iv"
-    ],
-    [
-      "i",
-      "iv",
-      "bVII",
-      "i"
-    ]
-  ],
-  "chord_extensions": {
-    "allow_7th": 0.65,
-    "allow_9th": 0.3
-  },
-  "melody_scale": "pentatonic_minor",
-  "blue_notes": true,
-  "chord_rhythm": [1,0,0,1,0,0,0,0,1,0,0,1,0,0,0,0],
-  "bass": {
-    "pattern_density": 0.55,
-    "octave_jumps": 0.15,
-    "sustain_bias": 0.5
-  },
-  "melody": {
-    "density": 0.52,
-    "stepwise_motion": 0.62,
-    "leap_probability": 0.18,
-    "rest_probability": 0.3,
-    "range": [
-      62,
-      81
-    ]
-  },
-  "drums": {
-    "kick_pattern": [
-      1,
-      0,
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0
-    ],
-    "hat_density": 0.52,
-    "triplet_probability": 0.5,
-    "snare_standard_beats": [
-      2,
-      4
-    ],
-    "snare_upbeat_prob": 0.18,
-    "swing": 0.45,
-    "tom_fills": true,
-    "ghost_note_prob": 0.58
-  },
-  "groove_push": -0.009
+    "bass": {
+        "pattern_density": 0.55,
+        "octave_jumps": 0.15,
+        "sustain_bias": 0.5
+    },
+    "melody": {
+        "density": 0.52,
+        "stepwise_motion": 0.62,
+        "leap_probability": 0.18,
+        "rest_probability": 0.3,
+        "range": [
+            62,
+            81
+        ]
+    },
+    "drums": {
+        "kick_pattern": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        ],
+        "hat_density": 0.52,
+        "triplet_probability": 0.5,
+        "snare_standard_beats": [
+            2,
+            4
+        ],
+        "snare_upbeat_prob": 0.18,
+        "swing": 0.45,
+        "tom_fills": true,
+        "ghost_note_prob": 0.58,
+        "flam_prob": 0.15
+    },
+    "groove_push": -0.009
 }

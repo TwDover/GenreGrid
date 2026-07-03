@@ -2,29 +2,32 @@ import * as Tone from 'tone'
 import { getMasterCompressor } from './loader'
 
 const STYLE_TO_INSTRUMENT: Record<string, string> = {
-  // Rhodes electric piano — warm, classic
-  lofi:       'electric_piano_1',
-  cloud_rap:  'electric_piano_1',
-  soul:       'electric_piano_1',
-  rnb:        'electric_piano_1',
-  boom_bap:   'electric_piano_1',
-  trap_soul:  'electric_piano_1',
-  afrobeats:  'electric_piano_1',
-  dancehall:  'electric_piano_1',
-  // Vibraphone — classic jazz/latin percussive shimmer
-  jazz:       'vibraphone',
-  latin_jazz: 'vibraphone',
-  // Nylon guitar — the definitive bossa nova voice
-  bossa_nova: 'acoustic_guitar_nylon',
+  // Rhodes electric piano — warm, classic; lo-fi hip-hop IS Rhodes
+  lofi:        'electric_piano_1',
+  soul:        'electric_piano_1',
+  rnb:         'electric_piano_1',
+  boom_bap:    'electric_piano_1',
+  trap_soul:   'electric_piano_1',   // sampler used even though PAD_STYLES handles melodic synth
+  afrobeats:   'electric_piano_1',
+  dancehall:   'electric_piano_1',
+  // Vibraphone — jazz/latin percussive shimmer
+  jazz:        'vibraphone',
+  latin_jazz:  'vibraphone',
+  // Nylon guitar — bossa nova fingerpicked comp; samba cavaquinho proxy
+  bossa_nova:  'acoustic_guitar_nylon',
+  samba:       'acoustic_guitar_nylon',
   // Clavinet — punky funk keyboard (Superstition, Higher Ground)
-  funk:       'clavinet',
-  // Accordion — very characteristic for cumbia
-  cumbia:     'accordion',
-  // Strings — orchestral/cinematic styles
-  ambient:        'string_ensemble_1',
-  dark_ambient:   'string_ensemble_1',
+  funk:        'clavinet',
+  // Accordion — characteristic cumbia sound
+  cumbia:      'accordion',
+  // Drawbar organ — afropop rhythm guitar substitute (closest warm attack available)
+  afropop:     'drawbar_organ',
+  // Strings — orchestral/cinematic pads
   cinematic:      'string_ensemble_1',
   epic_orchestral:'string_ensemble_1',
+  // Warm pad substitute for ambient (strings give the slow-attack pad feel in GM)
+  ambient:     'string_ensemble_1',
+  dark_ambient:'string_ensemble_1',
 }
 
 const MELODIC_SAMPLE_MAP: Record<string, string> = {

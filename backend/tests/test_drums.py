@@ -29,5 +29,8 @@ def test_drums_always_has_kick_on_beat_one():
     events = generate_drums(style, bars=2, complexity=0.0, variation=0.0)
     kick_pitch = 36
     kick_starts = [ev.start for ev in events if ev.pitch == kick_pitch]
-    assert 0.0 in kick_starts
-    assert 4.0 in kick_starts
+    # Per-instrument timing jitter means kicks land within ±0.02 beats of the
+    # quantized position rather than exactly on 0.0 / 4.0.
+    _THRESHOLD = 0.03
+    assert any(abs(s - 0.0) < _THRESHOLD for s in kick_starts), f"No kick near beat 1 in {kick_starts}"
+    assert any(abs(s - 4.0) < _THRESHOLD for s in kick_starts), f"No kick near bar 2 beat 1 in {kick_starts}"

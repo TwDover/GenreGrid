@@ -4,7 +4,10 @@ from typing import List
 from app.services.midi_writer import NoteEvent
 from app.theory.chords import roman_to_chord
 from app.services.variation import should_trigger
-from app.services.humanize import velocity_arc
+from app.services.humanize import (
+    velocity_arc, timing_jitter, phrase_breath_factor,
+    style_jitter, style_velocity_variation,
+)
 from app.theory.rhythm import apply_swing
 
 
@@ -17,6 +20,7 @@ def generate_arpeggio(
     variation: float,
     progression: list | None = None,
     octave: int = 5,
+    melody_rests: list | None = None,
 ) -> List[NoteEvent]:
     events: List[NoteEvent] = []
     if progression is None:
@@ -34,6 +38,21 @@ def generate_arpeggio(
     prog_len = len(progression)
     ticks_per_beat = 480
 
+    # Pre-compute per-style jitter budget (arp sits between chords and melody in looseness)
+    arp_jitter = style_jitter(style) * 0.75
+
+    def _rest_boost(t: float) -> float:
+        """Return a velocity scale-up when arp lands during a melody rest.
+
+        When melody is silent, arpeggio steps into the foreground to fill the
+        space (call-and-response). When melody is playing, the 68% complexity
+        reduction already thins the arp; keeping boost=1.0 here means it stays
+        in the background without fighting the melody.
+        """
+        if not melody_rests:
+            return 1.0
+        return 1.18 if any(rs <= t < re for rs, re in melody_rests) else 1.0
+
     for chord_idx in range(bars):
         roman = progression[chord_idx % prog_len]
         pitches = sorted(roman_to_chord(roman, key, scale, octave=octave, allow_7th=allow_7th))
@@ -41,9 +60,14 @@ def generate_arpeggio(
         if include_octave:
             pitches = pitches + [pitches[0] + 12]
 
-        if pattern == "up":
+        # 2-bar variation: second bar of each pair may invert the direction for contrast
+        effective_pattern = pattern
+        if chord_idx % 2 == 1 and pattern in ("up", "down") and should_trigger(variation * 0.55):
+            effective_pattern = "down" if pattern == "up" else "up"
+
+        if effective_pattern == "up":
             seq = pitches
-        elif pattern == "down":
+        elif effective_pattern == "down":
             seq = list(reversed(pitches))
         elif pattern == "random":
             seq = random.sample(pitches, len(pitches))
@@ -54,11 +78,16 @@ def generate_arpeggio(
         pos = 0.0
         seq_idx = 0
 
+        # Phrase-level dynamics: 4-bar breath shape + slight bar-2 de-emphasis
+        breath = phrase_breath_factor(chord_idx)
+        pair_dyn = 0.94 if chord_idx % 2 == 1 else 1.0
+        vel_var = style_velocity_variation(style)
+
         if pattern == "chord_burst":
             for j, pitch in enumerate(pitches):
-                t = bar_start + j * 0.125
-                base_vel = velocity_arc(chord_idx, bars, 74)
-                vel = min(127, base_vel + (8 if j == 0 else 0) + random.randint(-4, 4))
+                t = max(0.0, bar_start + j * 0.125 + timing_jitter(arp_jitter * 0.4))
+                base_vel = int(velocity_arc(chord_idx, bars, 74) * breath * pair_dyn * _rest_boost(t))
+                vel = min(127, base_vel + (8 if j == 0 else 0) + random.randint(-vel_var, vel_var))
                 events.append(NoteEvent(
                     pitch=min(127, max(0, pitch)),
                     start=t,
@@ -69,27 +98,29 @@ def generate_arpeggio(
             continue  # skip the regular while loop for this bar
 
         while pos <= beats_per_bar - speed * 0.5:
-            # Occasional rest for variation
-            if seq_idx > 0 and should_trigger(variation * 0.3 + 0.05):
+            # Occasional rest for variation — rests land more often on weak 16th positions
+            beat_in_bar = pos % beats_per_bar
+            is_strong = beat_in_bar < 0.01 or abs(beat_in_bar - 2.0) < 0.01
+            rest_prob = (variation * 0.15 + 0.02) if is_strong else (variation * 0.35 + 0.05)
+            if seq_idx > 0 and should_trigger(rest_prob):
                 pos += speed
                 seq_idx += 1
                 continue
 
             pitch = seq[seq_idx % len(seq)]
             is_root = (seq_idx % len(seq) == 0)
-            beat_in_bar = pos % beats_per_bar
-            is_strong = beat_in_bar < 0.01 or abs(beat_in_bar - 2.0) < 0.01
             is_medium = abs(beat_in_bar - 1.0) < 0.01 or abs(beat_in_bar - 3.0) < 0.01
-            base_vel = velocity_arc(chord_idx, bars, 74)
-            accent = 12 if is_root else (6 if is_strong else (3 if is_medium else 0))
-            vel = min(127, base_vel + accent + random.randint(-6, 6))
-
             t_tick = int((bar_start + pos) * ticks_per_beat)
             t_tick = apply_swing(t_tick, swing_amount, ticks_per_beat)
+            t_start = max(0.0, t_tick / ticks_per_beat + timing_jitter(arp_jitter))
+
+            base_vel = int(velocity_arc(chord_idx, bars, 74) * breath * pair_dyn * _rest_boost(t_start))
+            accent = 12 if is_root else (6 if is_strong else (3 if is_medium else 0))
+            vel = min(127, base_vel + accent + random.randint(-vel_var, vel_var))
 
             events.append(NoteEvent(
                 pitch=min(127, max(0, pitch)),
-                start=t_tick / ticks_per_beat,
+                start=t_start,
                 duration=speed * 0.8,
                 velocity=vel,
                 channel=3,

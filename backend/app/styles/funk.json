@@ -1,155 +1,156 @@
 {
-  "id": "funk",
-  "name": "Funk",
-  "bpm_range": [
-    90,
-    115
-  ],
-  "default_scale": "major",
-  "preferred_keys": [
-    "C",
-    "D",
-    "E",
-    "F",
-    "G",
-    "A"
-  ],
-  "progression_templates": [
-    [
-      "I",
-      "IV",
-      "I",
-      "V"
+    "id": "funk",
+    "name": "Funk",
+    "bpm_range": [
+        90,
+        115
     ],
-    [
-      "I",
-      "I",
-      "IV",
-      "V"
+    "default_scale": "major",
+    "preferred_keys": [
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "A"
     ],
-    [
-      "I",
-      "vi",
-      "ii",
-      "V"
+    "progression_templates": [
+        [
+            "I",
+            "IV",
+            "I",
+            "V"
+        ],
+        [
+            "I",
+            "I",
+            "IV",
+            "V"
+        ],
+        [
+            "I",
+            "vi",
+            "ii",
+            "V"
+        ],
+        [
+            "I",
+            "bVII",
+            "IV",
+            "I"
+        ],
+        [
+            "I",
+            "IV",
+            "bVII",
+            "IV"
+        ],
+        [
+            "I",
+            "bIII",
+            "IV",
+            "I"
+        ],
+        [
+            "i",
+            "iv",
+            "i",
+            "V"
+        ],
+        [
+            "I",
+            "I",
+            "bVII",
+            "IV"
+        ],
+        [
+            "I6",
+            "IV",
+            "I6",
+            "V"
+        ],
+        [
+            "I",
+            "IV6",
+            "I",
+            "V"
+        ]
     ],
-    [
-      "I",
-      "bVII",
-      "IV",
-      "I"
+    "chord_extensions": {
+        "allow_7th": 0.85,
+        "allow_9th": 0.5
+    },
+    "blue_notes": true,
+    "grace_notes": true,
+    "secondary_dominants": true,
+    "syncopation_prob": 0.2,
+    "strum_speed": 0.005,
+    "comp_style": "funk_stab",
+    "passing_chord_prob": 0.12,
+    "bass": {
+        "pattern_density": 0.9,
+        "octave_jumps": 0.3,
+        "sustain_bias": 0.1
+    },
+    "melody": {
+        "density": 0.6,
+        "stepwise_motion": 0.55,
+        "leap_probability": 0.3,
+        "rest_probability": 0.2,
+        "range": [
+            62,
+            82
+        ]
+    },
+    "chord_rhythm": [
+        1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0,
+        1,
+        0
     ],
-    [
-      "I",
-      "IV",
-      "bVII",
-      "IV"
-    ],
-    [
-      "I",
-      "bIII",
-      "IV",
-      "I"
-    ],
-    [
-      "i",
-      "iv",
-      "i",
-      "V"
-    ],
-    [
-      "I",
-      "I",
-      "bVII",
-      "IV"
-    ],
-    [
-      "I6",
-      "IV",
-      "I6",
-      "V"
-    ],
-    [
-      "I",
-      "IV6",
-      "I",
-      "V"
-    ]
-  ],
-  "chord_extensions": {
-    "allow_7th": 0.85,
-    "allow_9th": 0.5
-  },
-  "blue_notes": true,
-  "grace_notes": true,
-  "secondary_dominants": true,
-  "syncopation_prob": 0.2,
-  "strum_speed": 0.005,
-  "comp_style": "funk_stab",
-  "passing_chord_prob": 0.12,
-  "bass": {
-    "pattern_density": 0.9,
-    "octave_jumps": 0.3,
-    "sustain_bias": 0.1
-  },
-  "melody": {
-    "density": 0.6,
-    "stepwise_motion": 0.55,
-    "leap_probability": 0.3,
-    "rest_probability": 0.2,
-    "range": [
-      62,
-      82
-    ]
-  },
-  "chord_rhythm": [
-    1,
-    0,
-    1,
-    0,
-    1,
-    0,
-    0,
-    1,
-    0,
-    1,
-    0,
-    0,
-    1,
-    0,
-    1,
-    0
-  ],
-  "drums": {
-    "kick_pattern": [
-      1,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
-      0,
-      1,
-      0,
-      0,
-      0,
-      0
-    ],
-    "hat_density": 0.85,
-    "triplet_probability": 0.3,
-    "snare_standard_beats": [
-      2,
-      4
-    ],
-    "snare_upbeat_prob": 0.45,
-    "snare_beat3_prob": 0.25,
-    "swing": 0.35,
-    "tom_fills": true,
-    "ghost_note_prob": 0.65
-  },
-  "groove_push": 0.006
+    "drums": {
+        "kick_pattern": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+        ],
+        "hat_density": 0.85,
+        "triplet_probability": 0.3,
+        "snare_standard_beats": [
+            2,
+            4
+        ],
+        "snare_upbeat_prob": 0.45,
+        "snare_beat3_prob": 0.25,
+        "swing": 0.35,
+        "tom_fills": true,
+        "ghost_note_prob": 0.65,
+        "flam_prob": 0.22
+    },
+    "groove_push": 0.006
 }

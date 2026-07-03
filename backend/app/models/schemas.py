@@ -85,3 +85,36 @@ class GenerateResponse(BaseModel):
     quality: Optional[QualityScore] = None
     auto_saved: bool = False
     progression: list[str] = []
+
+
+class BuildSongRequest(BaseModel):
+    style_id: str
+    key: str = "C"
+    scale: str = "minor"
+    bpm: int = Field(default=120, ge=40, le=240)
+    complexity: float = Field(default=0.6, ge=0.0, le=1.0)
+    variation: float = Field(default=0.4, ge=0.0, le=1.0)
+    humanize: float = Field(default=0.5, ge=0.0, le=1.0)
+    parts: List[str] = ["chords", "bass", "melody", "drums"]
+    template: str = "verse_chorus"
+    seed: Optional[int] = None
+
+
+class SongSectionResult(BaseModel):
+    name: str
+    section_type: str
+    bars: int
+    start_bar: int
+    key: str
+
+
+class BuildSongResponse(BaseModel):
+    generation_id: str
+    style: str
+    files: List[FileInfo]
+    seed: int
+    template: str
+    total_bars: int
+    sections: List[SongSectionResult]
+    bpm: int
+    key: str
