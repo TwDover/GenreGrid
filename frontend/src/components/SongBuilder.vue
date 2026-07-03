@@ -282,7 +282,7 @@ async function togglePlay() {
     const blob = await res.blob()
     if (songBlobUrl) URL.revokeObjectURL(songBlobUrl)
     songBlobUrl = URL.createObjectURL(blob)
-    await toggle(songBlobUrl, result.value?.bpm, templateLabel.value)
+    await toggle(songBlobUrl, form.value.style_id, templateLabel.value)
   } catch (e: any) {
     error.value = e.message ?? 'Playback failed'
   }
