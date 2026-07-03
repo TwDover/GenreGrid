@@ -48,9 +48,11 @@
         <div class="panel-tabs">
           <button class="panel-tab" :class="{ active: activePanel === 'history' }" @click="activePanel = 'history'">History</button>
           <button class="panel-tab" :class="{ active: activePanel === 'library' }" @click="activePanel = 'library'">Library</button>
+          <button class="panel-tab panel-tab-song" :class="{ active: activePanel === 'song' }" @click="activePanel = 'song'">Song</button>
         </div>
         <ExportPanel v-if="activePanel === 'history'" :history="history" :loading="loading" :starredIds="starredIds" @replay="handleReplay" @part-regenned="handlePartRegenned" @toggle-star="handleToggleStar" />
-        <LibraryPanel v-else :styles="styles" @replay="handleLibraryReplay" />
+        <LibraryPanel v-else-if="activePanel === 'library'" :styles="styles" @replay="handleLibraryReplay" />
+        <SongBuilder v-else :styles="styles" />
       </section>
     </main>
 
@@ -78,6 +80,7 @@ import GenerateForm from '../components/GenerateForm.vue'
 import ExportPanel from '../components/ExportPanel.vue'
 import LibraryPanel from '../components/LibraryPanel.vue'
 import NowPlayingBar from '../components/NowPlayingBar.vue'
+import SongBuilder from '../components/SongBuilder.vue'
 import { fetchStyles, generate, batchGenerate } from '../services/api'
 import type { StyleInfo, GenerateRequest, GenerateResponse, FileInfo, LibraryEntry } from '../types/midi'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
@@ -113,7 +116,7 @@ const loadStarred = (): Set<string> => {
 const history = ref<GenerateResponse[]>(loadHistory())
 const starredIds = ref<Set<string>>(loadStarred())
 const replayData = ref<GenerateResponse | null>(null)
-const activePanel = ref<'history' | 'library'>('history')
+const activePanel = ref<'history' | 'library' | 'song'>('history')
 
 watch(history, (val) => {
   localStorage.setItem('genregrid_history', JSON.stringify(val))
@@ -579,6 +582,12 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
 .panel-tab.active {
   background: #001e35;
   border-color: #00c8ff;
+  color: #7ae8ff;
+}
+
+.panel-tab-song.active {
+  border-color: #00c8ff;
+  background: #001e35;
   color: #7ae8ff;
 }
 </style>

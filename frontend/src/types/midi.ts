@@ -84,6 +84,39 @@ export interface BatchGenerateRequest {
   count: number
 }
 
+export interface BuildSongRequest {
+  style_id: string
+  key: string
+  scale: string
+  bpm: number
+  complexity: number
+  variation: number
+  humanize: number
+  parts: string[]
+  template: string
+  seed?: number
+}
+
+export interface SongSectionResult {
+  name: string
+  section_type: string
+  bars: number
+  start_bar: number
+  key: string
+}
+
+export interface BuildSongResponse {
+  generation_id: string
+  style: string
+  files: FileInfo[]
+  seed: number
+  template: string
+  total_bars: number
+  sections: SongSectionResult[]
+  bpm: number
+  key: string
+}
+
 export interface LibraryEntry {
   gen_id: string
   style_id: string
