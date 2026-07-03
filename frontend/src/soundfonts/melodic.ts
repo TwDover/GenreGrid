@@ -1,5 +1,5 @@
 import * as Tone from 'tone'
-import { getMasterCompressor } from './loader'
+import { getMelodicBus } from './loader'
 
 const STYLE_TO_INSTRUMENT: Record<string, string> = {
   // Rhodes electric piano — warm, classic; lo-fi hip-hop IS Rhodes
@@ -52,17 +52,17 @@ const DEFAULT_VOLUME = -6
 // ---------------------------------------------------------------------------
 // Per-instrument effects chains
 // Each returns the node the sampler should connect to; the chain tail connects
-// to the master compressor. Reverb instances are awaited so their IR is ready
+// to the melodic submix bus. Reverb instances are awaited so their IR is ready
 // before playback starts.
 // ---------------------------------------------------------------------------
-async function buildFxChain(inst: string, comp: Tone.Compressor): Promise<Tone.ToneAudioNode> {
+async function buildFxChain(inst: string, out: Tone.ToneAudioNode): Promise<Tone.ToneAudioNode> {
   switch (inst) {
 
     case 'string_ensemble_1': {
       // Long hall reverb — lush orchestral pad sound
       const reverb = new Tone.Reverb({ decay: 2.8, wet: 0.38 })
       await reverb.generate()
-      reverb.connect(comp)
+      reverb.connect(out)
       return reverb
     }
 
@@ -70,7 +70,7 @@ async function buildFxChain(inst: string, comp: Tone.Compressor): Promise<Tone.T
       // Short room reverb + light chorus for shimmer
       const reverb = new Tone.Reverb({ decay: 1.2, wet: 0.28 })
       await reverb.generate()
-      reverb.connect(comp)
+      reverb.connect(out)
       const chorus = new Tone.Chorus({ frequency: 2, depth: 0.25, wet: 0.18 }).connect(reverb)
       chorus.start()
       return chorus
@@ -80,7 +80,7 @@ async function buildFxChain(inst: string, comp: Tone.Compressor): Promise<Tone.T
       // Warm room reverb — adds natural space without washing out the attack
       const reverb = new Tone.Reverb({ decay: 1.5, wet: 0.22 })
       await reverb.generate()
-      reverb.connect(comp)
+      reverb.connect(out)
       return reverb
     }
 
@@ -88,7 +88,7 @@ async function buildFxChain(inst: string, comp: Tone.Compressor): Promise<Tone.T
       // Classic Rhodes treatment: chorus for movement + short verb for bloom
       const reverb = new Tone.Reverb({ decay: 1.4, wet: 0.20 })
       await reverb.generate()
-      reverb.connect(comp)
+      reverb.connect(out)
       const chorus = new Tone.Chorus({ frequency: 3, depth: 0.35, wet: 0.22 }).connect(reverb)
       chorus.start()
       return chorus
@@ -98,19 +98,19 @@ async function buildFxChain(inst: string, comp: Tone.Compressor): Promise<Tone.T
       // DX7 is naturally bright — minimal verb, no chorus
       const reverb = new Tone.Reverb({ decay: 0.9, wet: 0.14 })
       await reverb.generate()
-      reverb.connect(comp)
+      reverb.connect(out)
       return reverb
     }
 
     case 'clavinet': {
       // Phaser for that wah-funk movement; stays dry and punchy (no reverb)
-      const phaser = new Tone.Phaser({ frequency: 2.5, octaves: 3, wet: 0.45 }).connect(comp)
+      const phaser = new Tone.Phaser({ frequency: 2.5, octaves: 3, wet: 0.45 }).connect(out)
       return phaser
     }
 
     case 'drawbar_organ': {
       // Rotary / Leslie simulator via chorus
-      const chorus = new Tone.Chorus({ frequency: 3.5, depth: 0.55, wet: 0.5 }).connect(comp)
+      const chorus = new Tone.Chorus({ frequency: 3.5, depth: 0.55, wet: 0.5 }).connect(out)
       chorus.start()
       return chorus
     }
@@ -119,7 +119,7 @@ async function buildFxChain(inst: string, comp: Tone.Compressor): Promise<Tone.T
       // Light room verb — keeps the attack crisp
       const reverb = new Tone.Reverb({ decay: 1.0, wet: 0.16 })
       await reverb.generate()
-      reverb.connect(comp)
+      reverb.connect(out)
       return reverb
     }
 
@@ -127,7 +127,7 @@ async function buildFxChain(inst: string, comp: Tone.Compressor): Promise<Tone.T
       // Fallback: gentle verb for anything not specifically handled
       const reverb = new Tone.Reverb({ decay: 1.1, wet: 0.15 })
       await reverb.generate()
-      reverb.connect(comp)
+      reverb.connect(out)
       return reverb
     }
   }
@@ -144,11 +144,9 @@ export function getMelodicSampler(styleId?: string): Promise<Tone.Sampler> | nul
 
   if (melodicCache.has(inst)) return melodicCache.get(inst)!
 
-  const comp = getMasterCompressor()
-
-  // Reuse or create the fx chain for this instrument
+  // Reuse or create the fx chain for this instrument (routed to the melodic bus)
   if (!fxCache.has(inst)) {
-    fxCache.set(inst, buildFxChain(inst, comp))
+    fxCache.set(inst, buildFxChain(inst, getMelodicBus()))
   }
   const fxPromise = fxCache.get(inst)!
 

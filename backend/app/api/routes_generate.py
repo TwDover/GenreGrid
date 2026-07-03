@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from app.models.schemas import GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, GenerateSummary, QualityScore, BatchGenerateRequest, BuildSongRequest, BuildSongResponse, SongSectionResult
 from app.services.style_loader import load_style
-from app.services.midi_writer import NoteEvent, ControlEvent, PitchBendEvent, write_midi, write_combined_midi, rebuild_combined_from_parts, concatenate_midi_files
+from app.services.midi_writer import NoteEvent, ControlEvent, PitchBendEvent, write_midi, write_combined_midi, rebuild_combined_from_parts, concatenate_midi_files, read_note_starts
 from app.generators.chords import generate_chords, resolve_progression
 from app.generators.bass import generate_bass
 from app.generators.melody import generate_melody
@@ -478,6 +478,38 @@ def _apply_section_ramp(
             all_events[part] = ramped
 
 
+def _chord_tones_by_bar(chord_notes, bars: int) -> list | None:
+    """Per-bar sorted pitch-class lists from chord notes.
+
+    ``chord_notes`` is an iterable of (start_beat, pitch) pairs (from generated
+    events or a read-back .mid). Lets the arpeggio arpeggiate the chords' *actual*
+    voiced harmony (including the 7ths/9ths and borrowed color the chord generator
+    chose) instead of a re-derived plain triad. Empty bars (chord rests) inherit
+    the nearest neighbouring bar's harmony so the arp never lands on a single stray
+    note. Returns None when no chord notes exist (caller falls back to roman voicing).
+    """
+    tones: list[set[int]] = [set() for _ in range(bars)]
+    for start, pitch in chord_notes:
+        b = int(start // 4)
+        if 0 <= b < bars:
+            tones[b].add(pitch % 12)
+    if not any(tones):
+        return None
+    last: set[int] | None = None
+    for i in range(bars):
+        if tones[i]:
+            last = tones[i]
+        elif last is not None:
+            tones[i] = set(last)
+    nxt: set[int] | None = None
+    for i in range(bars - 1, -1, -1):
+        if tones[i]:
+            nxt = tones[i]
+        elif nxt is not None:
+            tones[i] = set(nxt)
+    return [sorted(t) for t in tones]
+
+
 def _generate_808_pitch_bends(events: list[NoteEvent], channel: int) -> list[PitchBendEvent]:
     """Pitch bend slide-in curves for 808 bass notes (±2 semitone range assumed)."""
     pb: list[PitchBendEvent] = []
@@ -798,15 +830,21 @@ def _run_attempt(
                     if gap_e - gap_s >= 1.5:
                         mel_rests.append((round(gap_s, 3), round(gap_e, 3)))
 
-        for part in req.parts:
-            if part in ("drums", "melody") or part not in s_parts:
+        # Fixed order so chords are generated before the arpeggio, letting the arp
+        # arpeggiate the chords' real voiced harmony (chord_tones below).
+        section_chord_tones: list | None = None
+        for part in ("chords", "bass", "arpeggio"):
+            if part not in req.parts or part not in s_parts:
                 continue
             random.seed(_part_seed(seed, section_i, part))
             if part == "chords":
                 evts = generate_chords(style, s_key, req.scale, s_bars, backing_cplx,
                                        eff_var, progression, s_resolved,
                                        melody_ceiling=melody_ceiling,
-                                       kick_times=kick_times)
+                                       kick_times=kick_times,
+                                       melody_rests=mel_rests if has_melody else None)
+                section_chord_tones = _chord_tones_by_bar(
+                    [(e.start, e.pitch) for e in evts], s_bars)
             elif part == "bass":
                 evts = generate_bass(style, s_key, req.scale, s_bars, backing_cplx,
                                      eff_var, bass_prog, kick_times,
@@ -818,9 +856,8 @@ def _run_attempt(
                 arp_cplx = backing_cplx * (0.68 if has_melody and "melody" in s_parts else 1.0)
                 evts = generate_arpeggio(style, s_key, req.scale, s_bars, arp_cplx,
                                          eff_var, s_resolved, arp_octave,
-                                         melody_rests=mel_rests if has_melody else None)
-            else:
-                continue
+                                         melody_rests=mel_rests if has_melody else None,
+                                         chord_tones=section_chord_tones)
             evts = _apply_dynamic(evts, s_dyn)
             all_events[part].extend(_shift(evts, s_off))
 
@@ -1236,6 +1273,18 @@ def regenerate_part(req: RegeneratePartRequest):
     # arpeggio can be pushed to a higher octave to avoid register conflict.
     melody_exists = (output_dir / "melody.mid").exists()
 
+    # When regenerating the arpeggio, read the already-saved chords so the new arp
+    # arpeggiates the real voiced harmony (matching extensions) rather than a plain
+    # triad. Built once as an absolute per-bar map, sliced per section below.
+    global_chord_tones: list | None = None
+    if req.part == "arpeggio":
+        chords_path = output_dir / "chords.mid"
+        if chords_path.exists():
+            try:
+                global_chord_tones = _chord_tones_by_bar(read_note_starts(chords_path), req.bars)
+            except Exception:
+                global_chord_tones = None
+
     for section_i, section in enumerate(sections):
         s_bars  = section["bars"]
         s_cplx  = section["complexity"]
@@ -1275,8 +1324,13 @@ def regenerate_part(req: RegeneratePartRequest):
                                   section_end_bars=_section_end_bars(sections, s_off))
         elif req.part == "arpeggio":
             arp_octave = 6 if melody_exists else 5
+            sec_tones = None
+            if global_chord_tones:
+                start_bar = int(s_off // 4)
+                sec_tones = global_chord_tones[start_bar:start_bar + s_bars] or None
             evts = generate_arpeggio(style, s_key, req.scale, s_bars, s_cplx,
-                                     req.variation, s_resolved, arp_octave)
+                                     req.variation, s_resolved, arp_octave,
+                                     chord_tones=sec_tones)
         else:
             continue
         evts = _apply_dynamic(evts, s_dyn)

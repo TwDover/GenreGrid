@@ -2,8 +2,9 @@ import { ref } from 'vue'
 import * as Tone from 'tone'
 import { Midi } from '@tonejs/midi'
 import { downloadUrl } from '../services/api'
-import { getPianoSampler, getMasterCompressor } from '../soundfonts/loader'
-import { getDrumKit, DRUM_PITCH_TO_SAMPLE } from '../soundfonts/drums'
+import { getPianoSampler, getMasterCompressor, getBassBus, getMelodicBus } from '../soundfonts/loader'
+import { drumCharacterForStyle } from '../soundfonts/drums'
+import { makeSynthKit } from '../soundfonts/synthDrums'
 import { getBassSampler } from '../soundfonts/bass'
 import { getMelodicSampler } from '../soundfonts/melodic'
 import { encodeWav } from '../utils/wavEncoder'
@@ -82,25 +83,61 @@ function cleanup() {
   nowPlayingLabel.value = null
 }
 
-// Synth lead: sawtooth + chorus + ping-pong delay (house, techno, synthwave, etc.)
-function makeSynthLead(): Tone.PolySynth {
-  const comp = getMasterCompressor()
-  const delay = new Tone.PingPongDelay({ delayTime: '8n', feedback: 0.2, wet: 0.12 }).connect(comp)
-  const chorus = new Tone.Chorus({ frequency: 3, depth: 0.4, wet: 0.25 }).connect(delay)
+// Melody lead — a dedicated, in-tune, articulate voice for the melodic LINE.
+// Replaces two bad melody voices: the harsh heavily-chorused sawtooth (which
+// wavered out of tune) and the pad (0.8 s attack, so fast melody notes never
+// spoke). Fast attack so every note reads, a tamed low-pass so it's not harsh,
+// and only a whisper of chorus so it stays in tune. `soft` warms it and adds
+// space for ambient/cinematic styles.
+function makeMelodyLead(soft: boolean, output: Tone.ToneAudioNode = getMelodicBus()): Tone.PolySynth {
+  const delay = new Tone.FeedbackDelay({ delayTime: '8n.', feedback: 0.22, wet: soft ? 0.22 : 0.14 }).connect(output)
+  const chorus = new Tone.Chorus({ frequency: 1.8, depth: 0.12, wet: 0.14 }).connect(delay)
+  chorus.start()
+  const filter = new Tone.Filter({ frequency: soft ? 3000 : 3800, type: 'lowpass', rolloff: -12, Q: 0.8 }).connect(chorus)
+  const synth = new Tone.PolySynth(Tone.Synth, {
+    oscillator: soft ? { type: 'triangle' } : { type: 'sawtooth' },
+    envelope: soft
+      ? { attack: 0.03, decay: 0.2,  sustain: 0.75, release: 0.8 }
+      : { attack: 0.008, decay: 0.15, sustain: 0.65, release: 0.3 },
+    volume: soft ? -9 : -10,
+  }).connect(filter)
+  disposables.push(delay, chorus, filter, synth)
+  return synth
+}
+
+// Synth comp: detuned/warm saw stack, slower attack, rolled-off highs.
+// Deliberately darker than makeSynthLead so CHORDS don't collide with the melody
+// timbre on electronic styles (previously both used the same sawtooth lead).
+function makeSynthChords(output: Tone.ToneAudioNode = getMelodicBus()): Tone.PolySynth {
+  const lp = new Tone.Filter({ frequency: 2600, type: 'lowpass', rolloff: -12 }).connect(output)
+  const chorus = new Tone.Chorus({ frequency: 1.4, depth: 0.5, wet: 0.35 }).connect(lp)
   chorus.start()
   const synth = new Tone.PolySynth(Tone.Synth, {
-    oscillator: { type: 'sawtooth' },
-    envelope: { attack: 0.01, decay: 0.12, sustain: 0.8, release: 0.4 },
-    volume: -10,
+    oscillator: { type: 'fatsawtooth', count: 3, spread: 22 },
+    envelope: { attack: 0.06, decay: 0.25, sustain: 0.65, release: 0.6 },
+    volume: -15,
   }).connect(chorus)
-  disposables.push(delay, chorus, synth)
+  disposables.push(lp, chorus, synth)
+  return synth
+}
+
+// Arp pluck: short, bright, decaying voice with a synced delay tail. Gives the
+// arpeggio part its own identity instead of doubling the chord/lead timbre.
+function makeArpPluck(output: Tone.ToneAudioNode = getMelodicBus()): Tone.PolySynth {
+  const delay = new Tone.FeedbackDelay({ delayTime: '8n.', feedback: 0.28, wet: 0.18 }).connect(output)
+  const lp = new Tone.Filter({ frequency: 4200, type: 'lowpass', rolloff: -12 }).connect(delay)
+  const synth = new Tone.PolySynth(Tone.Synth, {
+    oscillator: { type: 'triangle' },
+    envelope: { attack: 0.004, decay: 0.18, sustain: 0.0, release: 0.25 },
+    volume: -12,
+  }).connect(lp)
+  disposables.push(delay, lp, synth)
   return synth
 }
 
 // Pad: slow-attack triangle + long feedback delay (ambient, cinematic, etc.)
-function makePad(): Tone.PolySynth {
-  const comp = getMasterCompressor()
-  const delay = new Tone.FeedbackDelay({ delayTime: '4n', feedback: 0.4, wet: 0.3 }).connect(comp)
+function makePad(output: Tone.ToneAudioNode = getMelodicBus()): Tone.PolySynth {
+  const delay = new Tone.FeedbackDelay({ delayTime: '4n', feedback: 0.4, wet: 0.3 }).connect(output)
   const synth = new Tone.PolySynth(Tone.Synth, {
     oscillator: { type: 'triangle' },
     envelope: { attack: 0.8, decay: 0.3, sustain: 0.7, release: 2.0 },
@@ -112,7 +149,7 @@ function makePad(): Tone.PolySynth {
 
 // Synth bass: sawtooth MonoSynth with portamento — house/techno/dnb etc.
 function makeSynthBass(): Tone.MonoSynth {
-  const comp = getMasterCompressor()
+  const comp = getBassBus()
   const bass = new Tone.MonoSynth({
     oscillator: { type: 'sawtooth' },
     filter: { Q: 2.5, type: 'lowpass', rolloff: -24 },
@@ -125,63 +162,9 @@ function makeSynthBass(): Tone.MonoSynth {
   return bass
 }
 
-// Synthesis drum kit — MembraneSynth kick + NoiseSynth snare + MetalSynth hats.
-// Returns a trigger function so the caller doesn't need to know the synth types.
-function makeSynthDrums(): (pitch: number, velocity: number, time: number) => void {
-  const comp = getMasterCompressor()
-  const TOM_PITCHES: Record<number, string> = { 41: 'E1', 43: 'A1', 45: 'D2', 47: 'G2', 48: 'B2', 50: 'E3' }
-
-  const kick = new Tone.MembraneSynth({
-    pitchDecay: 0.08, octaves: 6,
-    envelope: { attack: 0.002, decay: 0.38, sustain: 0, release: 0.1 },
-    volume: -1,
-  }).connect(comp)
-
-  const snare = new Tone.NoiseSynth({
-    noise: { type: 'white' },
-    envelope: { attack: 0.005, decay: 0.14, sustain: 0, release: 0.05 },
-    volume: -6,
-  }).connect(comp)
-
-  const hat = new Tone.MetalSynth({
-    octaves: 1.5,
-    envelope: { attack: 0.001, decay: 0.045, sustain: 0, release: 0.01 },
-    harmonicity: 5.1, modulationIndex: 32,
-    volume: -14,
-  }).connect(comp)
-  hat.frequency.value = 800
-
-  const hatOpen = new Tone.MetalSynth({
-    octaves: 1.8,
-    envelope: { attack: 0.001, decay: 0.28, sustain: 0.1, release: 0.15 },
-    harmonicity: 3.1, modulationIndex: 16,
-    volume: -16,
-  }).connect(comp)
-  hatOpen.frequency.value = 600
-
-  disposables.push(kick, snare, hat, hatOpen)
-
-  return (pitch: number, velocity: number, time: number) => {
-    if (pitch === 35 || pitch === 36) {
-      kick.triggerAttackRelease('C1', '8n', time, velocity)
-    } else if (pitch === 38 || pitch === 39 || pitch === 40) {
-      snare.triggerAttackRelease('16n', time, velocity)
-    } else if (pitch === 46) {
-      hatOpen.triggerAttackRelease('8n', time, velocity)
-    } else if (pitch === 49 || pitch === 55) {
-      hatOpen.triggerAttackRelease('4n', time, velocity * 0.7)
-    } else if (TOM_PITCHES[pitch]) {
-      kick.triggerAttackRelease(TOM_PITCHES[pitch], '16n', time, velocity * 0.8)
-    } else {
-      hat.triggerAttackRelease('32n', time, velocity)
-    }
-  }
-}
-
 // Lo-fi synth: warm triangle → bitcrusher → lowpass → vibrato → compressor
-function makeLofiSynth(): Tone.PolySynth {
-  const comp = getMasterCompressor()
-  const vibrato = new Tone.Vibrato({ frequency: 2.5, depth: 0.04, wet: 1 }).connect(comp)
+function makeLofiSynth(output: Tone.ToneAudioNode = getMelodicBus()): Tone.PolySynth {
+  const vibrato = new Tone.Vibrato({ frequency: 2.5, depth: 0.04, wet: 1 }).connect(output)
   const lp = new Tone.Filter({ frequency: 5500, type: 'lowpass' }).connect(vibrato)
   const crusher = new Tone.BitCrusher({ bits: 10 }).connect(lp)
   const synth = new Tone.PolySynth(Tone.Synth, {
@@ -221,10 +204,9 @@ export function useMidiPlayer() {
       const melodicSamplerPromise = getMelodicSampler(styleId)
 
       const fetchUrl = url.startsWith('blob:') || url.startsWith('data:') ? url : downloadUrl(url)
-      const [, buf, drumKit, bassSampler, melodicSampler] = await Promise.all([
+      const [, buf, bassSampler, melodicSampler] = await Promise.all([
         (!isSynth && !isPad && !isLofi && !isMelodicSynth && !melodicSamplerPromise) ? getPianoSampler() : Promise.resolve(null),
         fetch(fetchUrl).then(r => r.arrayBuffer()),
-        isSynth ? Promise.resolve(null) : getDrumKit(styleId),
         isSynth ? Promise.resolve(null) : getBassSampler(styleId),
         melodicSamplerPromise ?? Promise.resolve(null),
       ])
@@ -256,27 +238,64 @@ export function useMidiPlayer() {
         ? await getPianoSampler()
         : null
 
-      // Synthesis instruments for electronic styles (created once, shared)
-      const synthDrumTrigger = isSynth ? makeSynthDrums() : null
+      // Synthesized drum kit — one voice per articulation, tuned to the style's
+      // character. Replaces the old thin/fake-cymbal samples for every genre.
+      const drumKit = makeSynthKit(drumCharacterForStyle(styleId))
+      disposables.push(...drumKit.nodes)
       let _synthBass: Tone.MonoSynth | null = null
       const getSynthBass = () => { if (!_synthBass) _synthBass = makeSynthBass(); return _synthBass }
 
-      // Create melodic instrument once, shared across chords/melody/arpeggio tracks
-      let melodicInstrument: Tone.PolySynth | Tone.Sampler | null = null
-      function getMelodicInstrument(): Tone.PolySynth | Tone.Sampler {
-        if (melodicInstrument) return melodicInstrument
-        if (melodicSampler) {
-          melodicInstrument = melodicSampler        // bundled sample (Rhodes, EP2, etc.)
+      // Read the static pan (CC10) a track was written with and return the -1..1
+      // value a Tone.Panner expects. @tonejs/midi normalises CC values to 0..1.
+      function trackPan(track: typeof midi.tracks[number]): number {
+        const cc = track.controlChanges?.[10]
+        if (cc && cc.length) return Math.max(-1, Math.min(1, cc[cc.length - 1].value * 2 - 1))
+        return 0
+      }
+
+      // Melodic voices are resolved per part (chords / melody / arpeggio) so they
+      // no longer share one timbre. Each synth-based voice is routed through its
+      // own Panner fed from the part's CC10 so the server-side stereo placement is
+      // actually audible. Bundled samplers (Rhodes, vibraphone, etc.) and the piano
+      // fallback are cached/shared with their own fx chains, so chords+melody reuse
+      // that one instrument (acoustic styles read fine sharing a voice); only the
+      // arpeggio gets a distinct pluck on top.
+      const voiceCache: Record<number, Tone.PolySynth | Tone.Sampler> = {}
+
+      function makePanned(build: (out: Tone.ToneAudioNode) => Tone.PolySynth, pan: number): Tone.PolySynth {
+        const panner = new Tone.Panner(pan).connect(getMelodicBus())
+        disposables.push(panner)
+        return build(panner)
+      }
+
+      // channel 0 = chords, 2 = melody, 3 = arpeggio (see backend _PART_CHANNELS)
+      function getMelodicInstrument(channel: number, pan: number): Tone.PolySynth | Tone.Sampler {
+        if (voiceCache[channel]) return voiceCache[channel]
+
+        let inst: Tone.PolySynth | Tone.Sampler
+        if (channel === 3) {
+          // Arpeggio — always its own voice so it sparkles above the comp.
+          inst = melodicSampler ?? makePanned(makeArpPluck, pan)
+        } else if (melodicSampler) {
+          inst = melodicSampler                       // bundled sample (Rhodes, EP2, vibes…)
         } else if (isLofi) {
-          melodicInstrument = makeLofiSynth()
+          inst = makePanned(makeLofiSynth, pan)
         } else if (isSynth || isMelodicSynth) {
-          melodicInstrument = makeSynthLead()       // sawtooth lead for electronic / dark styles
+          // Chords get the warm comp stack; melody gets the dedicated lead.
+          inst = channel === 0
+            ? makePanned(makeSynthChords, pan)
+            : makePanned((out) => makeMelodyLead(false, out), pan)
         } else if (isPad) {
-          melodicInstrument = makePad()             // slow-attack triangle pad
+          // Chords hold the slow pad; the melody needs a fast-attack lead so its
+          // notes actually articulate instead of smearing under the pad envelope.
+          inst = channel === 0
+            ? makePanned(makePad, pan)
+            : makePanned((out) => makeMelodyLead(true, out), pan)
         } else {
-          melodicInstrument = piano!                // Salamander grand piano
+          inst = piano!                               // Salamander grand piano (shared)
         }
-        return melodicInstrument
+        voiceCache[channel] = inst
+        return inst
       }
 
       for (const track of midi.tracks) {
@@ -289,14 +308,7 @@ export function useMidiPlayer() {
           const notes = track.notes.map(n => ({ time: n.time, midi: n.midi, velocity: n.velocity }))
           const part = new Tone.Part<{ time: number; midi: number; velocity: number }>((time, note) => {
             if (channelMuted.value.drums) return
-            if (synthDrumTrigger) {
-              synthDrumTrigger(note.midi, note.velocity, time)
-            } else {
-              const sampleName = DRUM_PITCH_TO_SAMPLE[note.midi] ?? 'hihat'
-              const player = drumKit!.player(sampleName)
-              player.volume.value = Tone.gainToDb(note.velocity)
-              player.start(time)
-            }
+            drumKit.trigger(note.midi, note.velocity, time)
           }, notes)
           part.start(0)
           scheduledParts.push(part)
@@ -318,8 +330,9 @@ export function useMidiPlayer() {
           scheduledParts.push(part)
 
         } else {
-          // Chords, melody, arpeggio — style-aware instrument
-          const instrument = getMelodicInstrument()
+          // Chords, melody, arpeggio — distinct style-aware voice per part, each
+          // placed in the stereo field from its CC10 pan.
+          const instrument = getMelodicInstrument(channel, trackPan(track))
           const notes = track.notes.map(n => ({
             time: n.time, midi: n.midi, duration: n.duration, velocity: n.velocity,
           }))
@@ -448,41 +461,12 @@ export function useMidiPlayer() {
 
         Tone.getTransport().bpm.value = bpm
 
-        // ── Drum synths ──────────────────────────────────────────────────
-        let drumKick: Tone.MembraneSynth | null = null
-        let drumSnare: Tone.NoiseSynth | null = null
-        let drumHat: Tone.MetalSynth | null = null
-        let drumHatOpen: Tone.MetalSynth | null = null
-
-        if (channelFilter === 'all' || channelFilter === 'drums') {
-          drumKick = new Tone.MembraneSynth({
-            pitchDecay: 0.08, octaves: 6,
-            envelope: { attack: 0.002, decay: 0.38, sustain: 0, release: 0.1 },
-            volume: -1,
-          }).connect(comp)
-
-          drumSnare = new Tone.NoiseSynth({
-            noise: { type: 'white' },
-            envelope: { attack: 0.005, decay: 0.14, sustain: 0, release: 0.05 },
-            volume: -6,
-          }).connect(comp)
-
-          drumHat = new Tone.MetalSynth({
-            octaves: 1.5,
-            envelope: { attack: 0.001, decay: 0.045, sustain: 0, release: 0.01 },
-            harmonicity: 5.1, modulationIndex: 32,
-            volume: -14,
-          }).connect(comp)
-          drumHat.frequency.value = 800
-
-          drumHatOpen = new Tone.MetalSynth({
-            octaves: 1.8,
-            envelope: { attack: 0.001, decay: 0.28, sustain: 0.1, release: 0.15 },
-            harmonicity: 3.1, modulationIndex: 16,
-            volume: -16,
-          }).connect(comp)
-          drumHatOpen.frequency.value = 600
-        }
+        // ── Drum kit ─────────────────────────────────────────────────────
+        // Same synthesized engine as live playback, routed to the offline
+        // compressor so the export matches what the user auditions.
+        const drumKit = (channelFilter === 'all' || channelFilter === 'drums')
+          ? makeSynthKit(drumCharacterForStyle(styleId), comp)
+          : null
 
         // ── Bass synth ───────────────────────────────────────────────────
         let bassSynth: Tone.MonoSynth | null = null
@@ -496,67 +480,104 @@ export function useMidiPlayer() {
           }).connect(comp)
         }
 
-        // ── Melodic synth ────────────────────────────────────────────────
-        let melodicSynth: Tone.PolySynth | null = null
-        if (channelFilter === 'all' || channelFilter === 'melodic') {
+        // ── Melodic synths ───────────────────────────────────────────────
+        // Mirror live playback: chords / melody / arpeggio each get a distinct
+        // voice, panned from the part's CC10 so the export matches the preview.
+        const panForChannel = (ch: number): number => {
+          const track = midi.tracks.find(t => (t.channel ?? 0) === ch)
+          const cc = track?.controlChanges?.[10]
+          if (cc && cc.length) return Math.max(-1, Math.min(1, cc[cc.length - 1].value * 2 - 1))
+          return 0
+        }
+        const mkVoice = (variant: 'chords' | 'lead' | 'arp', pan: number): Tone.PolySynth => {
+          const panner = new Tone.Panner(pan).connect(comp)
+          if (variant === 'arp') {
+            const delay = new Tone.FeedbackDelay({ delayTime: '8n.', feedback: 0.24, wet: 0.16 }).connect(panner)
+            const lp = new Tone.Filter({ frequency: 4200, type: 'lowpass' }).connect(delay)
+            return new Tone.PolySynth(Tone.Synth, {
+              oscillator: { type: 'triangle' },
+              envelope: { attack: 0.004, decay: 0.18, sustain: 0.0, release: 0.25 },
+              volume: -11,
+            }).connect(lp)
+          }
+          if (variant === 'lead' && (isPad || isSynth)) {
+            // Dedicated articulate melody lead (matches makeMelodyLead in live play):
+            // fast attack, tamed low-pass, only a whisper of chorus so it stays in tune.
+            const soft = isPad
+            const delay = new Tone.FeedbackDelay({ delayTime: '8n.', feedback: 0.22, wet: soft ? 0.22 : 0.14 }).connect(panner)
+            const chorus = new Tone.Chorus({ frequency: 1.8, depth: 0.12, wet: 0.14 }).connect(delay)
+            chorus.start()
+            const lp = new Tone.Filter({ frequency: soft ? 3000 : 3800, type: 'lowpass', rolloff: -12, Q: 0.8 }).connect(chorus)
+            return new Tone.PolySynth(Tone.Synth, {
+              oscillator: soft ? { type: 'triangle' } : { type: 'sawtooth' },
+              envelope: soft
+                ? { attack: 0.03, decay: 0.2,  sustain: 0.75, release: 0.8 }
+                : { attack: 0.008, decay: 0.15, sustain: 0.65, release: 0.3 },
+              volume: soft ? -9 : -10,
+            }).connect(lp)
+          }
           if (isPad) {
-            const delay = new Tone.FeedbackDelay({ delayTime: '4n', feedback: 0.38, wet: 0.28 }).connect(comp)
-            melodicSynth = new Tone.PolySynth(Tone.Synth, {
+            const delay = new Tone.FeedbackDelay({ delayTime: '4n', feedback: 0.38, wet: 0.28 }).connect(panner)
+            return new Tone.PolySynth(Tone.Synth, {
               oscillator: { type: 'triangle' },
               envelope: { attack: 0.8, decay: 0.3, sustain: 0.7, release: 2.0 },
               volume: -7,
             }).connect(delay)
-          } else if (isLofi) {
-            const lp = new Tone.Filter({ frequency: 5200, type: 'lowpass' }).connect(comp)
-            melodicSynth = new Tone.PolySynth(Tone.Synth, {
+          }
+          if (isLofi) {
+            const lp = new Tone.Filter({ frequency: 5200, type: 'lowpass' }).connect(panner)
+            return new Tone.PolySynth(Tone.Synth, {
               oscillator: { type: 'triangle' },
               envelope: { attack: 0.04, decay: 0.2, sustain: 0.6, release: 1.2 },
               volume: -4,
             }).connect(lp)
-          } else if (isSynth) {
-            const delay = new Tone.PingPongDelay({ delayTime: '8n', feedback: 0.18, wet: 0.1 }).connect(comp)
+          }
+          if (isSynth) {
+            if (variant === 'chords') {
+              const lp = new Tone.Filter({ frequency: 2600, type: 'lowpass' }).connect(panner)
+              const chorus = new Tone.Chorus({ frequency: 1.4, depth: 0.5, wet: 0.35 }).connect(lp)
+              chorus.start()
+              return new Tone.PolySynth(Tone.Synth, {
+                oscillator: { type: 'fatsawtooth', count: 3, spread: 22 },
+                envelope: { attack: 0.06, decay: 0.25, sustain: 0.65, release: 0.6 },
+                volume: -12,
+              }).connect(chorus)
+            }
+            const delay = new Tone.PingPongDelay({ delayTime: '8n', feedback: 0.18, wet: 0.1 }).connect(panner)
             const chorus = new Tone.Chorus({ frequency: 3, depth: 0.4, wet: 0.22 }).connect(delay)
             chorus.start()
-            melodicSynth = new Tone.PolySynth(Tone.Synth, {
+            return new Tone.PolySynth(Tone.Synth, {
               oscillator: { type: 'sawtooth' },
               envelope: { attack: 0.01, decay: 0.12, sustain: 0.8, release: 0.4 },
               volume: -9,
             }).connect(chorus)
-          } else {
-            melodicSynth = new Tone.PolySynth(Tone.Synth, {
-              oscillator: { type: 'triangle' },
-              envelope: { attack: 0.02, decay: 0.15, sustain: 0.7, release: 0.9 },
-              volume: -8,
-            }).connect(comp)
           }
+          return new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: 'triangle' },
+            envelope: { attack: 0.02, decay: 0.15, sustain: 0.7, release: 0.9 },
+            volume: -8,
+          }).connect(panner)
+        }
+
+        let chordsSynth: Tone.PolySynth | null = null
+        let leadSynth: Tone.PolySynth | null = null
+        let arpSynth: Tone.PolySynth | null = null
+        if (channelFilter === 'all' || channelFilter === 'melodic') {
+          chordsSynth = mkVoice('chords', panForChannel(0))
+          leadSynth   = mkVoice('lead',   panForChannel(2))
+          arpSynth    = mkVoice('arp',    panForChannel(3))
         }
 
         // ── Schedule MIDI events ─────────────────────────────────────────
-        // Tom pitches mapped to kick synth at different frequencies
-        const TOM_NOTES: Record<number, string> = { 41: 'E1', 43: 'A1', 45: 'D2', 47: 'G2', 48: 'B2', 50: 'E3' }
-
         for (const track of midi.tracks) {
           if (track.notes.length === 0) continue
           const channel = track.channel ?? 0
           const isPerc = track.instrument.percussion || channel === 9
 
-          if (isPerc && drumKick) {
+          if (isPerc && drumKit) {
             for (const n of track.notes) {
               const { midi: pitch, time, velocity } = n
-              if (pitch === 35 || pitch === 36) {
-                Tone.getTransport().schedule(t => drumKick!.triggerAttackRelease('C1', '8n', t, velocity), time)
-              } else if (pitch === 38 || pitch === 39 || pitch === 40) {
-                Tone.getTransport().schedule(t => drumSnare!.triggerAttackRelease('16n', t, velocity), time)
-              } else if (pitch === 46) {
-                Tone.getTransport().schedule(t => drumHatOpen!.triggerAttackRelease('8n', t, velocity), time)
-              } else if (pitch === 49 || pitch === 55) {
-                Tone.getTransport().schedule(t => drumHatOpen!.triggerAttackRelease('4n', t, velocity * 0.7), time)
-              } else if (TOM_NOTES[pitch]) {
-                Tone.getTransport().schedule(t => drumKick!.triggerAttackRelease(TOM_NOTES[pitch], '16n', t, velocity * 0.8), time)
-              } else {
-                // Closed hat, ride, other percussion
-                Tone.getTransport().schedule(t => drumHat!.triggerAttackRelease('32n', t, velocity), time)
-              }
+              Tone.getTransport().schedule(t => drumKit.trigger(pitch, velocity, t), time)
             }
           } else if (channel === 1 && bassSynth) {
             for (const n of track.notes) {
@@ -564,11 +585,15 @@ export function useMidiPlayer() {
               const { time, duration, velocity } = n
               Tone.getTransport().schedule(t => bassSynth!.triggerAttackRelease(note, duration, t, velocity), time)
             }
-          } else if (!isPerc && channel !== 1 && melodicSynth) {
-            for (const n of track.notes) {
-              const note = Tone.Frequency(n.midi, 'midi').toNote()
-              const { time, duration, velocity } = n
-              Tone.getTransport().schedule(t => melodicSynth!.triggerAttackRelease(note, duration, t, velocity), time)
+          } else if (!isPerc && channel !== 1 && (chordsSynth || leadSynth || arpSynth)) {
+            // channel 2 = melody (lead), 3 = arpeggio (pluck), else chords
+            const synth = channel === 3 ? arpSynth : channel === 2 ? leadSynth : chordsSynth
+            if (synth) {
+              for (const n of track.notes) {
+                const note = Tone.Frequency(n.midi, 'midi').toNote()
+                const { time, duration, velocity } = n
+                Tone.getTransport().schedule(t => synth.triggerAttackRelease(note, duration, t, velocity), time)
+              }
             }
           }
         }
@@ -636,10 +661,10 @@ export function useMidiPlayer() {
     const isSynth = styleId ? SYNTH_STYLES.has(styleId) : false
     const isPad   = styleId ? PAD_STYLES.has(styleId)   : false
     const isLofi  = styleId ? LOFI_STYLES.has(styleId)  : false
-    // Synth/pad/lofi styles use in-memory oscillators — nothing to fetch
+    // Synth/pad/lofi styles use in-memory oscillators — nothing to fetch.
+    // Drums are synthesized for every style now, so only bass/melodic samplers load.
     if (isSynth || isPad || isLofi) return
     Promise.all([
-      getDrumKit(styleId),
       getBassSampler(styleId),
       getMelodicSampler(styleId),
     ]).catch(() => { /* best-effort, ignore network errors */ })
