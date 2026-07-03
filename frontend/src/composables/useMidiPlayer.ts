@@ -21,13 +21,20 @@ export interface MidiData {
   duration: number
 }
 
-// Style groups for synth/pad/lofi fallbacks (no bundled samples)
+// Styles where ALL parts use synthesis — drum/bass samplers are not loaded
 const SYNTH_STYLES = new Set([
-  'house', 'techno', 'drum_and_bass', 'synthwave', 'future_bass',
-  'drill', 'jersey_club', 'reggaeton', 'dancehall', 'cumbia', 'afrobeats',
+  'house', 'techno', 'drum_and_bass', 'synthwave', 'future_bass', 'jersey_club',
+  'grime', 'hyperpop',
 ])
-const PAD_STYLES = new Set(['ambient', 'dark_ambient', 'epic_orchestral', 'cinematic'])
-const LOFI_STYLES = new Set(['lofi', 'cloud_rap'])
+// Styles that load sampled drums/bass but use a synth lead for melodic parts
+const MELODIC_SYNTH_STYLES = new Set(['drill', 'dark_trap', 'reggaeton', 'dancehall'])
+// Styles that use a slow-attack pad synth for melodic (sampled drums/bass still load)
+const PAD_STYLES = new Set([
+  'ambient', 'dark_ambient', 'epic_orchestral', 'cinematic',
+  'trap_soul', 'cloud_rap',
+])
+// Lo-fi styles — warm, bit-crushed synth for melodic
+const LOFI_STYLES = new Set(['lofi'])
 
 // Global so only one track plays at a time
 const currentlyPlaying = ref<string | null>(null)
@@ -204,9 +211,10 @@ export function useMidiPlayer() {
 
       applyVolume(volume.value)
 
-      const isSynth = styleId ? SYNTH_STYLES.has(styleId) : false
-      const isPad   = styleId ? PAD_STYLES.has(styleId) : false
-      const isLofi  = styleId ? LOFI_STYLES.has(styleId) : false
+      const isSynth        = styleId ? SYNTH_STYLES.has(styleId) : false
+      const isMelodicSynth = styleId ? MELODIC_SYNTH_STYLES.has(styleId) : false
+      const isPad          = styleId ? PAD_STYLES.has(styleId) : false
+      const isLofi         = styleId ? LOFI_STYLES.has(styleId) : false
 
       // Pre-load all samplers + MIDI in parallel.
       // SYNTH_STYLES use synthesis for drums + bass — skip those sampler loads entirely.
@@ -214,7 +222,7 @@ export function useMidiPlayer() {
 
       const fetchUrl = url.startsWith('blob:') || url.startsWith('data:') ? url : downloadUrl(url)
       const [, buf, drumKit, bassSampler, melodicSampler] = await Promise.all([
-        (!isSynth && !isPad && !isLofi && !melodicSamplerPromise) ? getPianoSampler() : Promise.resolve(null),
+        (!isSynth && !isPad && !isLofi && !isMelodicSynth && !melodicSamplerPromise) ? getPianoSampler() : Promise.resolve(null),
         fetch(fetchUrl).then(r => r.arrayBuffer()),
         isSynth ? Promise.resolve(null) : getDrumKit(styleId),
         isSynth ? Promise.resolve(null) : getBassSampler(styleId),
@@ -244,7 +252,7 @@ export function useMidiPlayer() {
       Tone.getTransport().bpm.value = midi.header.tempos[0]?.bpm ?? 120
 
       // Resolve piano fallback if still needed
-      const piano = (!isSynth && !isPad && !isLofi && !melodicSampler)
+      const piano = (!isSynth && !isPad && !isLofi && !isMelodicSynth && !melodicSampler)
         ? await getPianoSampler()
         : null
 
@@ -261,10 +269,10 @@ export function useMidiPlayer() {
           melodicInstrument = melodicSampler        // bundled sample (Rhodes, EP2, etc.)
         } else if (isLofi) {
           melodicInstrument = makeLofiSynth()
-        } else if (isSynth) {
-          melodicInstrument = makeSynthLead()
+        } else if (isSynth || isMelodicSynth) {
+          melodicInstrument = makeSynthLead()       // sawtooth lead for electronic / dark styles
         } else if (isPad) {
-          melodicInstrument = makePad()
+          melodicInstrument = makePad()             // slow-attack triangle pad
         } else {
           melodicInstrument = piano!                // Salamander grand piano
         }

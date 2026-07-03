@@ -2,37 +2,42 @@ import * as Tone from 'tone'
 import { getMasterCompressor } from './loader'
 
 const STYLE_TO_KIT: Record<string, string> = {
-  jazz:           'acoustic-kit',
-  bossa_nova:     'acoustic-kit',
-  latin_jazz:     'acoustic-kit',
-  afrobeats:      'acoustic-kit',
-  cumbia:         'acoustic-kit',
-  epic_orchestral:'acoustic-kit',
-  cinematic:      'acoustic-kit',
-  // LinnDrum
-  soul:           'LINN',
-  rnb:            'LINN',
-  funk:           'LINN',
-  // KPR77 — mellow, dusty
-  lofi:           'KPR77',
-  cloud_rap:      'KPR77',
-  ambient:        'KPR77',
-  dark_ambient:   'KPR77',
-  // Roland R-8 — punchy, clean
-  dancehall:      'R8',
-  reggaeton:      'R8',
-  // Breakbeats — hip-hop
-  boom_bap:       'breakbeat8',
-  trap_soul:      'breakbeat8',
-  dark_trap:      'breakbeat13',
-  drill:          'breakbeat13',
-  // Electronic / club
-  house:          'Techno',
-  techno:         'Techno',
-  drum_and_bass:  'Techno',
-  future_bass:    'Techno',
-  synthwave:      'Techno',
-  jersey_club:    'Techno',
+  // Acoustic kit — live drum feel
+  jazz:            'acoustic-kit',
+  bossa_nova:      'acoustic-kit',
+  latin_jazz:      'acoustic-kit',
+  samba:           'acoustic-kit',
+  afrobeats:       'acoustic-kit',
+  afropop:         'acoustic-kit',
+  cumbia:          'acoustic-kit',
+  epic_orchestral: 'acoustic-kit',
+  cinematic:       'acoustic-kit',
+  // LinnDrum — classic vintage machine; punchy with natural decay
+  soul:            'LINN',
+  rnb:             'LINN',
+  funk:            'LINN',
+  // KPR77 — mellow, dusty; perfect for lo-fi and atmospheric
+  lofi:            'KPR77',
+  cloud_rap:       'KPR77',
+  ambient:         'KPR77',
+  dark_ambient:    'KPR77',
+  // Roland R-8 — clean, digital punch; dembow/riddim patterns
+  dancehall:       'R8',
+  reggaeton:       'R8',
+  baile_funk:      'R8',
+  // Breakbeats — hip-hop sample chops
+  boom_bap:        'breakbeat8',
+  trap_soul:       'breakbeat8',
+  dark_trap:       'breakbeat13',
+  drill:           'breakbeat13',
+  // Electronic / club — Techno kit (tight, synthetic)
+  house:           'Techno',
+  techno:          'Techno',
+  drum_and_bass:   'Techno',
+  future_bass:     'Techno',
+  synthwave:       'Techno',
+  jersey_club:     'Techno',
+  // grime + hyperpop use SYNTH_STYLES → makeSynthDrums(), no kit loaded
 }
 const DEFAULT_KIT = 'acoustic-kit'
 

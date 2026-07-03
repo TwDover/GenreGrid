@@ -1,106 +1,107 @@
 {
-  "id": "cinematic",
-  "name": "Cinematic",
-  "bpm_range": [
-    60,
-    90
-  ],
-  "default_scale": "minor",
-  "preferred_keys": [
-    "D",
-    "E",
-    "F",
-    "G",
-    "A"
-  ],
-  "progression_templates": [
-    [
-      "i",
-      "VI",
-      "III",
-      "VII"
+    "id": "cinematic",
+    "name": "Cinematic",
+    "bpm_range": [
+        60,
+        90
     ],
-    [
-      "i",
-      "iv",
-      "i",
-      "v"
+    "default_scale": "minor",
+    "preferred_keys": [
+        "D",
+        "E",
+        "F",
+        "G",
+        "A"
     ],
-    [
-      "VI",
-      "VII",
-      "i",
-      "III"
+    "progression_templates": [
+        [
+            "i",
+            "VI",
+            "III",
+            "VII"
+        ],
+        [
+            "i",
+            "iv",
+            "i",
+            "v"
+        ],
+        [
+            "VI",
+            "VII",
+            "i",
+            "III"
+        ],
+        [
+            "imM7",
+            "iv",
+            "bVII",
+            "bIII"
+        ],
+        [
+            "i",
+            "bVI",
+            "bIII",
+            "bVII"
+        ],
+        [
+            "i",
+            "bVII",
+            "bVI",
+            "v"
+        ],
+        [
+            "imM7",
+            "bVI",
+            "bIII",
+            "VII"
+        ],
+        [
+            "i",
+            "iv",
+            "bVII",
+            "III"
+        ]
     ],
-    [
-      "imM7",
-      "iv",
-      "bVII",
-      "bIII"
+    "chord_extensions": {
+        "allow_7th": 0.75,
+        "allow_9th": 0.4
+    },
+    "chord_register": [
+        45,
+        64
     ],
-    [
-      "i",
-      "bVI",
-      "bIII",
-      "bVII"
-    ],
-    [
-      "i",
-      "bVII",
-      "bVI",
-      "v"
-    ],
-    [
-      "imM7",
-      "bVI",
-      "bIII",
-      "VII"
-    ],
-    [
-      "i",
-      "iv",
-      "bVII",
-      "III"
-    ]
-  ],
-  "chord_extensions": {
-    "allow_7th": 0.75,
-    "allow_9th": 0.4
-  },
-  "chord_register": [
-    45,
-    64
-  ],
-  "harmonic_rhythm_bars": 2,
-  "vel_arc_start": 0.4,
-  "velocity_base": 92,
-  "bass": {
-    "pattern_density": 0.3,
-    "octave_jumps": 0.1,
-    "sustain_bias": 0.85
-  },
-  "melody": {
-    "density": 0.42,
-    "stepwise_motion": 0.8,
-    "leap_probability": 0.1,
-    "rest_probability": 0.4,
-    "range": [
-      62,
-      81
-    ]
-  },
-  "arpeggio": {
-    "pattern": "up_down",
-    "speed": 0.5,
-    "include_octave": false,
-    "allow_7th": true
-  },
-  "drums": {
-    "hat_density": 0.3,
-    "triplet_probability": 0.1,
-    "snare_standard_beats": [
-      3
-    ],
-    "swing": 0.0
-  }
+    "harmonic_rhythm_bars": 2,
+    "vel_arc_start": 0.4,
+    "velocity_base": 92,
+    "bass": {
+        "pattern_density": 0.3,
+        "octave_jumps": 0.1,
+        "sustain_bias": 0.85
+    },
+    "melody": {
+        "density": 0.42,
+        "stepwise_motion": 0.8,
+        "leap_probability": 0.1,
+        "rest_probability": 0.4,
+        "range": [
+            62,
+            81
+        ]
+    },
+    "arpeggio": {
+        "pattern": "up_down",
+        "speed": 0.5,
+        "include_octave": false,
+        "allow_7th": true
+    },
+    "drums": {
+        "hat_density": 0.3,
+        "triplet_probability": 0.1,
+        "snare_standard_beats": [
+            3
+        ],
+        "swing": 0.0,
+        "flam_prob": 0.08
+    }
 }
