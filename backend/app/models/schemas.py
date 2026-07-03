@@ -65,6 +65,7 @@ class QualityScore(BaseModel):
     harmonic: float
     register: float
     rhythm: float
+    contour: float = 0.0
     density: float
     mix: float
     label: str

@@ -18,6 +18,24 @@ class NoteEvent:
     channel: int = 0
 
 
+def read_note_starts(path) -> list[tuple[float, int]]:
+    """Read a .mid file and return (start_beat, pitch) for every note-on.
+
+    Lightweight — used when another part needs the harmony of an already-saved
+    part (e.g. regenerating the arpeggio against the existing chords.mid).
+    """
+    mid = mido.MidiFile(str(path))
+    tpb = mid.ticks_per_beat or TICKS_PER_BEAT
+    notes: list[tuple[float, int]] = []
+    for track in mid.tracks:
+        abs_t = 0
+        for msg in track:
+            abs_t += msg.time
+            if msg.type == "note_on" and msg.velocity > 0:
+                notes.append((abs_t / tpb, msg.note))
+    return notes
+
+
 @dataclass
 class ControlEvent:
     control: int    # CC number (e.g. 10=pan, 11=expression, 64=sustain)
@@ -68,20 +86,23 @@ def _events_to_track(
 
     events = _trim_overlaps(events)
 
+    # Clamp ticks to >= 0. Swing/jitter can nudge a downbeat event a hair before
+    # t=0, and mido rejects negative delta times — so a stray -0.006 beat kick
+    # would otherwise crash the whole write.
     for ev in events:
-        start_tick = int(ev.start * ticks_per_beat)
-        end_tick = int((ev.start + ev.duration) * ticks_per_beat)
+        start_tick = max(0, int(ev.start * ticks_per_beat))
+        end_tick = max(start_tick, int((ev.start + ev.duration) * ticks_per_beat))
         messages.append((start_tick, mido.Message("note_on",  channel=ev.channel, note=ev.pitch, velocity=ev.velocity, time=0)))
         messages.append((end_tick,   mido.Message("note_off", channel=ev.channel, note=ev.pitch, velocity=0,           time=0)))
 
     if cc_events:
         for cc in cc_events:
-            tick = int(cc.start * ticks_per_beat)
+            tick = max(0, int(cc.start * ticks_per_beat))
             messages.append((tick, mido.Message("control_change", channel=cc.channel, control=cc.control, value=cc.value, time=0)))
 
     if pb_events:
         for pb in pb_events:
-            tick = int(pb.start * ticks_per_beat)
+            tick = max(0, int(pb.start * ticks_per_beat))
             messages.append((tick, mido.Message("pitchwheel", channel=pb.channel, pitch=pb.value, time=0)))
 
     def _sort_key(item):

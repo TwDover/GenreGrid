@@ -26,12 +26,40 @@ export function getMasterCompressor(): Tone.Compressor {
   return compressor
 }
 
+// ── Submix buses ───────────────────────────────────────────────────────────
+// Every instrument routes through its group bus before the master compressor,
+// so the three groups can be balanced against each other. The synthesized drum
+// kit sets its own per-voice levels internally, so this bus only needs a gentle
+// trim to keep drums present without burying the harmonic parts. Tweak these
+// three numbers to re-balance the whole app.
+const DRUM_BUS_DB    = -5
+const BASS_BUS_DB    = -3
+const MELODIC_BUS_DB = 0
+
+let drumBus: Tone.Gain<'decibels'> | null = null
+let bassBus: Tone.Gain<'decibels'> | null = null
+let melodicBus: Tone.Gain<'decibels'> | null = null
+
+export function getDrumBus(): Tone.Gain<'decibels'> {
+  if (!drumBus) drumBus = new Tone.Gain(DRUM_BUS_DB, 'decibels').connect(getMasterCompressor())
+  return drumBus
+}
+
+export function getBassBus(): Tone.Gain<'decibels'> {
+  if (!bassBus) bassBus = new Tone.Gain(BASS_BUS_DB, 'decibels').connect(getMasterCompressor())
+  return bassBus
+}
+
+export function getMelodicBus(): Tone.Gain<'decibels'> {
+  if (!melodicBus) melodicBus = new Tone.Gain(MELODIC_BUS_DB, 'decibels').connect(getMasterCompressor())
+  return melodicBus
+}
+
 async function getSharedReverb(): Promise<Tone.Reverb> {
   if (reverb) return reverb
-  const comp = getMasterCompressor()
   const r = new Tone.Reverb({ decay: 1.6, wet: 0.22 })
   await r.generate()
-  r.connect(comp)
+  r.connect(getMelodicBus())      // piano is a melodic voice — route through its bus
   reverb = r
   return r
 }

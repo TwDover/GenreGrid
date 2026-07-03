@@ -61,6 +61,7 @@ export interface QualityScore {
   harmonic: number
   register: number
   rhythm: number
+  contour: number
   density: number
   mix: number
   label: string

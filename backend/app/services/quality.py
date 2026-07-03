@@ -6,11 +6,12 @@ melody density/range, bass density). We treat these as the "known-good reference
 and compare generated events against them across five dimensions.
 
 Weights reflect musical priority:
-  harmonic coherence  32 %  — do parts play compatible pitches?
-  rhythm fit          25 %  — do rhythms match the style signature?
-  register separation 18 %  — are parts in distinct frequency bands?
-  density fit         13 %  — are note densities right for the style?
-  mix balance         12 %  — are velocity levels proportionate?
+  harmonic coherence  30 %  — do parts play compatible pitches?
+  rhythm fit          23 %  — do rhythms match the style signature?
+  register separation 16 %  — are parts in distinct frequency bands?
+  melodic contour     10 %  — does the melody have shape and variety?
+  density fit         11 %  — are note densities right for the style?
+  mix balance         10 %  — are velocity levels proportionate?
 """
 import math
 
@@ -22,6 +23,9 @@ from app.core.constants import DRUM_MAP, DRUM_CHANNEL, SCALE_INTERVALS
 _BEATS_PER_BAR = 4
 _STEP = 0.25          # 16th note in beats
 _KICK_PITCH = DRUM_MAP["kick"]   # 36
+# Snare/clap land on the backbeat — the second-strongest groove signature after
+# the kick. Match any of them so clap-driven styles score too.
+_SNARE_PITCHES = {DRUM_MAP["snare"], DRUM_MAP["clap"], 40}
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -64,17 +68,25 @@ def _chord_pcs_at(beat: float, chord_map: list) -> set[int]:
 
 def _extract_16step(
     events: list[NoteEvent],
-    pitch_filter: int | None,
+    pitch_filter: int | set[int] | None,
     bars: int,
     channel_filter: int | None = None,
 ) -> list[float]:
-    """Normalised 16-step hit-density vector averaged over all bars."""
+    """Normalised 16-step hit-density vector averaged over all bars.
+
+    ``pitch_filter`` may be a single pitch, a set of pitches (any match), or None.
+    """
     counts = [0.0] * 16
+    is_set = isinstance(pitch_filter, set)
     for e in events:
         if channel_filter is not None and e.channel != channel_filter:
             continue
-        if pitch_filter is not None and e.pitch != pitch_filter:
-            continue
+        if pitch_filter is not None:
+            if is_set:
+                if e.pitch not in pitch_filter:
+                    continue
+            elif e.pitch != pitch_filter:
+                continue
         bar = int(e.start / _BEATS_PER_BAR)
         if bar >= bars:
             continue
@@ -149,6 +161,53 @@ def _harmonic_coherence(
     return min(1.0, score), flags
 
 
+def _melodic_contour(melody: list[NoteEvent]) -> tuple[float, list[str]]:
+    """Reward melodies with genuine shape — a line can be perfectly consonant
+    yet lifeless (one repeated note, or a monotonic ramp). Harmonic coherence
+    can't catch that, so contour scores interval/direction/pitch variety.
+    """
+    if len(melody) < 4:
+        return 0.70, []          # too short to judge — mild neutral
+
+    notes    = sorted(melody, key=lambda e: e.start)
+    pitches  = [n.pitch for n in notes]
+    intervals = [pitches[i + 1] - pitches[i] for i in range(len(pitches) - 1)]
+    n = len(intervals)
+
+    repeats = sum(1 for iv in intervals if iv == 0) / n            # same note again
+    leaps   = sum(1 for iv in intervals if abs(iv) > 7) / n        # wider than a 5th
+
+    dirs = [1 if iv > 0 else -1 for iv in intervals if iv != 0]
+    changes = sum(1 for i in range(1, len(dirs)) if dirs[i] != dirs[i - 1])
+    change_ratio = changes / max(1, len(dirs) - 1)                 # contour undulation
+
+    variety = len(set(pitches)) / len(pitches)                    # distinct-pitch ratio
+    span    = max(pitches) - min(pitches)                         # semitone spread
+
+    # Sub-scores with musical sweet spots
+    s_rep  = 1.0 - min(1.0, max(0.0, repeats - 0.15) / 0.50)      # fine ≤15% repeats
+    s_leap = 1.0 - min(1.0, max(0.0, leaps - 0.20) / 0.45)        # fine ≤20% big leaps
+    if change_ratio < 0.15:
+        s_dir = 0.40                                              # monotonic ramp
+    elif change_ratio > 0.80:
+        s_dir = 0.55                                              # zig-zag / noisy
+    else:
+        s_dir = 1.0
+    s_var  = min(1.0, variety / 0.60)                            # 60%+ distinct = full
+    s_span = min(1.0, span / 12.0)                               # an octave of range = full
+
+    score = s_rep * 0.28 + s_leap * 0.18 + s_dir * 0.24 + s_var * 0.18 + s_span * 0.12
+
+    flags = []
+    if repeats > 0.50:
+        flags.append("Melody repeats the same note too often — static contour")
+    if change_ratio < 0.15:
+        flags.append("Melody moves in one direction with little shape")
+    if variety < 0.30:
+        flags.append("Melody uses very few distinct pitches")
+    return min(1.0, score), flags
+
+
 def _register_separation(
     melody: list[NoteEvent],
     chords: list[NoteEvent],
@@ -203,6 +262,22 @@ def _rhythm_fit(
         scores.append(s)
         if s < 0.45:
             flags.append("Kick pattern diverges from style signature")
+
+    # Snare/clap backbeat — build a reference from the style's snare_standard_beats
+    # (1-indexed beats, e.g. [2, 4]) and compare where the generated backbeat lands.
+    ref_beats = drum_cfg.get("snare_standard_beats")
+    if ref_beats and drums:
+        ref_snare = [0.0] * 16
+        for b in ref_beats:
+            idx = int(round((b - 1) * 4))
+            if 0 <= idx < 16:
+                ref_snare[idx] = 1.0
+        if any(ref_snare):
+            gen_snare = _extract_16step(drums, _SNARE_PITCHES, bars, DRUM_CHANNEL)
+            s = _cosine(gen_snare, ref_snare)
+            scores.append(s)
+            if s < 0.45:
+                flags.append("Snare backbeat doesn't sit where the style expects")
 
     # Chord comping rhythm
     ref_chord = style.get("chord_rhythm")
@@ -371,6 +446,7 @@ def score_generation(
         harmonic  — chord-tone alignment
         register  — register separation between parts
         rhythm    — match to style's canonical kick/chord patterns
+        contour   — melodic shape / interval & pitch variety
         density   — notes-per-beat vs style targets
         mix       — velocity balance
         label     — "Excellent" | "Good" | "Fair" | "Weak"
@@ -386,15 +462,17 @@ def score_generation(
     s_harm,   f_harm   = _harmonic_coherence(melody, key, scale, chord_map)
     s_reg,    f_reg    = _register_separation(melody, chords, bass)
     s_rhythm, f_rhythm = _rhythm_fit(drums, chords, style, bars)
+    s_cont,   f_cont   = _melodic_contour(melody)
     s_dens,   f_dens   = _density_fit(melody, bass, style, bars, complexity)
     s_mix,    f_mix    = _mix_balance(melody, chords, bass)
 
     total = (
-        s_harm   * 0.32 +
-        s_reg    * 0.18 +
-        s_rhythm * 0.25 +
-        s_dens   * 0.13 +
-        s_mix    * 0.12
+        s_harm   * 0.30 +
+        s_reg    * 0.16 +
+        s_rhythm * 0.23 +
+        s_cont   * 0.10 +
+        s_dens   * 0.11 +
+        s_mix    * 0.10
     )
 
     if total >= 0.82:
@@ -411,8 +489,9 @@ def score_generation(
         "harmonic": round(s_harm,   3),
         "register": round(s_reg,    3),
         "rhythm":   round(s_rhythm, 3),
+        "contour":  round(s_cont,   3),
         "density":  round(s_dens,   3),
         "mix":      round(s_mix,    3),
         "label":    label,
-        "flags":    f_harm + f_reg + f_rhythm + f_dens + f_mix,
+        "flags":    f_harm + f_reg + f_rhythm + f_cont + f_dens + f_mix,
     }
