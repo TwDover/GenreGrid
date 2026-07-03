@@ -1,5 +1,5 @@
 import * as Tone from 'tone'
-import { getMasterCompressor } from './loader'
+import { getBassBus } from './loader'
 
 const STYLE_TO_INSTRUMENT: Record<string, string> = {
   // Upright / acoustic bass
@@ -50,12 +50,12 @@ const BASS_SAMPLE_MAP: Record<string, string> = {
 // Warm instruments get a gentle low-pass to smooth the top end
 const WARM_INSTRUMENTS = new Set(['acoustic_bass', 'fretless_bass'])
 
-function buildBassFx(inst: string, comp: Tone.Compressor): Tone.ToneAudioNode {
+function buildBassFx(inst: string, out: Tone.ToneAudioNode): Tone.ToneAudioNode {
   if (WARM_INSTRUMENTS.has(inst)) {
-    const filter = new Tone.Filter({ frequency: 2200, type: 'lowpass', rolloff: -12 }).connect(comp)
+    const filter = new Tone.Filter({ frequency: 2200, type: 'lowpass', rolloff: -12 }).connect(out)
     return filter
   }
-  return comp
+  return out
 }
 
 const bassCache = new Map<string, Promise<Tone.Sampler>>()
@@ -64,8 +64,7 @@ export function getBassSampler(styleId?: string): Promise<Tone.Sampler> {
   const inst = (styleId && STYLE_TO_INSTRUMENT[styleId]) ?? DEFAULT_INSTRUMENT
   if (bassCache.has(inst)) return bassCache.get(inst)!
 
-  const comp = getMasterCompressor()
-  const fxInput = buildBassFx(inst, comp)
+  const fxInput = buildBassFx(inst, getBassBus())
 
   const promise = new Promise<Tone.Sampler>((resolve, reject) => {
     const sampler = new Tone.Sampler({

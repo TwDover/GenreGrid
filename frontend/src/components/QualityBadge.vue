@@ -51,6 +51,7 @@ const dimensions = [
   { key: 'harmonic' as const, label: 'Harmonic' },
   { key: 'rhythm'   as const, label: 'Rhythm'   },
   { key: 'register' as const, label: 'Register' },
+  { key: 'contour'  as const, label: 'Contour'  },
   { key: 'density'  as const, label: 'Density'  },
   { key: 'mix'      as const, label: 'Mix'       },
 ]

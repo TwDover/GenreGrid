@@ -150,8 +150,13 @@ def generate_chords(
     resolved_progression: list | None = None,
     melody_ceiling: int | None = None,
     kick_times: list[float] | None = None,
+    melody_rests: list | None = None,
 ) -> List[NoteEvent]:
     events: List[NoteEvent] = []
+
+    def _in_melody_rest(beat: float) -> bool:
+        """True when `beat` falls inside a melody rest — chords answer in the gap."""
+        return bool(melody_rests) and any(rs <= beat < re for rs, re in melody_rests)
     if progression is None:
         templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
         progression = random.choice(templates)
@@ -378,8 +383,11 @@ def generate_chords(
 
                     beat_of_hit = start_beat + s * step
                     kick_boost = 8 if kick_times and any(abs(k - beat_of_hit) < 0.12 for k in kick_times) else 0
+                    # Call-and-response: chords step forward (louder, less duck) when
+                    # the melody is resting, receding again once it re-enters.
+                    rest_boost = 7 if _in_melody_rest(beat_of_hit) else 0
                     hit_start = _swing(beat_of_hit) + timing_jitter(style_jitter(style))
-                    hit_vel = vel + kick_boost - random.randint(0, 10)
+                    hit_vel = vel + kick_boost + rest_boost - random.randint(0, 10 - min(6, rest_boost))
                     sorted_pitches_hit = sorted(pitches)
                     n_hit = len(sorted_pitches_hit)
                     for note_idx, pitch in enumerate(sorted_pitches_hit):

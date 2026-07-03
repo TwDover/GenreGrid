@@ -11,6 +11,18 @@ from app.services.humanize import (
 from app.theory.rhythm import apply_swing
 
 
+def _voice_pitch_classes(pcs: list[int], octave: int) -> list[int]:
+    """Voice a set of pitch classes into a single ascending octave from `octave`.
+
+    Used when the caller supplies the chord generator's actual pitch classes so
+    the arpeggio arpeggiates the *real* harmony (including 7ths/9ths and any
+    borrowed color) rather than a re-derived plain triad.
+    """
+    base = 12 * (octave + 1)          # MIDI: C_octave (octave=5 → C5 = 72)
+    voiced = sorted({base + ((pc - base) % 12) for pc in pcs})
+    return voiced or [base]
+
+
 def generate_arpeggio(
     style: dict,
     key: str,
@@ -21,7 +33,15 @@ def generate_arpeggio(
     progression: list | None = None,
     octave: int = 5,
     melody_rests: list | None = None,
+    chord_tones: list | None = None,
 ) -> List[NoteEvent]:
+    """Generate an arpeggio part.
+
+    ``chord_tones`` — optional list of per-bar pitch-class lists taken from the
+    chord generator's actual voicings. When provided, the arpeggio uses the same
+    harmonic content as the chords (matching extensions/color); otherwise it
+    falls back to deriving a triad from the roman numeral.
+    """
     events: List[NoteEvent] = []
     if progression is None:
         templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
@@ -54,8 +74,12 @@ def generate_arpeggio(
         return 1.18 if any(rs <= t < re for rs, re in melody_rests) else 1.0
 
     for chord_idx in range(bars):
-        roman = progression[chord_idx % prog_len]
-        pitches = sorted(roman_to_chord(roman, key, scale, octave=octave, allow_7th=allow_7th))
+        if chord_tones:
+            pcs = chord_tones[chord_idx % len(chord_tones)]
+            pitches = _voice_pitch_classes(pcs, octave)
+        else:
+            roman = progression[chord_idx % prog_len]
+            pitches = sorted(roman_to_chord(roman, key, scale, octave=octave, allow_7th=allow_7th))
 
         if include_octave:
             pitches = pitches + [pitches[0] + 12]

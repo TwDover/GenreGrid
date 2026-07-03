@@ -1,5 +1,5 @@
 import * as Tone from 'tone'
-import { getMasterCompressor } from './loader'
+import { getDrumBus } from './loader'
 
 const STYLE_TO_KIT: Record<string, string> = {
   // Acoustic kit — live drum feel
@@ -41,6 +41,26 @@ const STYLE_TO_KIT: Record<string, string> = {
 }
 const DEFAULT_KIT = 'acoustic-kit'
 
+// Map each kit to a synthesized-drum character preset (see synthDrums.ts).
+const KIT_TO_CHARACTER: Record<string, import('./synthDrums').DrumCharacter> = {
+  'acoustic-kit': 'acoustic',
+  LINN:           'punchy',
+  KPR77:          'lofi',
+  CR78:           'vintage',
+  R8:             'digital',
+  Techno:         'techno',
+  breakbeat8:     'breakbeat',
+  breakbeat13:    'breakbeat',
+}
+
+/** Resolve the synthesized-drum character for a style (used by the live player). */
+export function drumCharacterForStyle(styleId?: string): import('./synthDrums').DrumCharacter {
+  // Styles without a sampled kit (grime, hyperpop) were pure-synthesis before —
+  // give them a hard electronic character.
+  const kit = (styleId && STYLE_TO_KIT[styleId]) ?? (styleId ? 'Techno' : DEFAULT_KIT)
+  return KIT_TO_CHARACTER[kit] ?? 'acoustic'
+}
+
 // Kits that get light room reverb (acoustic sources benefit; electronic stays dry)
 const REVERB_KITS = new Set(['acoustic-kit', 'LINN'])
 const KIT_REVERB_PARAMS: Record<string, { decay: number; wet: number }> = {
@@ -62,26 +82,26 @@ export const DRUM_PITCH_TO_SAMPLE: Record<number, string> = {
 
 const kitCache = new Map<string, Promise<Tone.Players>>()
 
-async function buildDrumFx(kitName: string, comp: Tone.Compressor): Promise<Tone.ToneAudioNode> {
+async function buildDrumFx(kitName: string, out: Tone.ToneAudioNode): Promise<Tone.ToneAudioNode> {
   if (REVERB_KITS.has(kitName)) {
     const params = KIT_REVERB_PARAMS[kitName]
     const reverb = new Tone.Reverb({ decay: params.decay, wet: params.wet })
     await reverb.generate()
-    reverb.connect(comp)
+    reverb.connect(out)
     return reverb
   }
   // Electronic kits: connect directly (dry)
-  return comp
+  return out
 }
 
 export function getDrumKit(styleId?: string): Promise<Tone.Players> {
   const kitName = (styleId && STYLE_TO_KIT[styleId]) ?? DEFAULT_KIT
   if (kitCache.has(kitName)) return kitCache.get(kitName)!
 
-  const comp = getMasterCompressor()
+  const bus = getDrumBus()
   const base = `/samples/drums/${kitName}/`
 
-  const promise = buildDrumFx(kitName, comp).then(
+  const promise = buildDrumFx(kitName, bus).then(
     (fxInput) =>
       new Promise<Tone.Players>((resolve, reject) => {
         const players = new Tone.Players(
