@@ -1,3 +1,11 @@
+<!--
+  GenreGrid — a style-based MIDI generator.
+  Copyright (C) 2026 Tw Dover
+
+  This program is free software: you can redistribute it and/or modify it under
+  the terms of the GNU General Public License v3 or (at your option) any later
+  version. Distributed WITHOUT ANY WARRANTY. See <https://www.gnu.org/licenses/>.
+-->
 <template>
   <div class="home-page">
     <header class="app-header">

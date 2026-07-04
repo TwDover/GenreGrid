@@ -1,3 +1,11 @@
+# GenreGrid — a style-based MIDI generator.
+# Copyright (C) 2026 Tw Dover
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
+# <https://www.gnu.org/licenses/> for details.
 import json
 import logging
 from pathlib import Path
@@ -27,6 +35,13 @@ def load_style(style_id: str) -> dict:
 
 
 def list_styles() -> list[dict]:
+    from app.services.priors import prior_exists, groove_exists
+
+    def _has_prior(data: dict) -> bool:
+        sid = data.get("id", "")
+        return (prior_exists(data.get("prior") or sid)
+                or groove_exists(data.get("groove") or sid))
+
     styles = []
     seen: set[str] = set()
     # Custom styles override built-ins with the same id
@@ -35,7 +50,7 @@ def list_styles() -> list[dict]:
             with open(path) as f:
                 data = json.load(f)
             seen.add(data["id"])
-            styles.append({"id": data["id"], "name": data["name"], "bpm_range": data.get("bpm_range", [40, 240]), "default_scale": data.get("default_scale", "minor"), "custom": True})
+            styles.append({"id": data["id"], "name": data["name"], "bpm_range": data.get("bpm_range", [40, 240]), "default_scale": data.get("default_scale", "minor"), "custom": True, "has_prior": _has_prior(data)})
         except Exception as exc:
             _logger.warning("Skipping malformed custom style %s: %s", path, exc)
     for path in sorted(STYLES_DIR.glob("*.json")):
@@ -44,7 +59,7 @@ def list_styles() -> list[dict]:
                 data = json.load(f)
             if data["id"] in seen:
                 continue
-            styles.append({"id": data["id"], "name": data["name"], "bpm_range": data.get("bpm_range", [40, 240]), "default_scale": data.get("default_scale", "minor")})
+            styles.append({"id": data["id"], "name": data["name"], "bpm_range": data.get("bpm_range", [40, 240]), "default_scale": data.get("default_scale", "minor"), "has_prior": _has_prior(data)})
         except Exception as exc:
             _logger.warning("Skipping malformed style %s: %s", path, exc)
     return sorted(styles, key=lambda s: s["name"])

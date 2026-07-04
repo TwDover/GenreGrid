@@ -1,3 +1,11 @@
+<!--
+  GenreGrid — a style-based MIDI generator.
+  Copyright (C) 2026 Tw Dover
+
+  This program is free software: you can redistribute it and/or modify it under
+  the terms of the GNU General Public License v3 or (at your option) any later
+  version. Distributed WITHOUT ANY WARRANTY. See <https://www.gnu.org/licenses/>.
+-->
 <template>
   <form class="generate-form" @submit.prevent="emit('submit', form)">
     <div class="style-field">
@@ -168,6 +176,14 @@
       </div>
     </div>
 
+    <div class="field" v-if="selectedStyle?.has_prior">
+      <label class="prior-toggle">
+        <input type="checkbox" v-model="form.use_priors" />
+        Use learned patterns
+        <span class="hint">chord, melody &amp; drum patterns from a local MIDI corpus you provide, instead of the built-in templates. You're responsible for your corpus's license.</span>
+      </label>
+    </div>
+
     <div class="field">
       <label>Feel <span class="value">{{ feelLabel }}</span></label>
       <input type="range" v-model.number="form.humanize" min="0" max="1" step="0.01" />
@@ -288,6 +304,7 @@ const form = reactive<GenerateRequest>({
   custom_progression: undefined,
   blend_style_id: undefined,
   blend_amount: 0.5,
+  use_priors: true,
 })
 
 const selectedStyle = computed(() => props.styles.find(s => s.id === form.style_id))
@@ -455,6 +472,22 @@ function randomize() {
 </script>
 
 <style scoped>
+.prior-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  cursor: pointer;
+}
+.prior-toggle input {
+  width: auto;
+  margin: 0;
+}
+.prior-toggle .hint {
+  flex-basis: 100%;
+  margin-left: 1.5rem;
+}
+
 .style-field {
   display: flex;
   flex-direction: column;
