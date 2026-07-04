@@ -137,7 +137,10 @@ def generate_melody(
     events: List[NoteEvent] = []
     _mined_prev_iv: int | None = None
     if melody_model is not None:
-        from app.services.priors import sample_melody_interval as _sample_mel_iv
+        from app.services.priors import (
+            sample_melody_interval as _sample_mel_iv,
+            sample_melody_duration as _sample_mel_dur,
+        )
     mel_cfg = style.get("melody", {})
     trill_prob = mel_cfg.get("trill_prob", 0.0)
     run_prob   = mel_cfg.get("run_prob", 0.0)
@@ -434,7 +437,12 @@ def generate_melody(
         # Chord tones landing on chord downbeats get longer values — structural arrivals ring out
         _chord_pcs = {p % 12 for p in roman_to_chord(current_roman, key, mel_scale, octave=4)}
         _is_structural = is_chord_downbeat and (pitch % 12) in _chord_pcs
-        if _is_structural:
+        # Data-driven note rhythm: sample the duration from the corpus's real
+        # duration distribution when a melody prior is present.
+        _md = _sample_mel_dur(melody_model, random) if melody_model is not None else None
+        if _md is not None:
+            dur_steps = _md
+        elif _is_structural:
             dur_steps = random.choices([1, 2, 3, 4], weights=[0.15, 0.38, 0.32, 0.15])[0]
         elif density < 0.45:
             dur_steps = random.choices([1, 2, 3, 4], weights=[0.35, 0.38, 0.18, 0.09])[0]
@@ -549,7 +557,10 @@ def generate_melody(
         b_end = b_start + block_beats
         existing = [n for n in raw if b_start <= n.start < b_end]
 
-        roll = random.random()
+        # Recapitulation: the final block restates the opening motif (exact or
+        # lightly pitch-shifted) so the phrase returns to its theme to close.
+        is_last_block = block == num_blocks - 1
+        roll = random.uniform(0.0, 0.45) if (is_last_block and num_blocks > 2) else random.random()
         if roll < 0.27:
             # Exact repeat with velocity shift + per-note micro-jitter
             vel_shift = random.randint(-8, 8)

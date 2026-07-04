@@ -9,11 +9,13 @@ A style-based MIDI generator. Pick a genre, set your key, BPM, and complexity, a
 - Melody is chord-aware — targets chord tones on downbeats and uses context-aware note durations (longer notes on structural arrivals)
 - Bass and chords always share the same progression; arpeggio voices the same harmony above the chords
 - Drums use genre-appropriate elements (kick patterns, ride, clap, crash, tom fills, swing) per style
+- **Loop mode** — generates a single tight section (the default) for a quick idea or a DAW-ready loop
 - **Arrangement mode** — generates a full arrangement arc (intro → verse → chorus → outro) from a single bar count, with per-section complexity, dynamic scaling, and energy ramps at section transitions
 - **Song Builder** — generates a complete song by stitching independently-produced sections using named templates (Verse–Chorus, V–C–Bridge, Extended, Compact, Minimal); each section type has distinct part layering, harmonic density, and dynamic profile
 - **Style-aware playback** — in-browser preview uses genre-matched samplers and synthesis engines: acoustic kits, LinnDrum, breakbeats, Techno kit, Rhodes, clavinet, vibraphone, nylon guitar, accordion, strings, synth leads, and pads — routed automatically per style
-- **Quality scorer** — every generation is scored across five musical dimensions (harmonic coherence, rhythm fit, register separation, density, mix balance) and returns a 0–1 score, label, and any issue flags alongside the MIDI
+- **Quality scorer** — every generation is scored across up to six musical dimensions (harmonic coherence, part separation, rhythm fit, density, mix balance, and — when a learned corpus prior exists — style-match) and returns a 0–1 score, label, and any issue flags alongside the MIDI
 - **Generation library** — high-scoring generations are saved locally and used to influence rhythm patterns in future generations, improving style consistency over time
+- **Data-driven patterns** — each style ships with chord progressions and drum grooves distilled from real MIDI corpora (POP909, Lakh, Groove MIDI) baked into its definition, so a fresh clone generates idiomatic output with no setup; you can optionally mine your own corpora to bias generation further (see [Training on real corpora](#training-on-real-corpora-optional)), toggled per generation with a **Use learned patterns** switch
 - In-browser MIDI preview with play/stop and mute per layer (drums / bass / melodic)
 - Generation history — last 10 results stay accessible in the UI
 - **Drag to DAW** — in the desktop app, drag any part directly into your DAW using the drag handle on each part card
@@ -71,7 +73,7 @@ Verse sections are 16 bars in all mainstream templates (Verse–Chorus, V–C–
 ### Requirements
 
 - Python 3.11+
-- Node.js 18+
+- Node.js 20+ (CI builds and releases on Node 22)
 
 ### Backend
 
@@ -174,6 +176,42 @@ The desktop app stores exports and the generation library in:
 
 ---
 
+## Training on real corpora (optional)
+
+GenreGrid's generators are **data-driven**. Each style's most common chord progressions and drum grooves are distilled from real MIDI corpora and **baked directly into the style JSONs**, so a fresh clone already generates idiomatic output with no setup. For deeper, genre-specific behaviour you can mine corpora yourself — the mined statistics then bias progression, melody, and drum generation at runtime.
+
+### How it works
+
+- **Harmony & melody** — `scripts/mine_corpus.py` reads a folder of MIDI and writes a per-genre **prior** (chord-progression n-grams, 4-bar loops, melodic interval/rhythm histograms) to `backend/app/priors/<name>.json`.
+- **Drums** — `scripts/mine_grooves.py` mines the Groove MIDI Dataset into per-genre drum grooves (kick/snare/hat placement, velocity, swing, fills) at `backend/app/priors/grooves/<name>.json`.
+- A style draws from a prior via its `"prior"` field (or its `id`) and a groove via its `"groove"` field (or `id`). Priors are **git-ignored** — a fresh clone contains none, and generation falls back to the baked-in patterns.
+- The built-in (baked-in) style patterns are **always** applied. The **Use my local MIDI corpus** toggle (request flag `use_priors`) *additionally* overlays your mined priors on top. It only appears for styles that have a prior present, and is **off by default in the UI** — an opt-in, since you're responsible for your corpus's license.
+
+### Mine a corpus
+
+```bash
+cd backend && source .venv/bin/activate
+
+# Harmony/melody from a genre folder (e.g. POP909 → "pop")
+python ../scripts/mine_corpus.py ~/datasets/pop909 pop
+
+# Drums from the Groove MIDI Dataset
+python ../scripts/mine_grooves.py ~/datasets/groove
+
+# (Lakh only) bucket LMD-matched into genre folders first, using tagtraum labels,
+# then mine each folder with mine_corpus.py
+python ../scripts/filter_lakh_genres.py \
+    --lmd ~/Downloads/lmd_matched \
+    --cls ~/Downloads/msd_tagtraum_cd2.cls \
+    --out ~/Downloads/lakh_by_genre
+```
+
+Use `--limit N` on `mine_corpus.py` to sample large genre folders. Re-running a script refreshes its prior; restart the backend to pick it up.
+
+> **Data & licensing** — the mining scripts run locally and ship no music. **You** are responsible for obtaining each dataset legitimately and complying with its license. See [DATA_LICENSES.md](DATA_LICENSES.md).
+
+---
+
 ## Adding a style
 
 Create a JSON file in `backend/app/styles/` — it will be picked up automatically. See an existing style like `lofi.json` for the full schema.
@@ -200,13 +238,15 @@ Key fields:
 | `arpeggio` | object | `pattern` (`up`/`down`/`up_down`/`random`/`chord_burst`), `speed` (beats per note), `include_octave`, `allow_7th` |
 | `melody` | object | `density`, `stepwise_motion`, `leap_probability`, `rest_probability`, `range [lo, hi]` |
 | `melody_scale` | string | Scale used for melody (can differ from harmony, e.g. pentatonic over diatonic chords) |
-| `drums` | object | `hat_density`, `triplet_probability`, `snare_standard_beats`, `swing`, optional `kick_pattern`, `use_ride`, `use_clap`, `crash_on_bar_1`, `flam_prob`, `tom_fills` |
+| `drums` | object | `hat_density`, `triplet_probability`, `snare_standard_beats`, `swing`, optional `kick_pattern`, `hat_pattern`, `hat_vel`, `use_ride`, `use_clap`, `crash_on_bar_1`, `flam_prob`, `tom_fills` |
 | `velocity_base` | int | Base MIDI velocity for chord notes |
 | `vel_arc_start` | float | Velocity at bar 1 relative to peak (0.0–1.0); controls the dynamic build across the section |
 | `groove_push` | float | Systematic timing offset in beats (negative = behind beat, positive = ahead) |
 | `secondary_dominants` | bool | Allow secondary dominant substitutions in progressions |
 | `tritone_substitution` | bool | Allow tritone substitutions on V chords |
 | `chorus_key_shift` | int | Semitones to transpose the key for chorus sections in Song Builder |
+| `prior` | string | Name of a mined harmony prior to bias progressions/melody (defaults to `id`); optional — see [Training](#training-on-real-corpora-optional) |
+| `groove` | string | Name of a mined drum groove to overlay (defaults to `id`); optional |
 
 To add style-aware **playback instruments**, update the mapping dicts in:
 - `frontend/src/soundfonts/melodic.ts` — chords/melody/arpeggio instrument

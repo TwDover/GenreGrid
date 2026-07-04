@@ -157,6 +157,8 @@ def generate_drums(
     perc_layers = drum_cfg.get("perc_layers", [])
     flam_prob   = drum_cfg.get("flam_prob", 0.0)
     mined_fills = drum_cfg.get("fills")     # mined section-transition fills (groove prior)
+    mined_hat_pattern = drum_cfg.get("hat_pattern")   # per-step closed-hat placement prob
+    mined_hat_vel     = drum_cfg.get("hat_vel")       # per-step closed-hat velocity accent
 
     section_ends = set(section_end_bars) if section_end_bars else set()
     hat_note     = DRUM_MAP["ride"] if use_ride else DRUM_MAP["closed_hat"]
@@ -377,21 +379,29 @@ def generate_drums(
                 if edm_build_active and (t - bar_start) >= 1.5:
                     continue
 
-                if not should_trigger(hat_density * hat_breath * (0.70 + complexity * 0.30)):
+                pos_key  = round(t - bar_start, 4)
+                step_idx = round(pos_key / step)
+
+                # Placement: a real drummer's per-step hat probability (mined) on the
+                # straight grid, else the procedural density.
+                if mined_hat_pattern is not None and not use_triplet:
+                    place_p = mined_hat_pattern[step_idx % 16] * hat_breath
+                else:
+                    place_p = hat_density * hat_breath * (0.70 + complexity * 0.30)
+                if not should_trigger(place_p):
                     continue
 
                 beat_frac = round((t - bar_start) % 1.0, 4)
-                pos_key   = round(t - bar_start, 4)
 
                 if pos_key in rolled_positions:
                     continue
 
                 is_eighth = beat_frac < 0.01 or abs(beat_frac - 0.5) < 0.01
 
-                # 16-step accent weight for this position
+                # 16-step accent weight — mined velocity curve when available.
                 if not use_triplet:
-                    step_idx = round(pos_key / step)
-                    accent   = _HAT_VEL_WEIGHTS[step_idx % 16]
+                    accent = (mined_hat_vel[step_idx % 16] if mined_hat_vel is not None
+                              else _HAT_VEL_WEIGHTS[step_idx % 16])
                 else:
                     # Triplets: accent 1st of each triplet group, weaker on 2nd/3rd
                     triplet_pos = round(pos_key * 3)

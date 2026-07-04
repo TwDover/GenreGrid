@@ -76,6 +76,7 @@ export interface QualityScore {
   contour: number
   density: number
   mix: number
+  style_match?: number
   label: string
   flags: string[]
 }

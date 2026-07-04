@@ -159,13 +159,13 @@ def finalize_groove(groove: dict) -> dict:
         "voices_vel": vel,
         "swing_est": round(swing, 3),
         "fills": groove.get("fills", []),
-        "derived": derive_drum_fields(prob, swing),
+        "derived": derive_drum_fields(prob, vel, swing),
     }
 
 
-def derive_drum_fields(prob: dict, swing: float) -> dict:
-    """Turn per-voice step probabilities into the style-JSON drum fields the
-    generator consumes."""
+def derive_drum_fields(prob: dict, vel: dict, swing: float) -> dict:
+    """Turn per-voice step probabilities/velocities into the style-JSON drum
+    fields the generator consumes."""
     kick = prob["kick"]
     kick_pattern = [1 if kick[s] >= 0.35 else 0 for s in range(_STEPS)]
     kick_pattern[0] = 1                          # always anchor the downbeat
@@ -182,10 +182,18 @@ def derive_drum_fields(prob: dict, swing: float) -> dict:
 
     use_ride = sum(prob["ride"]) > sum(prob["closed_hat"])
 
+    # Per-step hat placement probability + velocity accent (the human hat feel).
+    hat_prob = [round(prob["closed_hat"][s], 3) for s in range(_STEPS)]
+    hv = vel.get("closed_hat", [0.0] * _STEPS)
+    peak = max(hv) or 1.0
+    hat_vel = [round(hv[s] / peak, 3) if hv[s] > 0 else 0.6 for s in range(_STEPS)]
+
     return {
         "kick_pattern": kick_pattern,
         "snare_standard_beats": snare_beats,
         "hat_density": max(0.2, hat_density),
+        "hat_pattern": hat_prob,
+        "hat_vel": hat_vel,
         "swing": round(swing, 3),
         "use_ride": use_ride,
     }
