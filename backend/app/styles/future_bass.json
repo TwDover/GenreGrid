@@ -5,6 +5,12 @@
   "default_scale": "major",
   "preferred_keys": ["C", "D", "F", "G", "A"],
   "progression_templates": [
+    ["I", "vi", "I", "vi"],
+    ["I", "vi", "iii", "IV"],
+    ["I", "ii", "I", "ii"],
+    ["I", "V", "IV", "I"],
+    ["iv", "i", "III", "iv"],
+    ["i", "iv", "i", "iv"],
     ["I", "vi", "IV", "V"],
     ["I", "V", "vi", "IV"],
     ["vi", "IV", "I", "V"],
@@ -38,13 +44,18 @@
     "allow_7th": true
   },
   "drums": {
-    "kick_pattern": [1,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0],
-    "hat_density": 0.8,
+    "kick_pattern": [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    "hat_density": 1.0,
     "triplet_probability": 0.25,
     "snare_standard_beats": [2, 4],
-    "swing": 0.1,
+    "swing": 0.0,
     "use_clap": true,
     "crash_on_bar_1": true,
-    "edm_drops": true
-  }
+    "edm_drops": true,
+    "hat_pattern": [1.0, 0.507, 0.617, 0.431, 0.617, 0.516, 0.661, 0.453, 0.962, 0.525, 0.554, 0.426, 0.63, 0.466, 0.558, 0.39],
+    "hat_vel": [0.905, 0.656, 0.947, 0.79, 0.779, 0.674, 0.82, 0.923, 0.892, 0.67, 1.0, 0.809, 0.755, 0.749, 0.879, 0.855],
+    "use_ride": false
+  },
+  "prior": "electronic",
+  "groove": "dance"
 }

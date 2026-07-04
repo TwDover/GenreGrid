@@ -79,6 +79,7 @@ class QualityScore(BaseModel):
     contour: float = 0.0
     density: float
     mix: float
+    style_match: float = 0.0   # match to the genre's mined distribution (0 if no prior)
     label: str
     flags: List[str]
 

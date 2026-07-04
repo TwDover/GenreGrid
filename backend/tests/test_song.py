@@ -37,3 +37,25 @@ def test_regenerate_song_part_isolates_the_target():
     assert (d / "drums.mid").read_bytes() != drums_before      # re-rolled
     assert (d / "chords.mid").read_bytes() == chords_before    # untouched
     assert (d / "song.mid").read_bytes() != song_before        # combined rebuilt
+
+
+def test_recurring_sections_reuse_the_theme():
+    """Verse 2 reuses Verse's melody/harmony (motif returns); drums stay fresh."""
+    from app.services.style_loader import load_style
+    from app.api.routes_generate import _generate_song_sections
+
+    req = BuildSongRequest(style_id="lofi", key="C", scale="major", bpm=90,
+                           template="verse_chorus", parts=["chords", "bass", "melody", "drums"],
+                           seed=11)
+    style = {**load_style("lofi"), "_humanize_scale": 0.5}
+    ev, secs, _ = _generate_song_sections(req, style, 90, 11, 0, False, False,
+                                          style.get("groove_push", 0.0))
+
+    def section_part(name, part):
+        s = next(x for x in secs if x["name"] == name)
+        a, b = s["start_bar"] * 4, (s["start_bar"] + s["bars"]) * 4
+        return sorted((round(e.start - a, 3), e.pitch) for e in ev[part] if a <= e.start < b)
+
+    assert section_part("Verse", "melody") == section_part("Verse 2", "melody")
+    assert section_part("Chorus", "melody") == section_part("Chorus 2", "melody")
+    assert section_part("Verse", "drums") != section_part("Verse 2", "drums")

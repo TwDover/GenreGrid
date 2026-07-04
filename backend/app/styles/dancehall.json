@@ -14,24 +14,15 @@
     "A"
   ],
   "progression_templates": [
-    [
-      "I",
-      "IV",
-      "V",
-      "IV"
-    ],
-    [
-      "I",
-      "vi",
-      "IV",
-      "V"
-    ],
-    [
-      "I",
-      "V",
-      "vi",
-      "IV"
-    ]
+    ["I", "vi", "I", "vi"],
+    ["I", "bVII", "I", "bVII"],
+    ["I", "IV", "I", "IV"],
+    ["VII", "I", "IV", "I"],
+    ["i", "VII", "i", "VII"],
+    ["i", "iv", "i", "iv"],
+    ["I", "IV", "V", "IV"],
+    ["I", "vi", "IV", "V"],
+    ["I", "V", "vi", "IV"]
   ],
   "chord_extensions": {
     "allow_7th": 0.4,
@@ -71,16 +62,19 @@
     0
   ],
   "drums": {
-    "hat_density": 0.65,
+    "hat_density": 0.688,
     "triplet_probability": 0.2,
-    "snare_standard_beats": [
-      2,
-      4
-    ],
-    "swing": 0.15
+    "snare_standard_beats": [2, 4],
+    "swing": 0.0,
+    "kick_pattern": [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    "hat_pattern": [0.84, 0.15, 0.387, 0.321, 0.836, 0.153, 0.422, 0.474, 0.655, 0.188, 0.373, 0.362, 0.829, 0.125, 0.3, 0.157],
+    "hat_vel": [0.575, 0.404, 1.0, 0.45, 0.638, 0.393, 0.688, 0.633, 0.704, 0.616, 0.685, 0.524, 0.649, 0.364, 0.833, 0.795],
+    "use_ride": false
   },
   "chord_register": [
     45,
     66
-  ]
+  ],
+  "prior": "reggae",
+  "groove": "reggae"
 }

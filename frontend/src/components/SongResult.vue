@@ -55,8 +55,10 @@
           :keyRoot="keyRoot"
           :scale="scale"
           :regenLoading="regenLoading === file.part"
+          :hasUndo="undoable.has(file.part)"
           :simple="true"
           @regen="onRegen"
+          @undo="onUndo(file.part)"
         />
       </div>
     </template>
@@ -66,7 +68,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
 import type { BuildSongResponse } from '../types/midi'
-import { downloadUrl, regenerateSongPart } from '../services/api'
+import { downloadUrl, regenerateSongPart, undoSongPart } from '../services/api'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 import PartCard from './PartCard.vue'
 
@@ -79,6 +81,7 @@ let songBlobUrl: string | null = null
 const versions = reactive<Record<string, number>>({})
 const regenLoading = ref<string | null>(null)
 const regenError = ref<string | null>(null)
+const undoable = reactive(new Set<string>())
 
 const stemFiles = computed(() => (props.result?.files ?? []).filter(f => f.part !== 'song'))
 const bustedStems = computed(() => stemFiles.value.map(f =>
@@ -102,10 +105,25 @@ async function onRegen(part: string) {
     const v = Date.now()
     versions[part] = v      // reload the stem card + piano roll
     versions.song = v       // and the whole-song playback
+    undoable.add(part)
   } catch (e: any) {
     regenError.value = e.message ?? 'Regeneration failed'
   } finally {
     regenLoading.value = null
+  }
+}
+
+async function onUndo(part: string) {
+  if (!props.result) return
+  regenError.value = null
+  try {
+    await undoSongPart({ generation_id: props.result.generation_id, part })
+    const v = Date.now()
+    versions[part] = v
+    versions.song = v
+    undoable.delete(part)   // one level of undo
+  } catch (e: any) {
+    regenError.value = e.message ?? 'Undo failed'
   }
 }
 

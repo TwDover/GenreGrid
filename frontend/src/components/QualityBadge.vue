@@ -17,9 +17,9 @@
       <div v-for="dim in dimensions" :key="dim.key" class="dim-row">
         <span class="dim-name">{{ dim.label }}</span>
         <div class="dim-bar-track">
-          <div class="dim-bar-fill" :style="{ width: pct(score[dim.key]) + '%', background: barColor(score[dim.key]) }"></div>
+          <div class="dim-bar-fill" :style="{ width: pct(score[dim.key] ?? 0) + '%', background: barColor(score[dim.key] ?? 0) }"></div>
         </div>
-        <span class="dim-value">{{ pct(score[dim.key]) }}</span>
+        <span class="dim-value">{{ pct(score[dim.key] ?? 0) }}</span>
       </div>
     </div>
     <ul v-if="score.flags.length" class="quality-flags">
@@ -55,14 +55,20 @@ const FLAG_TIPS: Record<string, string> = {
   'Bass overpowers the mid-range': 'Normal for 808-heavy styles like trap and drill.',
 }
 
-const dimensions = [
-  { key: 'harmonic' as const, label: 'Harmonic' },
-  { key: 'rhythm'   as const, label: 'Rhythm'   },
-  { key: 'separation' as const, label: 'Register' },
-  { key: 'contour'  as const, label: 'Contour'  },
-  { key: 'density'  as const, label: 'Density'  },
-  { key: 'mix'      as const, label: 'Mix'       },
-]
+type DimKey = 'harmonic' | 'rhythm' | 'separation' | 'contour' | 'density' | 'mix' | 'style_match'
+const dimensions = computed<{ key: DimKey; label: string }[]>(() => {
+  const dims: { key: DimKey; label: string }[] = [
+    { key: 'harmonic', label: 'Harmonic' },
+    { key: 'rhythm', label: 'Rhythm' },
+    { key: 'separation', label: 'Register' },
+    { key: 'contour', label: 'Contour' },
+    { key: 'density', label: 'Density' },
+    { key: 'mix', label: 'Mix' },
+  ]
+  // "Style" only when a corpus prior scored it (genre-match dimension).
+  if ((props.score.style_match ?? 0) > 0) dims.push({ key: 'style_match', label: 'Style' })
+  return dims
+})
 
 const labelClass = computed(() => ({
   'label-excellent': props.score.label === 'Excellent',

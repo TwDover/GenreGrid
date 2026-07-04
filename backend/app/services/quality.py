@@ -435,6 +435,52 @@ def extract_rhythm_patterns(all_events: dict, bars: int) -> dict:
     }
 
 
+def _style_match(progression: list, melody: list[NoteEvent], style: dict) -> tuple[float | None, list[str]]:
+    """How closely the generation matches the genre's *mined* distribution.
+
+    Only applies when a corpus prior exists for the style: rewards chord
+    transitions the genre actually uses and a melodic-interval profile close to
+    the genre's. Returns (None, []) when there's no prior, so styles without one
+    aren't scored on this dimension.
+    """
+    from app.services.priors import load_prior
+    name = style.get("prior") or style.get("id", "")
+    prior = load_prior(name)
+    if not prior:
+        return None, []
+
+    scores: list[float] = []
+
+    # Harmony: fraction of chord transitions present in the genre's bigram model.
+    harmony = prior.get("harmony", {})
+    bigram = harmony.get("bigram", {})
+    if progression and len(progression) > 1 and bigram:
+        total = hits = 0
+        for a, b in zip(progression, progression[1:]):
+            total += 1
+            if float(bigram.get(a, {}).get(b, 0)) > 0:
+                hits += 1
+        if total:
+            scores.append(hits / total)
+
+    # Melody: cosine similarity of the interval histogram to the genre's.
+    ints = (prior.get("melody", {}) or {}).get("intervals", {})
+    if melody and len(melody) > 2 and ints:
+        sm = sorted(melody, key=lambda e: e.start)
+        gen = [0.0] * 25   # intervals -12..12
+        for i in range(1, len(sm)):
+            iv = max(-12, min(12, sm[i].pitch - sm[i - 1].pitch))
+            gen[iv + 12] += 1.0
+        pri = [float(ints.get(str(k), ints.get(k, 0))) for k in range(-12, 13)]
+        scores.append(_cosine(gen, pri))
+
+    if not scores:
+        return None, []
+    s = sum(scores) / len(scores)
+    flags = ["Drifts from the genre's learned style"] if s < 0.4 else []
+    return min(1.0, s), flags
+
+
 # ── public API ────────────────────────────────────────────────────────────────
 
 def score_generation(
@@ -473,15 +519,17 @@ def score_generation(
     s_cont,   f_cont   = _melodic_contour(melody)
     s_dens,   f_dens   = _density_fit(melody, bass, style, bars, complexity)
     s_mix,    f_mix    = _mix_balance(melody, chords, bass)
+    s_style,  f_style  = _style_match(progression, melody, style)
 
-    total = (
-        s_harm   * 0.30 +
-        s_reg    * 0.16 +
-        s_rhythm * 0.23 +
-        s_cont   * 0.10 +
-        s_dens   * 0.11 +
-        s_mix    * 0.10
-    )
+    # Weighted, normalised over the applicable dimensions (style-match only counts
+    # when a corpus prior exists, so styles without one aren't diluted).
+    weighted = [
+        (s_harm, 0.30), (s_reg, 0.16), (s_rhythm, 0.23),
+        (s_cont, 0.10), (s_dens, 0.11), (s_mix, 0.10),
+    ]
+    if s_style is not None:
+        weighted.append((s_style, 0.14))
+    total = sum(v * w for v, w in weighted) / sum(w for _, w in weighted)
 
     if total >= 0.82:
         label = "Excellent"
@@ -500,6 +548,7 @@ def score_generation(
         "contour":  round(s_cont,   3),
         "density":  round(s_dens,   3),
         "mix":      round(s_mix,    3),
+        "style_match": round(s_style, 3) if s_style is not None else 0.0,
         "label":    label,
-        "flags":    f_harm + f_reg + f_rhythm + f_cont + f_dens + f_mix,
+        "flags":    f_harm + f_reg + f_rhythm + f_cont + f_dens + f_mix + f_style,
     }

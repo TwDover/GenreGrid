@@ -21,8 +21,8 @@
         <span v-if="regenLoading">…</span>
         <span v-else>⟳</span>
       </button>
+      <button v-if="hasUndo" class="icon-btn" @click="$emit('undo')" title="Undo last regeneration">↩</button>
       <template v-if="!simple">
-        <button v-if="hasUndo" class="icon-btn" @click="$emit('undo')" title="Undo last regeneration">↩</button>
         <button class="icon-btn lock-btn" :class="{ locked }" @click="$emit('toggle-lock', file.part)" :title="locked ? 'Unlock part' : 'Lock part (keeps it when regenerating others)'">
           {{ locked ? '🔒' : '🔓' }}
         </button>
