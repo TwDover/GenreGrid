@@ -133,5 +133,6 @@
         "ghost_note_prob": 0.58,
         "flam_prob": 0.15
     },
-    "groove_push": -0.009
+    "groove_push": -0.009,
+    "groove": "hiphop"
 }

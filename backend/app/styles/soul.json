@@ -15,66 +15,18 @@
         "Bb"
     ],
     "progression_templates": [
-        [
-            "I",
-            "vi",
-            "IV",
-            "V"
-        ],
-        [
-            "I",
-            "IV",
-            "vi",
-            "V"
-        ],
-        [
-            "ii",
-            "V",
-            "I",
-            "vi"
-        ],
-        [
-            "I",
-            "bVII",
-            "IV",
-            "I"
-        ],
-        [
-            "I",
-            "IV",
-            "bVII",
-            "IV"
-        ],
-        [
-            "iv",
-            "I",
-            "bVII",
-            "I"
-        ],
-        [
-            "I",
-            "iii",
-            "IV",
-            "V"
-        ],
-        [
-            "I",
-            "vi",
-            "ii",
-            "bVII"
-        ],
-        [
-            "I6",
-            "vi",
-            "ii",
-            "V"
-        ],
-        [
-            "I",
-            "IV6",
-            "bVII",
-            "IV"
-        ]
+        ["I", "vi", "I", "vi"],
+        ["I", "vi", "IV", "V"],
+        ["I", "vi", "IV", "I"],
+        ["I", "V", "vi", "V"],
+        ["I", "ii", "V", "I"],
+        ["I", "IV", "V", "I"],
+        ["I", "vi", "ii", "V"],
+        ["I", "IV", "vi", "V"],
+        ["ii", "V", "I", "vi"],
+        ["I", "bVII", "IV", "I"],
+        ["I", "IV", "bVII", "IV"],
+        ["iv", "I", "bVII", "I"]
     ],
     "chord_extensions": {
         "allow_7th": 0.9,
@@ -142,5 +94,6 @@
         "ghost_note_prob": 0.6,
         "flam_prob": 0.18
     },
-    "groove_push": 0.004
+    "groove_push": 0.004,
+    "prior": "pop"
 }

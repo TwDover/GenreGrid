@@ -1,3 +1,11 @@
+# GenreGrid — a style-based MIDI generator.
+# Copyright (C) 2026 Tw Dover
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
+# <https://www.gnu.org/licenses/> for details.
 import concurrent.futures
 import io
 import logging
@@ -21,6 +29,7 @@ from app.generators.arpeggio import generate_arpeggio
 from app.core.config import EXPORTS_DIR
 from app.core.constants import DRUM_MAP
 from app.services.quality import score_generation, extract_rhythm_patterns
+from app.services.priors import load_prior, sample_progression, melody_prior_for, groove_fields_for
 from app.services.library import save_generation as lib_save, is_saved, build_scoring_style
 
 router = APIRouter()
@@ -740,6 +749,46 @@ def _section_end_bars(sections: list[dict], current_section_offset: int) -> list
     return end_bars
 
 
+def _prior_name(style: dict) -> str:
+    """Which mined prior a style draws from: explicit `prior` field, else its id."""
+    return style.get("prior") or style.get("id", "")
+
+
+def _overlay_groove(style: dict, use_priors: bool) -> dict:
+    """Overlay a style with drum fields learned from a groove corpus, if one exists.
+
+    The learned kick_pattern / snare backbeat / hat density / swing replace the
+    style's hand-authored values so drums play a real, mined groove. Returns the
+    style unchanged when no groove prior applies.
+    """
+    fields = groove_fields_for(style, use_priors)
+    if not fields:
+        return style
+    return {**style, "drums": {**style.get("drums", {}), **fields}}
+
+
+def _choose_progression(style: dict, use_priors: bool, seed: int, scale: str = "minor") -> list[str]:
+    """Pick a progression: a mined corpus prior when available+enabled, else a template.
+
+    The template RNG draw happens regardless so seeds stay stable with the legacy
+    path; the prior only replaces the resulting progression when one exists. The
+    prior is queried by mode so a major-key request gets a major progression.
+    """
+    templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
+    random.seed(seed)
+    progression = random.choice(templates)
+    if use_priors:
+        prior = load_prior(_prior_name(style))
+        if prior:
+            sampled = sample_progression(prior, length=len(progression), seed=seed, mode=scale)
+            if sampled:
+                progression = sampled
+    hrb = style.get("harmonic_rhythm_bars", 1)
+    if hrb > 1:
+        progression = [chord for chord in progression for _ in range(hrb)]
+    return progression
+
+
 def _run_attempt(
     req,
     style: dict,
@@ -757,12 +806,10 @@ def _run_attempt(
     scoring_style overrides the style dict used for quality scoring only,
     so learned patterns can improve scorer accuracy without touching generation.
     """
-    templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
-    random.seed(seed)
-    progression = random.choice(templates)
-    hrb = style.get("harmonic_rhythm_bars", 1)
-    if hrb > 1:
-        progression = [chord for chord in progression for _ in range(hrb)]
+    _use_priors = getattr(req, "use_priors", True) and not getattr(req, "custom_progression", None)
+    style = _overlay_groove(style, getattr(req, "use_priors", True))
+    progression = _choose_progression(style, _use_priors, seed, req.scale)
+    _melody_model = melody_prior_for(_prior_name(style), getattr(req, "use_priors", True))
 
     # Resolve section profile for loop-mode shaping
     _sec_profile = SECTION_PROFILES.get(req.section_type or "", {}) if is_loop else {}
@@ -819,7 +866,8 @@ def _run_attempt(
         if has_melody and "melody" in req.parts:
             random.seed(_part_seed(seed, section_i, "melody"))
             mel_evts = generate_melody(style, s_key, req.scale, s_bars, mel_cplx,
-                                       eff_var, s_resolved, is_loop=is_loop)
+                                       eff_var, s_resolved, is_loop=is_loop,
+                                       melody_model=_melody_model)
             mel_evts = _apply_dynamic(mel_evts, s_dyn)
             all_events["melody"].extend(_shift(mel_evts, s_off))
             if mel_evts:
@@ -1241,17 +1289,13 @@ def regenerate_part(req: RegeneratePartRequest):
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+    style = _overlay_groove(style, getattr(req, "use_priors", True))
     bpm_min, bpm_max = style.get("bpm_range", [40, 240])
     bpm = max(bpm_min, min(bpm_max, req.bpm))
 
     # Replay the original seed so we pick the same progression and substitutions —
     # keeps harmony consistent with the other parts generated from that seed.
-    random.seed(req.seed)
-    templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
-    progression = random.choice(templates)
-    hrb = style.get("harmonic_rhythm_bars", 1)
-    if hrb > 1:
-        progression = [chord for chord in progression for _ in range(hrb)]
+    progression = _choose_progression(style, getattr(req, "use_priors", True), req.seed, req.scale)
 
     secondary_dominants = style.get("secondary_dominants", False)
     tritone_sub = style.get("tritone_substitution", False)
@@ -1318,7 +1362,9 @@ def regenerate_part(req: RegeneratePartRequest):
                                  req.variation, progression, kick_times)
         elif req.part == "melody":
             evts = generate_melody(style, s_key, req.scale, s_bars, s_cplx,
-                                   req.variation, s_resolved)
+                                   req.variation, s_resolved,
+                                   melody_model=melody_prior_for(_prior_name(style),
+                                                                 getattr(req, "use_priors", True)))
         elif req.part == "drums":
             evts = generate_drums(style, s_bars, s_cplx, req.variation,
                                   section_end_bars=_section_end_bars(sections, s_off))
@@ -1584,6 +1630,7 @@ def build_song(req: BuildSongRequest):
             custom_progression=None,
             blend_style_id=None,
             blend_amount=0.5,
+            use_priors=req.use_priors,
         )
 
         try:

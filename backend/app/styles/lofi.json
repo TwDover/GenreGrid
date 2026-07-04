@@ -14,66 +14,18 @@
         "A"
     ],
     "progression_templates": [
-        [
-            "I",
-            "V",
-            "vi",
-            "IV"
-        ],
-        [
-            "I",
-            "vi",
-            "IV",
-            "V"
-        ],
-        [
-            "ii",
-            "V",
-            "I",
-            "vi"
-        ],
-        [
-            "vi",
-            "IV",
-            "I",
-            "V"
-        ],
-        [
-            "I",
-            "bVII",
-            "IV",
-            "I"
-        ],
-        [
-            "iii",
-            "vi",
-            "IV",
-            "I"
-        ],
-        [
-            "I",
-            "iii",
-            "IV",
-            "iv"
-        ],
-        [
-            "ii",
-            "V",
-            "iii",
-            "vi"
-        ],
-        [
-            "Isus2",
-            "V",
-            "vi",
-            "IV"
-        ],
-        [
-            "I",
-            "Vsus4",
-            "vi",
-            "IV"
-        ]
+        ["I", "vi", "I", "vi"],
+        ["I", "vi", "IV", "V"],
+        ["I", "vi", "IV", "I"],
+        ["I", "V", "vi", "V"],
+        ["I", "ii", "V", "I"],
+        ["I", "IV", "V", "I"],
+        ["I", "vi", "ii", "V"],
+        ["I", "V", "vi", "IV"],
+        ["ii", "V", "I", "vi"],
+        ["vi", "IV", "I", "V"],
+        ["I", "bVII", "IV", "I"],
+        ["iii", "vi", "IV", "I"]
     ],
     "chord_extensions": {
         "allow_7th": 0.9,
@@ -155,5 +107,7 @@
         "swing": 0.55,
         "flam_prob": 0.08
     },
-    "groove_push": -0.012
+    "groove_push": -0.012,
+    "prior": "pop",
+    "groove": "hiphop"
 }

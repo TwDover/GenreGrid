@@ -1,3 +1,11 @@
+# GenreGrid — a style-based MIDI generator.
+# Copyright (C) 2026 Tw Dover
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
+# <https://www.gnu.org/licenses/> for details.
 import random
 from typing import List
 
@@ -118,8 +126,18 @@ def generate_melody(
     variation: float,
     progression: list | None = None,
     is_loop: bool = False,
+    melody_model: dict | None = None,
 ) -> List[NoteEvent]:
+    """`melody_model` — optional mined melody prior (interval/phrase-bigram stats).
+
+    When supplied, the free-motion connecting notes follow the corpus's real
+    interval contour instead of the hand-coded stepwise/leap heuristic; chord-tone
+    placement on downbeats and cadences is untouched, so harmony stays intact.
+    """
     events: List[NoteEvent] = []
+    _mined_prev_iv: int | None = None
+    if melody_model is not None:
+        from app.services.priors import sample_melody_interval as _sample_mel_iv
     mel_cfg = style.get("melody", {})
     trill_prob = mel_cfg.get("trill_prob", 0.0)
     run_prob   = mel_cfg.get("run_prob", 0.0)
@@ -337,6 +355,16 @@ def generate_melody(
             ct = _chord_tone_indices(current_roman, key, mel_scale, active_scale)
             if ct:
                 current_note_idx = min(ct, key=lambda i: abs(i - current_note_idx))
+                _last_interval = 0
+        elif melody_model is not None and len(active_scale) > 2:
+            # Data-driven contour: sample a semitone interval from the mined model
+            # and snap to the nearest scale tone (harmony stays chord-locked above).
+            iv = _sample_mel_iv(melody_model, _mined_prev_iv, random)
+            if iv is not None:
+                target = active_scale[min(current_note_idx, len(active_scale) - 1)] + iv
+                current_note_idx = min(range(len(active_scale)),
+                                       key=lambda i: abs(active_scale[i] - target))
+                _mined_prev_iv = iv
                 _last_interval = 0
         else:
             if should_trigger(stepwise) and len(chord_pool) > 2:

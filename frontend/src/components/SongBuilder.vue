@@ -1,3 +1,11 @@
+<!--
+  GenreGrid — a style-based MIDI generator.
+  Copyright (C) 2026 Tw Dover
+
+  This program is free software: you can redistribute it and/or modify it under
+  the terms of the GNU General Public License v3 or (at your option) any later
+  version. Distributed WITHOUT ANY WARRANTY. See <https://www.gnu.org/licenses/>.
+-->
 <template>
   <div class="song-builder">
     <!-- Header -->
@@ -88,6 +96,14 @@
           <span>{{ p }}</span>
         </label>
       </div>
+    </div>
+
+    <!-- Learned-patterns toggle (only for styles with a mined prior) -->
+    <div class="sb-field" v-if="selectedStyle?.has_prior">
+      <label class="sb-prior-toggle">
+        <input type="checkbox" v-model="form.use_priors" />
+        <span>Use learned patterns <span class="sb-val">patterns from a local MIDI corpus you provide — you're responsible for its license</span></span>
+      </label>
     </div>
 
     <!-- Generate Button -->
@@ -238,7 +254,10 @@ const form = ref({
   humanize: 0.5,
   parts: ['chords', 'bass', 'melody', 'drums'],
   template: 'verse_chorus',
+  use_priors: true,
 })
+
+const selectedStyle = computed(() => props.styles.find(s => s.id === form.value.style_id))
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -392,6 +411,17 @@ function download() {
 }
 .sb-part-toggle input { accent-color: #00c8ff; cursor: pointer; }
 .sb-part-toggle:hover span { color: #c0c8d0; }
+
+.sb-prior-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: #8aa0b0;
+  cursor: pointer;
+}
+.sb-prior-toggle input { accent-color: #00c8ff; cursor: pointer; }
+.sb-prior-toggle .sb-val { margin-left: 0.35rem; color: #4a7080; font-size: 0.7rem; }
 
 /* Generate button */
 .sb-generate-btn {

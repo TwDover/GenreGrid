@@ -1,3 +1,11 @@
+# GenreGrid — a style-based MIDI generator.
+# Copyright (C) 2026 Tw Dover
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
+# <https://www.gnu.org/licenses/> for details.
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
@@ -18,6 +26,7 @@ class GenerateRequest(BaseModel):
     custom_progression: Optional[List[str]] = None  # e.g. ["i", "VI", "III", "VII"]
     blend_style_id: Optional[str] = None   # second style to blend with
     blend_amount: float = Field(default=0.5, ge=0.0, le=1.0)  # 0 = all primary, 1 = all blend
+    use_priors: bool = True  # use a mined corpus prior (if one exists) for progression/melody; False forces templates
 
 
 class RegeneratePartRequest(BaseModel):
@@ -32,6 +41,7 @@ class RegeneratePartRequest(BaseModel):
     variation: float = Field(default=0.4, ge=0.0, le=1.0)
     mode: str = "arrangement"
     seed: int  # original seed — replayed to derive the same progression
+    use_priors: bool = True
 
 
 class StyleInfo(BaseModel):
@@ -40,6 +50,7 @@ class StyleInfo(BaseModel):
     bpm_range: List[int] = [40, 240]
     default_scale: str = "minor"
     custom: bool = False
+    has_prior: bool = False   # a mined corpus prior exists for this style
 
 
 class FileInfo(BaseModel):
@@ -99,6 +110,7 @@ class BuildSongRequest(BaseModel):
     parts: List[str] = ["chords", "bass", "melody", "drums"]
     template: str = "verse_chorus"
     seed: Optional[int] = None
+    use_priors: bool = True
 
 
 class SongSectionResult(BaseModel):
