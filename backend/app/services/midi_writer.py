@@ -222,13 +222,15 @@ def concatenate_midi_files(paths: list[Path], out_ticks: int = TICKS_PER_BEAT) -
     return out
 
 
-def rebuild_combined_from_parts(output_dir: Path, bpm: int, ticks_per_beat: int = TICKS_PER_BEAT) -> None:
-    """Rebuild combined.mid by merging all per-part .mid files present in output_dir.
+def rebuild_combined_from_parts(output_dir: Path, bpm: int, ticks_per_beat: int = TICKS_PER_BEAT,
+                                combined_name: str = "combined.mid") -> None:
+    """Rebuild the combined .mid by merging all per-part .mid files in output_dir.
 
-    Called after regenerating a single part so combined.mid stays in sync without
-    needing to re-generate events for every part from scratch.
+    Called after regenerating a single part so the combined stays in sync without
+    re-generating events for every part. `combined_name` is "combined.mid" for
+    loop/arrangement generations and "song.mid" for full songs.
     """
-    part_files = sorted(f for f in output_dir.glob("*.mid") if f.name != "combined.mid")
+    part_files = sorted(f for f in output_dir.glob("*.mid") if f.name != combined_name)
     if not part_files:
         return
 
@@ -247,7 +249,7 @@ def rebuild_combined_from_parts(output_dir: Path, bpm: int, ticks_per_beat: int 
                 track.name = part_file.stem
                 combined.tracks.append(track)
 
-    combined.save(str(output_dir / "combined.mid"))
+    combined.save(str(output_dir / combined_name))
 
 
 def write_combined_midi(
