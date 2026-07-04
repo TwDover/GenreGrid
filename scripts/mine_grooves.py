@@ -30,29 +30,33 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "backend"))
 
-from app.mining.drums import empty_groove, analyze_drum_song, finalize_groove   # noqa: E402
+from app.mining.drums import (   # noqa: E402
+    empty_groove, analyze_drum_song, analyze_fill_song, finalize_groove,
+)
 from app.mining.midi_io import read_song                                        # noqa: E402
 
 
-def _group_by_info_csv(root: Path) -> dict[str, list[Path]]:
-    groups: dict[str, list[Path]] = defaultdict(list)
+def _group_by_info_csv(root: Path) -> dict[str, dict[str, list[Path]]]:
+    """genre -> {"beats": [...], "fills": [...]} in 4/4."""
+    groups: dict[str, dict[str, list[Path]]] = defaultdict(lambda: {"beats": [], "fills": []})
     with open(root / "info.csv", newline="") as f:
         for row in csv.DictReader(f):
-            if (row.get("beat_type") or "").strip() == "fill":
-                continue
             ts = (row.get("time_signature") or "4-4").replace("/", "-").strip()
             if ts not in ("4-4",):
                 continue
             style = (row.get("style") or "unknown").strip()
             genre = style.split("/")[0].split("-")[0] or "unknown"
             mf = (row.get("midi_filename") or "").strip()
-            if mf:
-                groups[genre].append(root / mf)
+            if not mf:
+                continue
+            kind = "fills" if (row.get("beat_type") or "").strip() == "fill" else "beats"
+            groups[genre][kind].append(root / mf)
     return groups
 
 
-def _group_flat(root: Path, genre: str) -> dict[str, list[Path]]:
-    return {genre: sorted(list(root.rglob("*.mid")) + list(root.rglob("*.midi")))}
+def _group_flat(root: Path, genre: str) -> dict[str, dict[str, list[Path]]]:
+    mids = sorted(list(root.rglob("*.mid")) + list(root.rglob("*.midi")))
+    return {genre: {"beats": mids, "fills": []}}
 
 
 def main() -> None:
@@ -77,23 +81,28 @@ def main() -> None:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    for genre, paths in sorted(groups.items()):
+    for genre, kinds in sorted(groups.items()):
         groove = empty_groove(genre)
         used = 0
-        for p in paths:
+        for p in kinds["beats"]:
             try:
                 song = read_song(p)
             except Exception:
                 continue
             if analyze_drum_song(song, groove):
                 used += 1
+        for p in kinds["fills"]:
+            try:
+                analyze_fill_song(read_song(p), groove)
+            except Exception:
+                continue
         if used == 0:
             print(f"  {genre}: no usable files, skipped")
             continue
         final = finalize_groove(groove)
         (out_dir / f"{genre}.json").write_text(json.dumps(final, indent=2))
         d = final["derived"]
-        print(f"  {genre:14s} songs={final['songs']:4d}  "
+        print(f"  {genre:14s} songs={final['songs']:4d}  fills={len(final['fills']):2d}  "
               f"kick={d['kick_pattern']}  snare_beats={d['snare_standard_beats']}  "
               f"hats={d['hat_density']}  swing={d['swing']}")
 

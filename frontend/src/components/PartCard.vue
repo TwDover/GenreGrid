@@ -7,10 +7,12 @@
   version. Distributed WITHOUT ANY WARRANTY. See <https://www.gnu.org/licenses/>.
 -->
 <template>
-  <div class="part-track" :class="{ playing }">
+  <div class="part-track" :class="{ playing, expired }">
     <span class="part-name">{{ file.part }}</span>
 
-    <div class="track-controls">
+    <div v-if="expired" class="expired-note" title="This export was cleaned up. Replay from history or regenerate to restore it.">⚠ expired — regenerate to restore</div>
+
+    <div v-else class="track-controls">
       <button class="icon-btn" :disabled="isLoading && !playing" @click="toggle(file.url, styleId, file.part)" :title="playing ? 'Stop' : 'Preview'">
         <span v-if="isLoading && !playing">…</span>
         <span v-else>{{ playing ? '■' : '▶' }}</span>
@@ -19,10 +21,12 @@
         <span v-if="regenLoading">…</span>
         <span v-else>⟳</span>
       </button>
-      <button v-if="hasUndo" class="icon-btn" @click="$emit('undo')" title="Undo last regeneration">↩</button>
-      <button class="icon-btn lock-btn" :class="{ locked }" @click="$emit('toggle-lock', file.part)" :title="locked ? 'Unlock part' : 'Lock part (keeps it when regenerating others)'">
-        {{ locked ? '🔒' : '🔓' }}
-      </button>
+      <template v-if="!simple">
+        <button v-if="hasUndo" class="icon-btn" @click="$emit('undo')" title="Undo last regeneration">↩</button>
+        <button class="icon-btn lock-btn" :class="{ locked }" @click="$emit('toggle-lock', file.part)" :title="locked ? 'Unlock part' : 'Lock part (keeps it when regenerating others)'">
+          {{ locked ? '🔒' : '🔓' }}
+        </button>
+      </template>
       <div
         class="drag-handle"
         :class="{ 'drag-ready': tempFilePath !== null }"
@@ -72,6 +76,7 @@ const props = defineProps<{
   hasUndo?: boolean
   keyRoot?: string
   scale?: string
+  simple?: boolean
 }>()
 
 defineEmits<{
@@ -83,6 +88,7 @@ defineEmits<{
 const saving = ref(false)
 const saved = ref(false)
 const tempFilePath = ref<string | null>(null)
+const expired = ref(false)   // backend export was cleaned up — file no longer on disk
 
 const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI
 
@@ -94,10 +100,22 @@ const playing = computed(() => currentlyPlaying.value === props.file.url)
 const midiData = computed(() => getMidiData(props.file.url))
 
 async function cacheTempFile(url: string) {
-  prefetchMidi(url)
+  expired.value = false
+  // One GET verifies the export still exists (a cleaned-up file 404s) and, in
+  // Electron, provides the bytes for the drag temp file. The /exports route is
+  // GET-only, so we must not use HEAD here.
+  let res: Response
+  try {
+    res = await fetch(downloadUrl(url))
+  } catch {
+    expired.value = true
+    return
+  }
+  if (!res.ok) { expired.value = true; return }
+  prefetchMidi(url)   // warm the piano-roll cache (served from the HTTP cache)
   if (!isElectron) return
   try {
-    const buf = await fetch(downloadUrl(url)).then(r => r.arrayBuffer())
+    const buf = await res.arrayBuffer()
     const data = Array.from(new Uint8Array(buf))
     tempFilePath.value = await (window as any).electronAPI.saveTempFile(props.file.filename, data)
   } catch {
@@ -177,6 +195,18 @@ async function saveTo() {
 
 .part-track.playing {
   border-color: #00c8ff;
+}
+
+.part-track.expired {
+  border-color: #3a2020;
+  opacity: 0.75;
+}
+
+.expired-note {
+  flex: 1;
+  font-size: 0.72rem;
+  color: #b06060;
+  font-style: italic;
 }
 
 .part-name {

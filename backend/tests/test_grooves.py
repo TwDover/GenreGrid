@@ -89,3 +89,39 @@ def test_groove_overlay_and_runtime(tmp_path, monkeypatch):
                                  mode="arrangement", seed=3, use_priors=True))
     assert any(f.part == "drums" for f in r.files)
     priors._groove_cache.clear()
+
+
+def _write_fill_song(path) -> None:
+    """A one-bar tom cascade (hi→mid→lo) into a crash — a classic fill."""
+    ev = []
+    for beat, key in [(2.0, "tom_hi"), (2.5, "tom_hi"), (3.0, "tom_mid"),
+                      (3.5, "tom_lo"), (3.75, "tom_lo")]:
+        ev.append(NoteEvent(DRUM_MAP[key], beat, 0.1, 100, DRUM_CHANNEL))
+    ev.append(NoteEvent(DRUM_MAP["crash"], 3.999, 0.1, 110, DRUM_CHANNEL))
+    write_midi(ev, path, bpm=120)
+
+
+def test_fill_mining_and_section_playback(tmp_path):
+    """Mined fills should be recovered and played at section transitions."""
+    from app.mining.drums import empty_groove, analyze_fill_song, finalize_groove
+    from app.mining.midi_io import read_song
+    from app.generators.drums import generate_drums
+
+    g = empty_groove("test")
+    for i in range(4):
+        p = tmp_path / f"fill{i}.mid"
+        _write_fill_song(p)
+        assert analyze_fill_song(read_song(p), g)
+    final = finalize_groove(g)
+    assert len(final["fills"]) == 4
+    # each fill stores [step, voice-key, velocity]
+    assert all(len(entry) == 3 for entry in final["fills"][0])
+
+    # Overlay the fills and generate 8 bars with a section end at bar 3 (0-indexed).
+    style = {"drums": {"kick_pattern": [1, 0, 0, 0] * 4, "snare_standard_beats": [2, 4],
+                       "hat_density": 0.5, "fills": final["fills"]}}
+    evts = generate_drums(style, bars=8, complexity=0.8, variation=0.4,
+                          section_end_bars=[3], is_loop=False)
+    fill_pitches = {DRUM_MAP["tom_hi"], DRUM_MAP["tom_mid"], DRUM_MAP["tom_lo"], DRUM_MAP["crash"]}
+    in_fill_bar = [e for e in evts if e.pitch in fill_pitches and 12 <= e.start < 16]
+    assert len(in_fill_bar) >= 3, "expected a mined fill in the section-end bar"

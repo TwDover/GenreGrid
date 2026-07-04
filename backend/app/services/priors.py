@@ -60,7 +60,12 @@ def groove_fields_for(style: dict, use_priors: bool = True) -> dict | None:
         return None
     name = style.get("groove") or style.get("id", "")
     g = load_groove(name)
-    return g.get("derived") if g else None
+    if not g:
+        return None
+    fields = dict(g.get("derived") or {})
+    if g.get("fills"):
+        fields["fills"] = g["fills"]          # mined section-transition fills
+    return fields
 
 
 def load_prior(genre: str) -> dict | None:

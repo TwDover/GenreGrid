@@ -85,7 +85,7 @@ const { toggle, currentlyPlaying, isLoading, getMidiData, prefetchMidi } = useMi
 
 onMounted(async () => { counts.value = await fetchLibraryCounts() })
 
-const dims = ['harmonic', 'rhythm', 'register', 'density', 'mix'] as const
+const dims = ['harmonic', 'rhythm', 'separation', 'density', 'mix'] as const
 
 function entryUrl(gen_id: string): string {
   return `/exports/${gen_id}/combined.mid`

@@ -71,7 +71,7 @@ export interface GenerateSummary {
 export interface QualityScore {
   total: number
   harmonic: number
-  register: number
+  separation: number
   rhythm: number
   contour: number
   density: number
@@ -109,6 +109,7 @@ export interface BuildSongRequest {
   template: string
   seed?: number
   use_priors?: boolean
+  chorus_key_shift?: number
 }
 
 export interface SongSectionResult {

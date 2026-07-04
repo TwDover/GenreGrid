@@ -45,11 +45,18 @@ body {
 }
 
 .app-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 2rem;
+  max-width: 1150px;
+}
+
+.mode-body {
   display: grid;
   grid-template-columns: 380px 1fr;
   gap: 2rem;
-  padding: 2rem;
-  max-width: 1100px;
+  align-items: start;
 }
 
 /* Form styles */
@@ -155,9 +162,11 @@ input[type="range"] {
 
 @media (max-width: 700px) {
   .app-main {
-    grid-template-columns: 1fr;
     padding: 1rem;
     gap: 1.5rem;
+  }
+  .mode-body {
+    grid-template-columns: 1fr;
   }
   .app-header {
     padding: 1rem 1rem 0.75rem;
