@@ -1,9 +1,20 @@
+/*
+ * GenreGrid — a style-based MIDI generator.
+ * Copyright (C) 2026 Tw Dover
+ *
+ * This program is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free Software
+ * Foundation, either version 3 of the License, or (at your option) any later
+ * version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
+ * <https://www.gnu.org/licenses/> for details.
+ */
 export interface StyleInfo {
   id: string
   name: string
   bpm_range: [number, number]
   default_scale: string
   custom?: boolean
+  has_prior?: boolean
 }
 
 export interface GenerateRequest {
@@ -22,6 +33,7 @@ export interface GenerateRequest {
   custom_progression?: string[]
   blend_style_id?: string
   blend_amount: number
+  use_priors?: boolean
 }
 
 export interface RegeneratePartRequest {
@@ -96,6 +108,7 @@ export interface BuildSongRequest {
   parts: string[]
   template: string
   seed?: number
+  use_priors?: boolean
 }
 
 export interface SongSectionResult {

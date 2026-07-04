@@ -5,8 +5,14 @@
   "default_scale": "major",
   "preferred_keys": ["C", "D", "F", "G", "A"],
   "progression_templates": [
-    ["I", "IV", "V", "IV"],
+    ["I", "vi", "I", "vi"],
     ["I", "vi", "IV", "V"],
+    ["I", "vi", "IV", "I"],
+    ["I", "V", "vi", "V"],
+    ["I", "ii", "V", "I"],
+    ["I", "IV", "V", "I"],
+    ["I", "vi", "ii", "V"],
+    ["I", "IV", "V", "IV"],
     ["I", "IV", "I", "V"],
     ["I", "II", "IV", "V"]
   ],
@@ -38,5 +44,6 @@
     "use_clap": true,
     "snare_upbeat_prob": 0.3,
     "crash_on_bar_1": true
-  }
+  },
+  "prior": "pop"
 }

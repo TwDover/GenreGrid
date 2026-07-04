@@ -1,3 +1,13 @@
+/*
+ * GenreGrid — a style-based MIDI generator.
+ * Copyright (C) 2026 Tw Dover
+ *
+ * This program is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free Software
+ * Foundation, either version 3 of the License, or (at your option) any later
+ * version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
+ * <https://www.gnu.org/licenses/> for details.
+ */
 const NOTE_INDEX: Record<string, number> = {
   C: 0, 'C#': 1, Db: 1, D: 2, 'D#': 3, Eb: 3,
   E: 4, F: 5, 'F#': 6, Gb: 6, G: 7, 'G#': 8, Ab: 8,

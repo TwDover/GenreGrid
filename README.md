@@ -231,3 +231,28 @@ cd backend
 source .venv/bin/activate
 pytest
 ```
+
+---
+
+## License
+
+GenreGrid is free software licensed under the **GNU General Public License v3.0** — see [LICENSE](LICENSE).
+
+```
+Copyright (C) 2026 Tw Dover
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. This program is distributed WITHOUT ANY WARRANTY; without even the
+implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
+the GNU General Public License for more details.
+```
+
+### Data & corpora
+
+The GPL covers the **code**. Training/research datasets and any priors you mine
+from them are governed separately — the repository ships **no dataset and no
+mined priors**, and the mining scripts run locally. See [DATA_LICENSES.md](DATA_LICENSES.md)
+for dataset licenses, attribution (e.g. Groove MIDI is CC-BY 4.0), and the
+data-free policy.
