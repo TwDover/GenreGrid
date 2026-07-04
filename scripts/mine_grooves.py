@@ -19,6 +19,12 @@ Usage:
   python scripts/mine_grooves.py /some/drum/folder --genre funk   # no info.csv
 
 Download: https://magenta.tensorflow.org/datasets/groove
+
+DATA USE: This tool performs local statistical mining only — it ships no music
+and never copies or redistributes dataset content. YOU are responsible for
+obtaining any corpus legitimately and complying with its license; the authors
+accept no liability for its use, including on material you are not authorized to
+use. Provided WITHOUT WARRANTY (GPL header above). See DATA_LICENSES.md.
 """
 import argparse
 import csv

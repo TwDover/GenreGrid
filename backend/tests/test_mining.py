@@ -125,16 +125,20 @@ def test_priors_change_live_generation(tmp_path, monkeypatch):
     from app.mining.corpus import mine_directory
     from app.models.schemas import GenerateRequest
     from app.api.routes_generate import generate
+    from app.services.style_loader import load_style
 
     corpus = tmp_path / "corpus"
     corpus.mkdir()
     for i in range(24):
         _write_major_pop(corpus / f"s{i}.mid", seed=i)
 
-    prior = mine_directory(corpus, "house")
+    # Write the mock prior under the name the 'house' style actually resolves to
+    # (styles may point at a shared genre prior via their `prior` field).
+    prior_name = load_style("house").get("prior") or "house"
+    prior = mine_directory(corpus, prior_name)
     priors_dir = tmp_path / "priors"
     priors_dir.mkdir()
-    (priors_dir / "house.json").write_text(__import__("json").dumps(prior))
+    (priors_dir / f"{prior_name}.json").write_text(__import__("json").dumps(prior))
     monkeypatch.setattr(priors, "_PRIORS_DIR", priors_dir)
     priors._cache.clear()
 

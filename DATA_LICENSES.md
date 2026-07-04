@@ -8,11 +8,12 @@ before mining a corpus or committing any generated artifacts.
 ## What this repository ships
 
 - **Source code only.** No MIDI datasets and no mined priors are committed.
-- The corpus-mining scripts (`scripts/mine_corpus.py`, `scripts/mine_grooves.py`)
-  run **on your machine** against datasets **you** obtain, and write priors to
-  `backend/app/priors/` — which is **git-ignored**. A fresh clone therefore
-  contains no third-party data; the generators fall back to their built-in
-  templates until you mine a corpus locally.
+- The corpus-mining scripts (`scripts/mine_corpus.py`, `scripts/mine_grooves.py`,
+  and the `scripts/filter_lakh_genres.py` pre-processor, which only **symlinks**
+  files you already have) run **on your machine** against datasets **you** obtain,
+  and write priors to `backend/app/priors/` — which is **git-ignored**. A fresh
+  clone therefore contains no third-party data; the generators fall back to their
+  built-in templates and baked-in patterns until you mine a corpus locally.
 
 ## What the mining produces (and why it's low-risk)
 
@@ -54,6 +55,27 @@ The GPL-3.0 covers this project's source code. It does **not** attempt to licens
 any dataset you mine, nor the statistical priors you generate locally — those are
 governed by the respective dataset licenses above. Keeping the repo data-free
 avoids mixing the two.
+
+## Disclaimer of responsibility
+
+The mining scripts are **tools**. They ship no music, and they do not copy,
+embed, upload, or redistribute any dataset — they read data that already exists
+on your machine and produce local aggregate statistics (and, for
+`filter_lakh_genres.py`, symlinks).
+
+**You are solely responsible** for how you use them, including:
+
+- obtaining every dataset legitimately and complying with its license and terms;
+- ensuring you have the right to analyze the material in your jurisdiction;
+- not redistributing the source files or any artifact that reproduces them.
+
+The software is provided **WITHOUT ANY WARRANTY** (see the GPL header in each
+file). To the maximum extent permitted by law, the GenreGrid authors and
+contributors accept **no liability** for any use of these tools, including any
+use to process material you are not authorized to use. GenreGrid is **not
+affiliated with, and grants no rights to,** any third-party dataset or its
+rights-holders. Using these scripts on copyrighted material without permission
+is **your** responsibility, not the project's.
 
 *This document is informational and not legal advice. If you plan to distribute
 mined priors or use GenreGrid commercially, review each dataset's license and

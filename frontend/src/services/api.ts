@@ -101,6 +101,19 @@ export async function regenerateSongPart(req: { generation_id: string; part: str
   return res.json()
 }
 
+export async function undoSongPart(req: { generation_id: string; part: string }): Promise<FileInfo> {
+  const res = await fetch(`${BASE_URL}/undo-song-part`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Undo failed')
+  }
+  return res.json()
+}
+
 export async function saveToLibrary(response: GenerateResponse): Promise<void> {
   if (!response.quality) return
   await fetch(`${BASE_URL}/library/save`, {

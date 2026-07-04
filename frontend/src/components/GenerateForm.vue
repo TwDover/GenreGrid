@@ -179,8 +179,8 @@
     <div class="field" v-if="selectedStyle?.has_prior">
       <label class="prior-toggle">
         <input type="checkbox" v-model="form.use_priors" />
-        Use learned patterns
-        <span class="hint">chord, melody &amp; drum patterns from a local MIDI corpus you provide, instead of the built-in templates. You're responsible for your corpus's license.</span>
+        Use my local MIDI corpus
+        <span class="hint">Optional. The built-in style patterns are always used; this additionally overlays chord, melody &amp; drum patterns mined from a corpus you provide. You're responsible for your corpus's license.</span>
       </label>
     </div>
 
@@ -305,7 +305,7 @@ const form = reactive<GenerateRequest>({
   custom_progression: undefined,
   blend_style_id: undefined,
   blend_amount: 0.5,
-  use_priors: true,
+  use_priors: false,
 })
 
 const selectedStyle = computed(() => props.styles.find(s => s.id === form.style_id))
@@ -313,7 +313,8 @@ const selectedStyle = computed(() => props.styles.find(s => s.id === form.style_
 // When the parent drives the mode via the top tab, keep the form in sync.
 watch(() => props.forcedMode, (m) => { if (m) form.mode = m }, { immediate: true })
 
-// Clamp BPM and set default scale when style changes
+// Clamp BPM and set default scale when style changes (also on first load, so the
+// initial BPM matches the style shown in the dropdown rather than the raw default).
 watch(selectedStyle, (style) => {
   if (!style) return
   const [min, max] = style.bpm_range
@@ -321,7 +322,7 @@ watch(selectedStyle, (style) => {
     form.bpm = Math.round((min + max) / 2)
   }
   if (style.default_scale) form.scale = style.default_scale
-})
+}, { immediate: true })
 
 // Pre-fill form on replay
 watch(() => props.replayData, (data) => {

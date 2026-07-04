@@ -7,6 +7,7 @@
 # version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
 # <https://www.gnu.org/licenses/> for details.
 import concurrent.futures
+import shutil
 import io
 import logging
 import random
@@ -1578,6 +1579,9 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     total_bars = 0
     type_seed: dict[str, int] = {}
     type_occurrence: dict[str, int] = {}
+    # First occurrence of each section type caches its melodic/harmonic parts so
+    # later sections of the same type reuse the theme (the verse tune returns).
+    type_theme: dict[str, dict] = {}
 
     for sec_i, sec_def in enumerate(template):
         sec_type   = sec_def["section_type"]
@@ -1614,6 +1618,17 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
         except Exception as exc:
             logger.error("build_song section %r failed: %s", sec_name, exc, exc_info=True)
             evts = {}
+
+        # Cross-section motif reuse: the first section of each type sets the theme
+        # (melody + harmony); later sections of that type reuse it, keeping fresh
+        # drums so the groove still evolves. Same-type sections share a key, so the
+        # reused parts need no transposition.
+        if sec_type not in type_theme:
+            type_theme[sec_type] = {p: list(e) for p, e in evts.items() if p != "drums"}
+        else:
+            for p, cached in type_theme[sec_type].items():
+                if p in evts:
+                    evts[p] = list(cached)
 
         for part, part_evts in evts.items():
             if part in song_events and part_evts:
@@ -1663,7 +1678,7 @@ def build_song(req: BuildSongRequest):
     import json as _jmeta
     (output_dir / "song_meta.json").write_text(_jmeta.dumps({
         "style_id": req.style_id, "key": req.key, "scale": req.scale,
-        "bpm": req.bpm, "complexity": req.complexity, "variation": req.variation,
+        "bpm": bpm, "complexity": req.complexity, "variation": req.variation,
         "humanize": req.humanize, "parts": list(req.parts), "template": req.template,
         "use_priors": req.use_priors, "chorus_key_shift": chorus_key_shift,
         "base_seed": base_seed,
@@ -1787,13 +1802,36 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
 
     scaled = _drop_quiet(_scale_velocity(evts, req.part, _sid))
     fname = f"{req.part}.mid"
-    write_midi(scaled, output_dir / fname, bpm=bpm, program=programs.get(req.part),
+    part_path = output_dir / fname
+    # Back up the current stem (one level of undo). The ".prev" name has no .mid
+    # extension so rebuild_combined_from_parts won't fold it into the song.
+    if part_path.exists():
+        shutil.copy(part_path, output_dir / f"{req.part}.prev")
+    write_midi(scaled, part_path, bpm=bpm, program=programs.get(req.part),
                cc_events=part_cc, pb_events=part_pb)
 
     # Rebuild song.mid from all stems on disk (new part + untouched others).
     rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid")
 
     return FileInfo(part=req.part, filename=fname, url=f"/exports/{req.generation_id}/{fname}")
+
+
+@router.post("/undo-song-part", response_model=FileInfo)
+def undo_song_part(req: RegenerateSongPartRequest):
+    """Restore the previous version of a song stem (one level of undo)."""
+    output_dir = EXPORTS_DIR / req.generation_id
+    prev = output_dir / f"{req.part}.prev"
+    if not prev.exists():
+        raise HTTPException(status_code=404, detail="Nothing to undo for this part")
+    meta_path = output_dir / "song_meta.json"
+    meta = _json_module.loads(meta_path.read_text()) if meta_path.exists() else {}
+    bpm = meta.get("bpm", 120)
+
+    shutil.copy(prev, output_dir / f"{req.part}.mid")
+    prev.unlink()   # one level of undo only
+    rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid")
+    return FileInfo(part=req.part, filename=f"{req.part}.mid",
+                    url=f"/exports/{req.generation_id}/{req.part}.mid")
 
 
 _SAFE_PATH = re.compile(r'^[a-zA-Z0-9_\-]{1,80}$')

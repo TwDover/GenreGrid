@@ -194,6 +194,15 @@ def sample_melody_interval(melody: dict, prev_interval: int | None, rng: random.
     return _weighted_int(melody.get("intervals", {}), rng)
 
 
+def sample_melody_duration(melody: dict, rng: random.Random, lo: int = 1, hi: int = 8) -> int | None:
+    """Sample a note duration (in 16th steps) from the mined duration histogram."""
+    d = melody.get("durations") or {}
+    items = [(int(k), float(v)) for k, v in d.items() if lo <= int(k) <= hi and float(v) > 0]
+    if not items:
+        return None
+    return rng.choices([k for k, _ in items], weights=[w for _, w in items], k=1)[0]
+
+
 def describe(prior: dict) -> str:
     """Human-readable summary of a mined prior."""
     h = prior.get("harmony", {})

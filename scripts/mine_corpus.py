@@ -17,6 +17,12 @@ Example (after downloading POP909 or a genre-tagged Lakh subset):
 
 The resulting backend/app/priors/<genre>.json is picked up automatically by
 app.services.priors and can bias chord-progression (and later melody) generation.
+
+DATA USE: This tool performs local statistical mining only — it ships no music
+and never copies or redistributes dataset content. YOU are responsible for
+obtaining any corpus legitimately and complying with its license; the authors
+accept no liability for its use, including on material you are not authorized to
+use. Provided WITHOUT WARRANTY (GPL header above). See DATA_LICENSES.md.
 """
 import argparse
 import json
@@ -39,6 +45,8 @@ def main() -> None:
                     help="Output directory for <genre>.json")
     ap.add_argument("--pattern", default=None,
                     help="rglob to restrict files, e.g. '[0-9][0-9][0-9].mid' (POP909 canonical only)")
+    ap.add_argument("--limit", type=int, default=None,
+                    help="Randomly sample at most N files (for large genre folders)")
     args = ap.parse_args()
 
     src = Path(args.midi_dir)
@@ -46,7 +54,7 @@ def main() -> None:
         ap.error(f"midi_dir does not exist: {src}")
 
     print(f"Mining {src} as genre '{args.genre}' …")
-    prior = mine_directory(src, args.genre, pattern=args.pattern)
+    prior = mine_directory(src, args.genre, pattern=args.pattern, limit=args.limit)
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)

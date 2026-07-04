@@ -108,7 +108,7 @@
     <div class="sb-field" v-if="selectedStyle?.has_prior">
       <label class="sb-prior-toggle">
         <input type="checkbox" v-model="form.use_priors" />
-        <span>Use learned patterns <span class="sb-val">patterns from a local MIDI corpus you provide — you're responsible for its license</span></span>
+        <span>Use my local MIDI corpus <span class="sb-val">optional — overlays patterns mined from a corpus you provide on top of the built-in ones; you're responsible for its license</span></span>
       </label>
     </div>
 
@@ -195,7 +195,7 @@ const form = ref({
   humanize: 0.5,
   parts: ['chords', 'bass', 'melody', 'drums'],
   template: 'verse_chorus',
-  use_priors: true,
+  use_priors: false,
   chorus_key_shift: 0,
 })
 
@@ -244,8 +244,8 @@ async function generate() {
 .tpl-seg { min-width: 2px; border-radius: 1px; }
 
 /* Row / field layout */
-.sb-row { display: flex; gap: 0.6rem; align-items: flex-end; }
-.sb-field { display: flex; flex-direction: column; gap: 0.2rem; flex: 1; }
+.sb-row { display: flex; gap: 0.6rem; align-items: flex-end; flex-wrap: wrap; }
+.sb-field { display: flex; flex-direction: column; gap: 0.2rem; flex: 1; min-width: 120px; }
 .sb-field-sm { flex: 0 0 auto; min-width: 72px; }
 
 .sb-select, .sb-input {

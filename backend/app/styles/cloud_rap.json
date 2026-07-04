@@ -14,6 +14,12 @@
     "A"
   ],
   "progression_templates": [
+    ["i", "iv", "i", "iv"],
+    ["i", "V", "i", "V"],
+    ["i", "IV", "i", "IV"],
+    ["iv", "III", "iv", "III"],
+    ["I", "IV", "I", "IV"],
+    ["I", "vi", "IV", "V"],
     ["i", "VI", "i", "VI"],
     ["i", "iv", "v", "i"],
     ["i", "VII", "iv", "i"],
@@ -82,5 +88,5 @@
     "swing": 0.25
   },
   "groove_push": -0.01,
-  "prior": "pop"
+  "prior": "rnb"
 }

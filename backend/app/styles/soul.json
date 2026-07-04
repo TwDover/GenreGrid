@@ -15,8 +15,12 @@
         "Bb"
     ],
     "progression_templates": [
-        ["I", "vi", "I", "vi"],
+        ["I", "IV", "I", "IV"],
         ["I", "vi", "IV", "V"],
+        ["I", "vi", "I", "vi"],
+        ["I", "V", "I", "V"],
+        ["i", "iv", "i", "iv"],
+        ["i", "V", "i", "V"],
         ["I", "vi", "IV", "I"],
         ["I", "V", "vi", "V"],
         ["I", "ii", "V", "I"],
@@ -81,19 +85,20 @@
         0
     ],
     "drums": {
-        "hat_density": 0.6,
+        "hat_density": 0.625,
         "triplet_probability": 0.5,
-        "snare_standard_beats": [
-            2,
-            4
-        ],
+        "snare_standard_beats": [2, 4],
         "snare_upbeat_prob": 0.3,
         "snare_beat3_prob": 0.15,
-        "swing": 0.5,
+        "swing": 0.0,
         "use_clap": true,
         "ghost_note_prob": 0.6,
-        "flam_prob": 0.18
+        "flam_prob": 0.18,
+        "kick_pattern": [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0],
+        "hat_pattern": [0.772, 0.147, 0.65, 0.16, 0.805, 0.117, 0.695, 0.361, 0.708, 0.246, 0.617, 0.171, 0.811, 0.123, 0.601, 0.305],
+        "hat_vel": [0.875, 0.501, 0.763, 0.575, 1.0, 0.52, 0.843, 0.699, 0.77, 0.65, 0.811, 0.622, 0.97, 0.511, 0.829, 0.644],
+        "use_ride": false
     },
     "groove_push": 0.004,
-    "prior": "pop"
+    "prior": "rnb"
 }

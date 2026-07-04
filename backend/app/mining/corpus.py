@@ -119,7 +119,14 @@ def analyze_song(song: MidiSong, prior: dict) -> bool:
                 gap = note.start - (line[i - 1].start + line[i - 1].duration)
                 if gap > 0.25:
                     m["rest_events"] += 1
-                interval = max(-12, min(12, note.pitch - line[i - 1].pitch))
+                raw = note.pitch - line[i - 1].pitch
+                # Octave-plus leaps are almost always octave-doubling / wrong-track
+                # artifacts in full-band MIDI, not melodic motion — drop them and
+                # break the phrase chain rather than inflate the ±12 bin.
+                if abs(raw) >= 12:
+                    prev_interval = None
+                    continue
+                interval = raw
                 _add(m["intervals"], interval)
                 if prev_interval is not None:
                     _add(m["interval_bigrams"], f"{prev_interval},{interval}")
@@ -130,19 +137,24 @@ def analyze_song(song: MidiSong, prior: dict) -> bool:
     return True
 
 
-def mine_directory(directory: str | Path, genre: str, pattern: str | None = None) -> dict:
+def mine_directory(directory: str | Path, genre: str, pattern: str | None = None,
+                   limit: int | None = None, seed: int = 0) -> dict:
     """Walk `directory` for MIDI files and return an aggregated prior.
 
-    `pattern` restricts which files are mined (rglob glob). Default mines every
-    .mid/.midi; pass e.g. "[0-9][0-9][0-9].mid" to take only canonical files and
-    skip alternate-version re-voicings of the same songs.
+    `pattern` restricts which files are mined (rglob glob). `limit` randomly
+    samples at most that many files (for huge genre folders) — aggregate stats
+    over a few hundred files are already stable.
     """
+    import random as _random
     prior = _empty_prior(genre)
     root = Path(directory)
     if pattern:
         files = sorted(root.rglob(pattern))
     else:
         files = sorted(list(root.rglob("*.mid")) + list(root.rglob("*.midi")))
+    total_found = len(files)
+    if limit and len(files) > limit:
+        files = _random.Random(seed).sample(files, limit)
     used = 0
     for path in files:
         try:
@@ -151,7 +163,7 @@ def mine_directory(directory: str | Path, genre: str, pattern: str | None = None
             continue
         if analyze_song(song, prior):
             used += 1
-    prior["files_seen"] = len(files)
+    prior["files_seen"] = total_found
     prior["files_used"] = used
     return prior
 
