@@ -40,28 +40,73 @@
     </header>
 
     <main class="app-main">
-      <section class="form-section">
-        <GenerateForm :styles="styles" :loading="loading || batchLoading" :replayData="replayData" @submit="handleGenerate" @batch="handleBatch" @refresh-styles="refreshStyles" />
-        <div v-if="genProgress && loading" class="progress-row">
-          <span class="progress-text">{{ genProgress }}</span>
-          <div class="progress-dots"><span>.</span><span>.</span><span>.</span></div>
-        </div>
-        <div v-if="error && !loading" class="error-row">
-          <p class="error-msg">{{ error }}</p>
-          <button class="retry-btn" @click="retryFetch">Retry</button>
-        </div>
-      </section>
+      <div class="mode-tabs">
+        <button class="mode-tab" :class="{ active: mode === 'loop' }" @click="mode = 'loop'">Loop</button>
+        <button class="mode-tab" :class="{ active: mode === 'arrangement' }" @click="mode = 'arrangement'">Arrangement</button>
+        <button class="mode-tab" :class="{ active: mode === 'song' }" @click="mode = 'song'">Song</button>
+        <span class="mode-desc">{{ modeHint }}</span>
+      </div>
 
-      <section class="export-section">
-        <div class="panel-tabs">
-          <button class="panel-tab" :class="{ active: activePanel === 'history' }" @click="activePanel = 'history'">History</button>
-          <button class="panel-tab" :class="{ active: activePanel === 'library' }" @click="activePanel = 'library'">Library</button>
-          <button class="panel-tab panel-tab-song" :class="{ active: activePanel === 'song' }" @click="activePanel = 'song'">Song</button>
-        </div>
-        <ExportPanel v-if="activePanel === 'history'" :history="history" :loading="loading" :starredIds="starredIds" @replay="handleReplay" @part-regenned="handlePartRegenned" @toggle-star="handleToggleStar" />
-        <LibraryPanel v-else-if="activePanel === 'library'" :styles="styles" @replay="handleLibraryReplay" />
-        <SongBuilder v-else :styles="styles" />
-      </section>
+      <div class="mode-body">
+        <section class="controls-col">
+          <GenerateForm
+            v-if="mode !== 'song'"
+            :styles="styles"
+            :loading="loading || batchLoading"
+            :replayData="replayData"
+            :forcedMode="genMode"
+            @submit="handleGenerate"
+            @batch="handleBatch"
+            @refresh-styles="refreshStyles"
+          />
+          <SongForm v-else :styles="styles" @built="onSongBuilt" />
+
+          <div v-if="genProgress && loading && mode !== 'song'" class="progress-row">
+            <span class="progress-text">{{ genProgress }}</span>
+            <div class="progress-dots"><span>.</span><span>.</span><span>.</span></div>
+          </div>
+          <div v-if="error && !loading && mode !== 'song'" class="error-row">
+            <p class="error-msg">{{ error }}</p>
+            <button class="retry-btn" @click="retryFetch">Retry</button>
+          </div>
+        </section>
+
+        <section class="output-col">
+          <template v-if="mode !== 'song'">
+            <div class="panel-tabs">
+              <button class="panel-tab" :class="{ active: activePanel === 'history' }" @click="activePanel = 'history'">History</button>
+              <button class="panel-tab" :class="{ active: activePanel === 'library' }" @click="activePanel = 'library'">Library</button>
+            </div>
+            <ExportPanel v-if="activePanel === 'history'" :history="history" :loading="loading" :starredIds="starredIds" @replay="handleReplay" @part-regenned="handlePartRegenned" @toggle-star="handleToggleStar" @delete="deleteHistoryEntry" @clear="clearHistory" />
+            <LibraryPanel v-else :styles="styles" @replay="handleLibraryReplay" />
+          </template>
+          <template v-else>
+            <div v-if="songHistory.length" class="song-history">
+              <div class="song-history-head">
+                <span class="song-history-label">Recent songs</span>
+                <button class="clear-btn" @click="clearSongs" title="Clear recent songs">Clear</button>
+              </div>
+              <div class="song-history-list">
+                <div
+                  v-for="item in songHistory"
+                  :key="item.result.generation_id"
+                  class="song-hist-row"
+                  role="button"
+                  tabindex="0"
+                  :class="{ active: item.result.generation_id === songResult?.generation_id }"
+                  @click="loadSong(item)"
+                  @keydown.enter="loadSong(item)"
+                >
+                  <span class="sh-label">{{ item.label }}</span>
+                  <span class="sh-meta">{{ item.result.total_bars }}b · {{ item.result.bpm }} BPM · {{ item.result.key }}</span>
+                  <button class="sh-del" @click.stop="deleteSong(item.result.generation_id)" title="Remove">✕</button>
+                </div>
+              </div>
+            </div>
+            <SongResult :result="songResult" :label="songLabel" />
+          </template>
+        </section>
+      </div>
     </main>
 
     <div v-if="showShortcuts" class="shortcuts-overlay" @click.self="showShortcuts = false">
@@ -83,14 +128,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import GenerateForm from '../components/GenerateForm.vue'
 import ExportPanel from '../components/ExportPanel.vue'
 import LibraryPanel from '../components/LibraryPanel.vue'
 import NowPlayingBar from '../components/NowPlayingBar.vue'
-import SongBuilder from '../components/SongBuilder.vue'
+import SongForm from '../components/SongForm.vue'
+import SongResult from '../components/SongResult.vue'
 import { fetchStyles, generate, batchGenerate } from '../services/api'
-import type { StyleInfo, GenerateRequest, GenerateResponse, FileInfo, LibraryEntry } from '../types/midi'
+import type { StyleInfo, GenerateRequest, GenerateResponse, FileInfo, LibraryEntry, BuildSongResponse } from '../types/midi'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 
 const { volume, setVolume, prefetchSamplers, stop, currentlyPlaying } = useMidiPlayer()
@@ -124,7 +170,62 @@ const loadStarred = (): Set<string> => {
 const history = ref<GenerateResponse[]>(loadHistory())
 const starredIds = ref<Set<string>>(loadStarred())
 const replayData = ref<GenerateResponse | null>(null)
-const activePanel = ref<'history' | 'library' | 'song'>('history')
+const activePanel = ref<'history' | 'library'>('history')
+
+// Top-level generation mode. Loop/Arrangement drive GenerateForm (via genMode);
+// Song drives SongForm + SongResult.
+const mode = ref<'loop' | 'arrangement' | 'song'>('loop')
+const genMode = computed<'loop' | 'arrangement'>(() => (mode.value === 'song' ? 'loop' : mode.value))
+const modeHint = computed(() => ({
+  loop: 'One looping section — every part across every bar, uniform.',
+  arrangement: 'A full arc — intro · verse · chorus · outro — from one bar count.',
+  song: 'Stitch a complete song from a template; drag out each part.',
+}[mode.value]))
+
+const songResult = ref<BuildSongResponse | null>(null)
+const songLabel = ref('')
+
+interface SongHistoryItem { result: BuildSongResponse; label: string }
+const loadSongHistory = (): SongHistoryItem[] => {
+  try { return JSON.parse(localStorage.getItem('genregrid_song_history') ?? '[]') } catch { return [] }
+}
+const songHistory = ref<SongHistoryItem[]>(loadSongHistory())
+watch(songHistory, (val) => {
+  localStorage.setItem('genregrid_song_history', JSON.stringify(val))
+}, { deep: true })
+
+// Restore the most recent song into view on load
+if (songHistory.value.length) {
+  songResult.value = songHistory.value[0].result
+  songLabel.value = songHistory.value[0].label
+}
+
+function onSongBuilt(result: BuildSongResponse, label: string) {
+  songResult.value = result
+  songLabel.value = label
+  songHistory.value = [{ result, label }, ...songHistory.value].slice(0, 20)
+  prefetchSamplers(result.style)
+}
+
+function loadSong(item: SongHistoryItem) {
+  songResult.value = item.result
+  songLabel.value = item.label
+}
+
+function deleteSong(genId: string) {
+  songHistory.value = songHistory.value.filter(i => i.result.generation_id !== genId)
+  if (songResult.value?.generation_id === genId) {
+    const next = songHistory.value[0] ?? null
+    songResult.value = next?.result ?? null
+    songLabel.value = next?.label ?? ''
+  }
+}
+
+function clearSongs() {
+  songHistory.value = []
+  songResult.value = null
+  songLabel.value = ''
+}
 
 watch(history, (val) => {
   localStorage.setItem('genregrid_history', JSON.stringify(val))
@@ -139,6 +240,15 @@ function handleToggleStar(genId: string) {
   if (next.has(genId)) next.delete(genId)
   else next.add(genId)
   starredIds.value = next
+}
+
+function deleteHistoryEntry(genId: string) {
+  history.value = history.value.filter(r => r.generation_id !== genId)
+}
+
+function clearHistory() {
+  // Keep pinned (starred) entries; drop the rest.
+  history.value = history.value.filter(r => starredIds.value.has(r.generation_id))
 }
 
 function saveSession() {
@@ -354,6 +464,118 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
 </script>
 
 <style scoped>
+/* Top-level mode switch — the primary decision */
+.mode-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.mode-tab {
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.5rem 1.4rem;
+  background: #060f14;
+  border: 1px solid #0d2535;
+  border-radius: 8px;
+  color: #4a7080;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.mode-tab:hover { background: #081620; color: #c0c8d0; }
+.mode-tab.active {
+  background: #001e35;
+  border-color: #00c8ff;
+  color: #7ae8ff;
+}
+
+.mode-desc {
+  margin-left: 0.75rem;
+  font-size: 0.72rem;
+  color: #2a4550;
+}
+
+/* Two-column body */
+.controls-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.output-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Song mode — recent songs selector */
+.song-history {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.song-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.song-history-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #4a7080;
+}
+.clear-btn {
+  font-size: 0.68rem;
+  padding: 0.15rem 0.55rem;
+  background: #040a0e;
+  border: 1px solid #0d2535;
+  border-radius: 4px;
+  color: #4a7080;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.clear-btn:hover { background: #2a1010; color: #f87171; border-color: #f8717144; }
+.sh-del {
+  background: none;
+  border: none;
+  color: #2a4550;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0 0.15rem;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+.sh-del:hover { color: #f87171; }
+.song-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-height: 168px;
+  overflow-y: auto;
+}
+.song-hist-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0.7rem;
+  background: #060f14;
+  border: 1px solid #0d2535;
+  border-radius: 7px;
+  color: #c0c8d0;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+.song-hist-row:hover { background: #081620; }
+.song-hist-row.active { border-color: #00c8ff; background: #001e35; }
+.sh-label { font-size: 0.8rem; font-weight: 600; }
+.sh-meta { font-size: 0.68rem; font-family: monospace; color: #4a7080; flex-shrink: 0; }
+
 .app-header {
   display: flex;
   align-items: center;
@@ -590,12 +812,6 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
 .panel-tab.active {
   background: #001e35;
   border-color: #00c8ff;
-  color: #7ae8ff;
-}
-
-.panel-tab-song.active {
-  border-color: #00c8ff;
-  background: #001e35;
   color: #7ae8ff;
 }
 </style>

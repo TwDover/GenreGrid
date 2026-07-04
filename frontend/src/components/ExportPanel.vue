@@ -28,6 +28,7 @@
       <button class="arrange-toggle" :class="{ active: showArrange }" @click="showArrange = !showArrange" title="Open arrangement builder">
         {{ showArrange ? '▲ Arrange' : '▼ Arrange' }}
       </button>
+      <button class="clear-btn" @click="emit('clear')" title="Clear unpinned generations">Clear</button>
     </div>
     <ArrangementBuilder v-if="showArrange" ref="arrangeRef" />
     <div class="history-list">
@@ -37,7 +38,7 @@
         class="history-entry"
         :class="{ expanded: expandedId === response.generation_id }"
       >
-        <button class="history-row" @click="toggle(response.generation_id)">
+        <div class="history-row" role="button" tabindex="0" @click="toggle(response.generation_id)" @keydown.enter="toggle(response.generation_id)">
           <button
             class="star-btn"
             :class="{ starred: starredIds?.has(response.generation_id) }"
@@ -60,7 +61,8 @@
           </span>
           <span class="entry-id">{{ response.generation_id }}</span>
           <span class="entry-chevron">{{ expandedId === response.generation_id ? '▲' : '▼' }}</span>
-        </button>
+          <button class="entry-del" @click.stop="emit('delete', response.generation_id)" title="Delete this generation">✕</button>
+        </div>
         <div v-if="expandedId === response.generation_id" class="entry-body">
           <div class="seed-row">
             <span class="seed-label">Seed</span>
@@ -187,6 +189,8 @@ const emit = defineEmits<{
   (e: 'replay', response: GenerateResponse): void
   (e: 'part-regenned', genId: string, file: FileInfo): void
   (e: 'toggle-star', genId: string): void
+  (e: 'delete', genId: string): void
+  (e: 'clear'): void
 }>()
 
 const { isRecording, offlineRender, isRendering } = useMidiPlayer()
@@ -597,6 +601,31 @@ async function handleOfflineExport(response: GenerateResponse, mode: 'wav' | 'st
   font-size: 0.65rem;
   color: #2a4550;
 }
+
+.clear-btn {
+  font-size: 0.68rem;
+  padding: 0.2rem 0.6rem;
+  background: #040a0e;
+  border: 1px solid #0d2535;
+  border-radius: 4px;
+  color: #4a7080;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.clear-btn:hover { background: #2a1010; color: #f87171; border-color: #f8717144; }
+
+.entry-del {
+  background: none;
+  border: none;
+  color: #2a4550;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0 0.2rem;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+.entry-del:hover { color: #f87171; }
 
 .entry-body {
   padding: 0 1rem 1rem;

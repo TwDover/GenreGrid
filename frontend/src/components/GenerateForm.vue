@@ -111,7 +111,7 @@
       </div>
     </div>
 
-    <div class="field">
+    <div class="field" v-if="!forcedMode">
       <label>Mode</label>
       <div class="mode-toggles">
         <label class="mode-option" :class="{ active: form.mode === 'loop' }">
@@ -127,7 +127,7 @@
       </div>
     </div>
 
-    <div class="field">
+    <div class="field" v-if="form.mode === 'loop'">
       <label>
         Section
         <span class="hint">shapes complexity, dynamics, and bar count</span>
@@ -277,6 +277,7 @@ const props = defineProps<{
   styles: StyleInfo[]
   loading: boolean
   replayData?: GenerateResponse | null
+  forcedMode?: 'loop' | 'arrangement'
 }>()
 
 const emit = defineEmits<{
@@ -297,7 +298,7 @@ const form = reactive<GenerateRequest>({
   complexity: 0.5,
   variation: 0.4,
   parts: JSON.parse(localStorage.getItem('genregrid_parts') ?? '["chords","bass","melody","drums"]'),
-  mode: 'loop',
+  mode: props.forcedMode ?? 'loop',
   seed: undefined,
   section_type: undefined,
   humanize: 0.5,
@@ -308,6 +309,9 @@ const form = reactive<GenerateRequest>({
 })
 
 const selectedStyle = computed(() => props.styles.find(s => s.id === form.style_id))
+
+// When the parent drives the mode via the top tab, keep the form in sync.
+watch(() => props.forcedMode, (m) => { if (m) form.mode = m }, { immediate: true })
 
 // Clamp BPM and set default scale when style changes
 watch(selectedStyle, (style) => {

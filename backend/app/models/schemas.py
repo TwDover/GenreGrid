@@ -74,7 +74,7 @@ class GenerateSummary(BaseModel):
 class QualityScore(BaseModel):
     total: float
     harmonic: float
-    register: float
+    separation: float = 0.0   # register separation (renamed from 'register' — shadowed BaseModel.register)
     rhythm: float
     contour: float = 0.0
     density: float
@@ -111,6 +111,12 @@ class BuildSongRequest(BaseModel):
     template: str = "verse_chorus"
     seed: Optional[int] = None
     use_priors: bool = True
+    chorus_key_shift: Optional[int] = Field(default=None, ge=-12, le=12)  # semitone lift on chorus sections; None = use the style's default
+
+
+class RegenerateSongPartRequest(BaseModel):
+    generation_id: str
+    part: str
 
 
 class SongSectionResult(BaseModel):

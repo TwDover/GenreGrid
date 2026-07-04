@@ -119,6 +119,11 @@ def _plan_open_hats(bar_in_pair: int, complexity: float) -> set:
     return positions
 
 
+# Voices a mined fill layers over the base groove (kick/closed_hat/ride stay as
+# the groove's pulse; the fill adds toms, snares, crash, claps, open hats).
+_FILL_LAYER_KEYS = frozenset({"tom_hi", "tom_mid", "tom_lo", "snare", "clap", "crash", "open_hat"})
+
+
 def generate_drums(
     style: dict,
     bars: int,
@@ -151,6 +156,7 @@ def generate_drums(
     edm_drops   = drum_cfg.get("edm_drops", False)
     perc_layers = drum_cfg.get("perc_layers", [])
     flam_prob   = drum_cfg.get("flam_prob", 0.0)
+    mined_fills = drum_cfg.get("fills")     # mined section-transition fills (groove prior)
 
     section_ends = set(section_end_bars) if section_end_bars else set()
     hat_note     = DRUM_MAP["ride"] if use_ride else DRUM_MAP["closed_hat"]
@@ -526,6 +532,25 @@ def generate_drums(
                     velocity=r_vel,
                     channel=DRUM_CHANNEL,
                 ))
+        elif do_fill and mined_fills:
+            # Data-driven fill mined from a real drummer (Groove MIDI). Layer its
+            # toms / snares / crash across the bar; the kick/hat groove already
+            # placed above keeps the pulse underneath.
+            chosen = random.choice(mined_fills)
+            fill_intensity = 0.7 + complexity * 0.25
+            for entry in chosen:
+                key, vel = entry[1], entry[2]
+                if key not in _FILL_LAYER_KEYS or not should_trigger(fill_intensity):
+                    continue
+                fv = int(vel * phrase_dyn) + random.randint(-5, 5)
+                events.append(NoteEvent(
+                    pitch=DRUM_MAP[key],
+                    start=bar_start + entry[0] * step + _jitter("fill", h),
+                    duration=0.1,
+                    velocity=min(127, max(1, fv)),
+                    channel=DRUM_CHANNEL,
+                ))
+
         elif do_fill:
             fill_intensity = 0.55 + complexity * 0.35
 

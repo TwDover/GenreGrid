@@ -41,6 +41,21 @@ _PITCH_TO_VOICE = {p: v for v, ps in _VOICE_PITCHES.items() for p in ps}
 # microtiming of a real performance.
 _OFFBEAT_STEPS = {2, 6, 10, 14}
 
+# For fills we keep the tom hi/mid/lo distinction (a fill's identity is its tom
+# cascade), mapping pitches straight to the drum generator's DRUM_MAP keys.
+_FILL_PITCH_TO_KEY: dict[int, str] = {
+    35: "kick", 36: "kick",
+    37: "snare", 38: "snare", 40: "snare",
+    39: "clap",
+    42: "closed_hat", 44: "closed_hat", 22: "closed_hat",
+    46: "open_hat", 26: "open_hat",
+    49: "crash", 52: "crash", 55: "crash", 57: "crash",
+    51: "ride", 53: "ride", 59: "ride",
+    48: "tom_hi", 50: "tom_hi",
+    45: "tom_mid", 47: "tom_mid",
+    41: "tom_lo", 43: "tom_lo", 58: "tom_lo",
+}
+
 
 def empty_groove(genre: str) -> dict:
     return {
@@ -51,7 +66,42 @@ def empty_groove(genre: str) -> dict:
         "vel_sum": {v: [0.0] * _STEPS for v in VOICES},   # velocity sum per step
         "swing_delay_sum": 0.0,                            # Σ offbeat delay (beats)
         "swing_n": 0,
+        "fills": [],                                       # list of mined fill patterns
     }
+
+
+def analyze_fill_song(song: MidiSong, groove: dict, max_fills: int = 16) -> bool:
+    """Extract one drum-fill pattern from a fill performance and append it.
+
+    A fill is stored as a list of [step (0-15), voice, velocity] over the single
+    busiest bar (the fill's climax). The drum generator plays these at section
+    transitions instead of the hand-authored variants.
+    """
+    if len(groove["fills"]) >= max_fills:
+        return False
+    notes = [n for n in song.notes if n.channel == _DRUM_CHANNEL]
+    if len(notes) < 4:
+        return False
+    # Busiest bar = the fill's peak
+    from collections import Counter
+    bar_counts = Counter(int(n.start // 4) for n in notes)
+    if not bar_counts:
+        return False
+    best_bar = bar_counts.most_common(1)[0][0]
+    b0 = best_bar * 4
+    fill: list = []
+    for n in notes:
+        if b0 <= n.start < b0 + 4:
+            key = _FILL_PITCH_TO_KEY.get(n.pitch)
+            if key is None:
+                continue
+            step = int(round((n.start - b0) / _STEP))
+            if 0 <= step < _STEPS:
+                fill.append([step, key, int(n.velocity)])
+    if len(fill) >= 3:
+        groove["fills"].append(sorted(fill))
+        return True
+    return False
 
 
 def analyze_drum_song(song: MidiSong, groove: dict) -> bool:
@@ -108,6 +158,7 @@ def finalize_groove(groove: dict) -> dict:
         "voices_prob": prob,
         "voices_vel": vel,
         "swing_est": round(swing, 3),
+        "fills": groove.get("fills", []),
         "derived": derive_drum_fields(prob, swing),
     }
 

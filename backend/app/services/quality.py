@@ -495,7 +495,7 @@ def score_generation(
     return {
         "total":    round(total,    3),
         "harmonic": round(s_harm,   3),
-        "register": round(s_reg,    3),
+        "separation": round(s_reg,  3),
         "rhythm":   round(s_rhythm, 3),
         "contour":  round(s_cont,   3),
         "density":  round(s_dens,   3),
