@@ -2,6 +2,21 @@
 
 A style-based MIDI generator. Pick a genre, set your key, BPM, and complexity, and get back downloadable MIDI files for chords, bassline, melody, drums, and arpeggio — all harmonically aligned to the same chord progression.
 
+## Download
+
+Grab the latest desktop app from the **[Releases page](https://github.com/TwDover/GenreGrid/releases/latest)** — no Python, Node, or terminal required. Download the file for your system, and the backend starts automatically when you open the app:
+
+| Your system | Download |
+|---|---|
+| **Windows** | `GenreGrid Setup x.x.x.exe` (installer) |
+| **macOS — Apple Silicon** (M1/M2/M3/M4) | `GenreGrid-x.x.x-arm64.dmg` |
+| **macOS — Intel** | `GenreGrid-x.x.x-x64.dmg` |
+| **Linux** | `GenreGrid-x.x.x.AppImage` (portable) or `.deb` |
+
+> **macOS:** the app is currently **unsigned**, so the first time you open it macOS will warn about an unidentified developer. **Right-click the app → Open → Open**, or run `xattr -cr /Applications/GenreGrid.app`. You only need to do this once.
+
+Prefer to run from source or build it yourself? See [Running in the browser](#running-in-the-browser) and [Desktop app](#desktop-app-electron) below.
+
 ## What it does
 
 - Generates MIDI for five parts: **chords**, **bass**, **melody**, **drums**, and **arpeggio**
@@ -163,6 +178,34 @@ sudo dpkg -i frontend/release/genregrid_x.x.x_amd64.deb
 # Then launch GenreGrid from your application menu
 ```
 
+### Running on macOS
+
+Open the `.dmg` and drag **GenreGrid** to Applications, then launch it. The backend starts automatically. Choose the build matching your Mac: `-arm64` for Apple Silicon (M1/M2/M3/M4), `-x64` for Intel.
+
+Because the app is **unsigned** (no Apple Developer certificate), Gatekeeper blocks it on first launch. Bypass it once:
+
+- **Right-click** (or Control-click) **GenreGrid.app → Open → Open**, or
+- run `xattr -cr /Applications/GenreGrid.app` in Terminal.
+
+### Build (macOS — manual steps)
+
+```bash
+# 1. Bundle the Python backend (builds for your Mac's architecture)
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt pyinstaller
+pyinstaller genregrid.spec
+deactivate
+
+# 2. Build the Electron app
+cd ../frontend
+npm install
+CSC_IDENTITY_AUTO_DISCOVERY=false npm run build:electron
+```
+
+**Output** — `frontend/release/GenreGrid-x.x.x-<arch>.dmg` and `.zip`
+
 ### Drag to DAW
 
 Each part card has a **⠿ drag handle**. Once a generation is ready, drag the handle directly into your DAW's track area to drop the `.mid` file. The handle dims briefly while the file is being prepared, then becomes fully opaque when ready to drag.
@@ -172,7 +215,29 @@ Each part card has a **⠿ drag handle**. Once a generation is ready, drag the h
 The desktop app stores exports and the generation library in:
 
 - **Windows:** `%APPDATA%\genregrid-frontend\backend-data\`
+- **macOS:** `~/Library/Application Support/genregrid-frontend/backend-data/`
 - **Linux:** `~/.config/genregrid-frontend/backend-data/`
+
+---
+
+## Releasing (maintainers)
+
+You **do not need a Mac, a PC, and a Linux box** to ship all three builds — GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)) builds every platform in the cloud and publishes them to a downloadable **GitHub Release**.
+
+To cut a release:
+
+```bash
+# 1. Bump the version in frontend/package.json (e.g. 0.1.0 -> 0.2.0), commit it.
+# 2. Tag and push the tag:
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+> **Keep the tag and the version in sync.** The `version` field in [`frontend/package.json`](frontend/package.json) sets the installer **filenames** (`GenreGrid-0.2.0-arm64.dmg`), while the git **tag** sets the Release name. Tag `v0.2.0` must match version `0.2.0`, or the Release will be titled `v0.2.0` but contain files named `...0.1.0...`. The tag is the trigger — editing `package.json` alone publishes nothing.
+
+The tag (`v*`) triggers four parallel build jobs — Linux, Windows, macOS arm64, macOS Intel — and, once they all pass, a `release` job that attaches every installer (`.exe`, `.dmg`, `.AppImage`, `.deb`, `.zip`) to a new Release with auto-generated notes. Users then download from the [Releases page](https://github.com/TwDover/GenreGrid/releases/latest). Pushes to `main` and pull requests still build and type-check every platform, but only **tags** produce a published release.
+
+> **Note:** macOS builds are **unsigned** (see [Running on macOS](#running-on-macos)). To ship notarized, warning-free Mac apps you'd need an Apple Developer account and would add the signing certificate + `APPLE_ID`/`APPLE_APP_SPECIFIC_PASSWORD` as GitHub Actions secrets. Optional — the unsigned builds work, users just accept the first-launch prompt.
 
 ---
 

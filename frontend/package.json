@@ -56,6 +56,15 @@
       "target": "nsis",
       "icon": "public/icon.ico"
     },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "public/icon.png",
+      "category": "public.app-category.music",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
     "linux": {
       "target": [
         "AppImage",
