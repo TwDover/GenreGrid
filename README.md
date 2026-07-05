@@ -15,7 +15,7 @@ A style-based MIDI generator. Pick a genre, set your key, BPM, and complexity, a
 - **Style-aware playback** — in-browser preview uses genre-matched samplers and synthesis engines: acoustic kits, LinnDrum, breakbeats, Techno kit, Rhodes, clavinet, vibraphone, nylon guitar, accordion, strings, synth leads, and pads — routed automatically per style
 - **Quality scorer** — every generation is scored across up to six musical dimensions (harmonic coherence, part separation, rhythm fit, density, mix balance, and — when a learned corpus prior exists — style-match) and returns a 0–1 score, label, and any issue flags alongside the MIDI
 - **Generation library** — high-scoring generations are saved locally and used to influence rhythm patterns in future generations, improving style consistency over time
-- **Data-driven patterns** — each style ships with chord progressions and drum grooves distilled from real MIDI corpora (POP909, Lakh, Groove MIDI) baked into its definition, so a fresh clone generates idiomatic output with no setup; you can optionally mine your own corpora to bias generation further (see [Training on real corpora](#training-on-real-corpora-optional)), toggled per generation with a **Use learned patterns** switch
+- **Data-driven patterns** — each style ships with idiomatic chord progressions and drum patterns, so a fresh clone generates good output with no setup. An optional mining pipeline can further tailor generation from MIDI corpora **you supply** (e.g. Groove MIDI, POP909, Lakh — used locally under their own licenses; see [Training on real corpora](#training-on-real-corpora-optional)), toggled per generation with a **Use my local MIDI corpus** switch
 - In-browser MIDI preview with play/stop and mute per layer (drums / bass / melodic)
 - Generation history — last 10 results stay accessible in the UI
 - **Drag to DAW** — in the desktop app, drag any part directly into your DAW using the drag handle on each part card
@@ -178,7 +178,7 @@ The desktop app stores exports and the generation library in:
 
 ## Training on real corpora (optional)
 
-GenreGrid's generators are **data-driven**. Each style's most common chord progressions and drum grooves are distilled from real MIDI corpora and **baked directly into the style JSONs**, so a fresh clone already generates idiomatic output with no setup. For deeper, genre-specific behaviour you can mine corpora yourself — the mined statistics then bias progression, melody, and drum generation at runtime.
+GenreGrid's generators are **data-driven**. Each style ships with generic, idiomatic chord progressions and drum patterns baked into its JSON, so a fresh clone already generates good output with no setup. For deeper, genre-specific behaviour you can mine MIDI corpora yourself — the mined statistics then bias progression, melody, and drum generation at runtime. Corpora are used **locally, on your machine**, under their own licenses; nothing from them is redistributed in this repository.
 
 ### How it works
 

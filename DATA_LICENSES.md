@@ -24,6 +24,14 @@ much closer to unprotectable facts than to a copy of any work. Even so, we keep
 them out of the repo so there is no question of redistributing anything derived
 from third-party datasets.
 
+**What the committed style definitions contain.** The style JSONs in
+`backend/app/styles/` carry only **generic, non-copyrightable musical patterns** —
+common chord progressions (e.g. `I–V–vi–IV`) and drum-hit patterns — not dataset
+content. Chord progressions and rhythmic patterns are unprotectable musical
+building blocks, so these ship freely regardless of what corpus (if any) informed
+them. No prior file, and nothing traceable to a specific third-party dataset, is
+committed.
+
 ## If you mine a corpus
 
 You are responsible for complying with that dataset's license. Quick reference
