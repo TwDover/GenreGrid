@@ -19,10 +19,11 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
-from app.models.schemas import GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, GenerateSummary, QualityScore, BatchGenerateRequest, BuildSongRequest, BuildSongResponse, SongSectionResult, RegenerateSongPartRequest
+from app.models.schemas import GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, GenerateSummary, QualityScore, BatchGenerateRequest, BuildSongRequest, BuildSongResponse, SongSectionResult, RegenerateSongPartRequest, RegenerateSongSectionRequest
 from app.services.style_loader import load_style
 from app.services.midi_writer import NoteEvent, ControlEvent, PitchBendEvent, write_midi, write_combined_midi, rebuild_combined_from_parts, concatenate_midi_files, read_note_starts
 from app.generators.chords import generate_chords, resolve_progression
+from app.theory.chords import roman_to_chord
 from app.generators.bass import generate_bass
 from app.generators.melody import generate_melody
 from app.generators.drums import generate_drums
@@ -34,464 +35,57 @@ from app.core.constants import DRUM_MAP
 from app.services.quality import score_generation, extract_rhythm_patterns
 from app.services.priors import load_prior, sample_progression, melody_prior_for, groove_fields_for
 from app.services.library import save_generation as lib_save, is_saved, build_scoring_style
+from app.core.arrangement import (
+    SECTION_PROFILES, _SONG_TEMPLATES, _part_seed, _transpose_key,
+    _apply_section_ramp, _plan_sections, _auto_arc_section_type, _section_end_bars,
+    _song_tempo_map,
+)
+from app.services.mixdown import (
+    _DEFAULT_PROGRAMS, _STYLE_PROGRAMS, _PART_CHANNELS, _VELOCITY_SCALE,
+    _generate_part_cc, _generate_melody_expression_cc, _generate_bass_expression_cc,
+    _generate_808_pitch_bends, _drop_quiet, _scale_velocity, _shift,
+    _apply_groove_push, _apply_dynamic,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# General MIDI program numbers per part, keyed by style_id.
-# Parts not listed fall back to _DEFAULT_PROGRAMS.
-# GM ref (0-indexed): 0=Grand Piano, 4=EP1(Rhodes), 5=EP2(Chorus EP), 7=Clavinet,
-#   11=Vibraphone, 12=Marimba, 16=Drawbar Organ, 18=Rock Organ,
-#   24=Nylon Guitar, 25=Steel Guitar, 26=Jazz Guitar, 27=Clean Electric Guitar,
-#   32=Acoustic Bass, 33=Elec Bass(finger), 35=Fretless Bass, 38=Synth Bass 1,
-#   43=Contrabass, 44=Tremolo Strings, 48=String Ensemble 1, 56=Trumpet,
-#   60=French Horn, 61=Brass Section, 65=Alto Sax, 66=Tenor Sax, 68=Oboe, 73=Flute,
-#   80=Lead Square, 81=Lead Saw, 84=Lead Charang, 85=Lead Voice,
-#   88=Pad New Age, 89=Pad Warm, 90=Pad Polysynth, 91=Pad Choir,
-#   92=Pad Bowed, 93=Pad Metallic, 94=Pad Halo, 95=Pad Sweep
-_DEFAULT_PROGRAMS: dict[str, int] = {
-    "chords":   4,   # EP 1 (Rhodes) — warmer fallback; avoids three parts sharing grand piano
-    "bass":     33,  # Electric Bass (finger)
-    "melody":   73,  # Flute — cuts above chord register without fighting EP
-    "arpeggio": 11,  # Vibraphone — distinct attack; doesn't blur into pad/piano textures
-    "pads":     89,  # Pad Warm — sustained glue layer above the comp
-    "counter_melody": 48,  # String Ensemble — backing harmony line under the lead
-}
-_STYLE_PROGRAMS: dict[str, dict[str, int]] = {
-    # ── Jazz / Soul / Funk ───────────────────────────────────────────────────
-    "jazz": {
-        "chords":   4,   # EP 1 (Rhodes) — jazz piano closer to electric than grand
-        "bass":     32,  # Acoustic Bass — walking bass is upright
-        "melody":   65,  # Alto Sax — canonical jazz melodic voice
-        "arpeggio": 11,  # Vibraphone — Milt Jackson-style fills
-    },
-    "latin_jazz": {
-        "chords":   26,  # Jazz Guitar — Wes Montgomery comp tone
-        "bass":     32,  # Acoustic Bass
-        "melody":   65,  # Alto Sax
-        "arpeggio": 12,  # Marimba — percussive latin feel, separates from guitar chords
-    },
-    "bossa_nova": {
-        "chords":   25,  # Steel Guitar — fingerpicked bossa comp
-        "bass":     32,  # Acoustic Bass
-        "melody":   73,  # Flute — Jobim-era lead
-        "arpeggio": 25,  # Steel Guitar — guitar arp fills
-    },
-    "samba": {
-        "chords":   24,  # Nylon Guitar — cavaquinho proxy
-        "bass":     32,  # Acoustic Bass
-        "melody":   73,  # Flute — choro-influenced lead
-        "arpeggio": 12,  # Marimba — percussive fills, distinct from guitar
-    },
-    "soul": {
-        "chords":   5,   # EP 2 (Chorus EP) — Wurlitzer comp sound
-        "bass":     33,  # Electric Bass (finger)
-        "melody":   66,  # Tenor Sax — full, warm soul lead
-        "arpeggio": 5,   # EP 2 — same voice as chords for cohesion
-    },
-    "rnb": {
-        "chords":   5,   # EP 2
-        "bass":     33,  # Electric Bass (finger)
-        "melody":   66,  # Tenor Sax
-        "arpeggio": 5,   # EP 2
-    },
-    "funk": {
-        "chords":   5,   # EP 2 — punchy stab sound
-        "bass":     33,  # Electric Bass (finger)
-        "melody":   65,  # Alto Sax — punchy horn lead
-        "arpeggio": 7,   # Clavinet — Stevie Wonder-style clav riff, distinct from EP stabs
-    },
-    "lofi": {
-        "chords":   4,   # EP 1 (Rhodes) — lo-fi hip-hop IS Rhodes; grand piano is wrong here
-        "bass":     33,  # Electric Bass (finger)
-        "melody":   4,   # EP 1 — melodic lines on same Rhodes voice
-        "arpeggio": 11,  # Vibraphone — soft jazzy arpeggios
-    },
-    # ── Electronic / Dance ───────────────────────────────────────────────────
-    "synthwave": {
-        "chords":   90,  # Pad Polysynth — lush retro pad wall
-        "bass":     38,  # Synth Bass 1
-        "melody":   81,  # Lead Saw — driving retro lead
-        "arpeggio": 80,  # Lead Square — arpeggiated square wave, Blade Runner aesthetic
-    },
-    "house": {
-        "chords":   90,  # Pad Polysynth
-        "bass":     38,  # Synth Bass 1
-        "melody":   85,  # Lead Voice — vocal synth distinguishes house from synthwave
-        "arpeggio": 80,  # Lead Square
-    },
-    "techno": {
-        "chords":   91,  # Pad Choir — dark textural
-        "bass":     38,  # Synth Bass 1
-        "melody":   80,  # Lead Square — industrial
-        "arpeggio": 93,  # Pad Metallic — separates arp texture from lead
-    },
-    "drum_and_bass": {
-        "chords":   89,  # Pad Warm — DnB pads are rounder than synthwave
-        "bass":     38,  # Synth Bass 1
-        "melody":   84,  # Lead Charang — electric-guitar-ish synth lead
-        "arpeggio": 80,  # Lead Square — fast arpeggio
-    },
-    "future_bass": {
-        "chords":   88,  # Pad New Age — supersaw-adjacent (closest GM has)
-        "bass":     38,  # Synth Bass 1
-        "melody":   81,  # Lead Saw — bright emotional lead
-        "arpeggio": 95,  # Pad Sweep — sweeping texture distinct from New Age pad
-    },
-    "jersey_club": {
-        "chords":   90,  # Pad Polysynth
-        "bass":     38,  # Synth Bass 1
-        "melody":   85,  # Lead Voice — playful vocal synth hook
-        "arpeggio": 80,  # Lead Square
-    },
-    # ── Hip-hop / Trap ───────────────────────────────────────────────────────
-    "trap_soul": {
-        "chords":   88,  # Pad New Age — atmospheric
-        "bass":     38,  # Synth Bass 1 (808 via bass_style)
-        "melody":   89,  # Pad Warm — warm pad melody; not piano
-        "arpeggio": 94,  # Pad Halo — dreamy texture distinct from chords
-    },
-    "dark_trap": {
-        "chords":   92,  # Pad Bowed — darker than New Age
-        "bass":     38,  # Synth Bass 1
-        "melody":   80,  # Lead Square — hard lead
-        "arpeggio": 93,  # Pad Metallic — ominous texture
-    },
-    "cloud_rap": {
-        "chords":   88,  # Pad New Age — dreamy
-        "bass":     38,  # Synth Bass 1
-        "melody":   94,  # Pad Halo — floating, ethereal; not piano
-        "arpeggio": 95,  # Pad Sweep — behind the halo lead
-    },
-    "drill": {
-        "chords":   92,  # Pad Bowed — dark string-like pads
-        "bass":     38,  # Synth Bass 1 (808 via bass_style)
-        "melody":   80,  # Lead Square — angular drill stabs
-        "arpeggio": 93,  # Pad Metallic — dark texture
-    },
-    "boom_bap": {
-        "chords":   4,   # EP 1 (Rhodes) — SP-1200 sampled Rhodes is the boom bap sound
-        "bass":     33,  # Electric Bass (finger)
-        "melody":   65,  # Alto Sax — Pete Rock-era horn lines
-        "arpeggio": 11,  # Vibraphone — jazzy arp nods to the jazz-sample DNA
-    },
-    # ── Cinematic / Ambient ──────────────────────────────────────────────────
-    "cinematic": {
-        "chords":   48,  # String Ensemble 1
-        "bass":     43,  # Contrabass
-        "melody":   56,  # Trumpet — heroic brass melody
-        "arpeggio": 44,  # Tremolo Strings — tension and motion
-    },
-    "epic_orchestral": {
-        "chords":   61,  # Brass Section — full wall; bigger than string ensemble
-        "bass":     43,  # Contrabass
-        "melody":   60,  # French Horn — epic, warm (trumpet reads more fanfare)
-        "arpeggio": 48,  # String Ensemble 1 — rolling strings under brass chords
-    },
-    "ambient": {
-        "chords":   89,  # Pad Warm
-        "bass":     38,  # Synth Bass 1
-        "melody":   73,  # Flute — delicate, breathy
-        "arpeggio": 88,  # Pad New Age — shimmer behind warm pad
-    },
-    "dark_ambient": {
-        "chords":   92,  # Pad Bowed — eerie
-        "bass":     38,  # Synth Bass 1
-        "melody":   68,  # Oboe — haunting solo line
-        "arpeggio": 94,  # Pad Halo — distinct from bowed chord pad
-    },
-    # ── Afro / Latin ─────────────────────────────────────────────────────────
-    "afrobeats": {
-        "chords":   24,  # Nylon Guitar — fingerpicked Afrobeats comp
-        "bass":     33,  # Electric Bass (finger)
-        "melody":   12,  # Marimba — balafon/kora proxy; far more characteristic than trumpet
-        "arpeggio": 24,  # Nylon Guitar — guitar arp fill
-    },
-    "afropop": {
-        "chords":   27,  # Clean Electric Guitar — Afropop uses clean electric
-        "bass":     33,  # Electric Bass (finger)
-        "melody":   12,  # Marimba — same balafon logic as afrobeats
-        "arpeggio": 24,  # Nylon Guitar — nylon arp behind clean electric chords
-    },
-    "cumbia": {
-        "chords":   23,  # Tango Accordion — period-correct accordion sound
-        "bass":     33,  # Electric Bass (finger)
-        "melody":   73,  # Flute — iconic cumbia melody instrument
-        "arpeggio": 23,  # Tango Accordion — rhythmic stabs
-    },
-    "reggaeton": {
-        "chords":   27,  # Clean Electric Guitar — reggaeton guitar stabs
-        "bass":     38,  # Synth Bass 1 — dembow bass is synth
-        "melody":   81,  # Lead Saw — modern reggaeton synth hook
-        "arpeggio": 80,  # Lead Square — distinguishes from dancehall
-    },
-    "dancehall": {
-        "chords":   90,  # Pad Polysynth — digital riddim pad
-        "bass":     38,  # Synth Bass 1
-        "melody":   85,  # Lead Voice — vocal/deejay-style melodic hook
-        "arpeggio": 80,  # Lead Square — digital arp
-    },
-    # ── Newer styles ─────────────────────────────────────────────────────────
-    "grime": {
-        "chords":   91,  # Pad Choir — ominous grime pads
-        "bass":     38,  # Synth Bass 1 (808 via bass_style)
-        "melody":   80,  # Lead Square — angular grime stabs
-        "arpeggio": 93,  # Pad Metallic — dark texture
-    },
-    "hyperpop": {
-        "chords":   90,  # Pad Polysynth — hyper-bright
-        "bass":     38,  # Synth Bass 1 (808 via bass_style)
-        "melody":   81,  # Lead Saw — maximalist saw lead
-        "arpeggio": 95,  # Pad Sweep — chaotic sweep arp
-    },
-    "baile_funk": {
-        "chords":   5,   # EP 2 — melodic chord stabs
-        "bass":     33,  # Electric Bass (finger)
-        "melody":   80,  # Lead Square
-        "arpeggio": 80,  # Lead Square — busy synth layers
-    },
-}
 
-_VELOCITY_DROP = 20  # notes quieter than this are inaudible — discard them
+def _final_chord_voicing(chord_events: list[NoteEvent]) -> list[int] | None:
+    """Extract the last sounded chord voicing from a chord part's events.
 
-# How each section type shapes the generated loop.
-# complexity_scale / variation_scale multiply the user's sliders.
-# velocity_scale is applied to all note events after generation.
-# melody_complexity_scale / backing_complexity_scale override per-part
-# complexity for instrumental_solo (melody leads, chords/bass serve as backing).
-SECTION_PROFILES: dict[str, dict] = {
-    "intro": {
-        "bars_typical": [4, 8],
-        "complexity_scale": 0.60,
-        "variation_scale": 0.80,
-        "velocity_scale": 0.80,
-        "melody_complexity_scale": 0.40,
-    },
-    "verse": {
-        "bars_typical": [8, 16],
-        "complexity_scale": 0.82,
-        "variation_scale": 0.90,
-        "velocity_scale": 0.87,
-    },
-    "pre_chorus": {
-        "bars_typical": [2, 4],
-        "complexity_scale": 1.00,
-        "variation_scale": 1.10,
-        "velocity_scale": 0.93,
-    },
-    "chorus": {
-        "bars_typical": [4, 8],
-        "complexity_scale": 1.12,
-        "variation_scale": 0.85,
-        "velocity_scale": 1.00,
-    },
-    "post_chorus": {
-        "bars_typical": [2, 4],
-        "complexity_scale": 1.05,
-        "variation_scale": 0.80,
-        "velocity_scale": 0.97,
-    },
-    "bridge": {
-        "bars_typical": [4, 8],
-        "complexity_scale": 0.90,
-        "variation_scale": 1.20,
-        "velocity_scale": 0.88,
-    },
-    "instrumental_solo": {
-        "bars_typical": [4, 16],
-        "complexity_scale": 0.90,
-        "variation_scale": 1.10,
-        "velocity_scale": 0.95,
-        "melody_complexity_scale": 1.40,
-        "backing_complexity_scale": 0.60,
-    },
-    "outro": {
-        "bars_typical": [4, 16],
-        "complexity_scale": 0.55,
-        "variation_scale": 0.70,
-        "velocity_scale": 0.78,
-    },
-}
-
-# Per-part velocity scale factors. Bass sits loudest, chords slightly back,
-# melody present above chords, arpeggio light. Drums are not scaled.
-_VELOCITY_SCALE: dict[str, float] = {
-    "bass":     0.88,
-    "chords":   0.68,
-    "melody":   1.00,
-    "arpeggio": 0.62,
-    "pads":     0.52,
-    "counter_melody": 0.82,
-}
-
-_NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-
-
-def _part_seed(main_seed: int, section_idx: int, part: str) -> int:
-    """Derive a deterministic seed for a specific section × part pair.
-
-    Seeding each generator independently means adding or removing a part cannot
-    affect the random state seen by any other part, making generation fully
-    reproducible from the main seed.
+    Used to thread voice leading across song sections: the closing voicing of
+    one section seeds `prev_voicing` for the next, so the comp doesn't jump
+    back to root position at every section seam. Strums offset note starts by
+    a few ms, so everything within half a beat of the final onset counts as
+    one voicing.
     """
-    return abs(hash((main_seed, section_idx, part))) % (2 ** 31)
+    if not chord_events:
+        return None
+    last_start = max(e.start for e in chord_events)
+    voicing = sorted({e.pitch for e in chord_events if e.start >= last_start - 0.5})
+    return voicing or None
 
 
-def _transpose_key(key: str, semitones: int) -> str:
-    from app.theory.notes import note_name_to_midi
-    pc = note_name_to_midi(key, 4) % 12
-    return _NOTE_NAMES[(pc + semitones) % 12]
+def _melody_motif_intervals(mel_events: list[NoteEvent], key: str, scale: str) -> list[int] | None:
+    """Scale-step intervals of a melody's opening motif (up to 4 intervals).
 
-
-_PART_PAN = {"bass": 64, "chords": 46, "melody": 80, "arpeggio": 76, "pads": 40, "counter_melody": 92}
-_PART_CHANNELS = {"chords": 0, "bass": 1, "melody": 2, "arpeggio": 3, "pads": 4, "counter_melody": 5}
-
-# Comp styles that use short articulated hits — sustain pedal would blur their
-# intended staccato character. Styles with chord_rhythm also get the same treatment
-# because their note durations are computed to fill to the next hit, and sustain
-# would smear across those carefully-timed arrivals.
-_NO_SUSTAIN_COMP_STYLES = frozenset({
-    "jazz_comp", "bossa_comp", "funk_stab", "house_stab", "synth_gate",
-})
-# Styles whose chord instruments (strings, brass) already sustain naturally —
-# adding CC64 causes unintended smear across bar lines.
-_NO_SUSTAIN_STYLE_IDS = frozenset({"epic_orchestral"})
-
-# CC91 reverb send per part: bass dry/upfront, arpeggio spacious/behind.
-# Creates a front-to-back depth gradient that separates parts spatially.
-_PART_REVERB = {"bass": 12, "chords": 28, "melody": 48, "arpeggio": 58, "pads": 66, "counter_melody": 52}
-
-# Per-style reverb overrides — atmospheric/cinematic styles need more room.
-# Parts not listed fall back to _PART_REVERB.
-_STYLE_REVERB: dict[str, dict[str, int]] = {
-    "cinematic":       {"chords": 55, "melody": 72, "arpeggio": 68},
-    "epic_orchestral": {"chords": 62, "melody": 78, "arpeggio": 72},
-    "ambient":         {"chords": 72, "melody": 85, "arpeggio": 78},
-    "dark_ambient":    {"chords": 75, "melody": 82, "arpeggio": 82},
-    "cloud_rap":       {"chords": 62, "melody": 70, "arpeggio": 68},
-    "trap_soul":       {"chords": 52, "melody": 62, "arpeggio": 65},
-    "lofi":            {"chords": 42, "melody": 50, "arpeggio": 55},
-    "jazz":            {"chords": 32, "melody": 40, "arpeggio": 45},
-    "synthwave":       {"chords": 48, "melody": 58, "arpeggio": 65},
-    "future_bass":     {"chords": 55, "melody": 65, "arpeggio": 70},
-    "drum_and_bass":   {"chords": 35, "melody": 45, "arpeggio": 50},
-}
-
-# Styles where arpeggio is the primary melodic texture (no explicit melody, or
-# melody is a pad). Raise the arpeggio scale factor so it isn't buried behind chords.
-_STYLE_ARPEGGIO_VEL: dict[str, float] = {
-    "ambient":      0.82,
-    "dark_ambient": 0.78,
-    "cloud_rap":    0.80,
-    "trap_soul":    0.78,
-    "lofi":         0.75,
-    "cinematic":    0.75,
-    "synthwave":    0.72,
-    "future_bass":  0.75,
-    "dark_trap":    0.72,
-}
-
-
-def _generate_part_cc(part: str, total_bars: int, channel: int, style: dict | None = None) -> list[ControlEvent]:
-    """Generate pan (CC10), reverb (CC91), and sustain pedal (CC64) for chords.
-
-    Sustain is only applied for styles that use long-hold voicings (pads, ambient,
-    cinematic). Short-articulation styles (jazz_comp, funk_stab, etc.) and any style
-    with a step-based chord_rhythm skip it — sustain would blur their intentional
-    staccato character.
+    Extracted from the first verse of a built song and handed to chorus
+    generation so the chorus melody develops the verse's theme instead of
+    inventing an unrelated one. Pitches are snapped to the scale lattice and
+    expressed as index deltas, so the motif transposes cleanly to any register.
     """
-    cc: list[ControlEvent] = []
-    cc.append(ControlEvent(control=10, value=_PART_PAN.get(part, 64), start=0.0, channel=channel))
-    s = style or {}
-    style_id = s.get("id", "")
-    reverb = _STYLE_REVERB.get(style_id, {}).get(part, _PART_REVERB.get(part))
-    if reverb is not None:
-        cc.append(ControlEvent(control=91, value=reverb, start=0.0, channel=channel))
-    if part == "chords":
-        comp = s.get("comp_style", "")
-        use_sustain = (comp not in _NO_SUSTAIN_COMP_STYLES
-                       and not s.get("chord_rhythm")
-                       and style_id not in _NO_SUSTAIN_STYLE_IDS)
-        if use_sustain:
-            for bar in range(total_bars):
-                b = float(bar * 4)
-                cc.append(ControlEvent(control=64, value=127, start=b, channel=channel))
-                cc.append(ControlEvent(control=64, value=0, start=b + 3.75, channel=channel))
-    return cc
-
-
-def _generate_melody_expression_cc(events: list[NoteEvent], channel: int) -> list[ControlEvent]:
-    """Generate CC11 (Expression) swells for melody notes — swell on attack, decay on release."""
-    cc: list[ControlEvent] = []
-    for note in sorted(events, key=lambda e: e.start):
-        d = note.duration
-        if d <= 0.5:
-            cc.append(ControlEvent(control=11, value=90, start=note.start, channel=channel))
-        elif d <= 2.0:
-            cc.append(ControlEvent(control=11, value=65,  start=note.start,           channel=channel))
-            cc.append(ControlEvent(control=11, value=115, start=note.start + d * 0.25, channel=channel))
-            cc.append(ControlEvent(control=11, value=80,  start=note.start + d * 0.85, channel=channel))
-        else:
-            cc.append(ControlEvent(control=11, value=50,  start=note.start,           channel=channel))
-            cc.append(ControlEvent(control=11, value=127, start=note.start + d * 0.15, channel=channel))
-            cc.append(ControlEvent(control=11, value=100, start=note.start + d * 0.65, channel=channel))
-            cc.append(ControlEvent(control=11, value=65,  start=note.start + d * 0.90, channel=channel))
-    return cc
-
-
-def _generate_bass_expression_cc(events: list[NoteEvent], channel: int) -> list[ControlEvent]:
-    """CC11 expression for bass — natural attack swell, settled sustain.
-
-    Gives walking and standard bass lines the feel of a bowed or plucked
-    instrument where the note blooms slightly after the attack. Skipped for
-    808 bass (which uses pitch bend instead and is already very expressive).
-    """
-    cc: list[ControlEvent] = []
-    for note in sorted(events, key=lambda e: e.start):
-        d = note.duration
-        if d <= 0.3:
-            cc.append(ControlEvent(control=11, value=108, start=note.start, channel=channel))
-        else:
-            cc.append(ControlEvent(control=11, value=82,  start=note.start,            channel=channel))
-            cc.append(ControlEvent(control=11, value=112, start=note.start + 0.07,     channel=channel))
-            cc.append(ControlEvent(control=11, value=92,  start=note.start + d * 0.40, channel=channel))
-            cc.append(ControlEvent(control=11, value=82,  start=note.start + d * 0.88, channel=channel))
-    return cc
-
-
-def _apply_section_ramp(
-    all_events: dict[str, list[NoteEvent]],
-    sections: list[dict],
-) -> None:
-    """Smooth dynamic steps where a section is louder than its predecessor.
-
-    On verse→chorus or intro→verse energy lifts, melodic parts ramp in over
-    the first two bars rather than jumping to full level immediately. Drums
-    are excluded — they handle the transition via fills.
-    """
-    for sec_i in range(1, len(sections)):
-        prev_dyn = sections[sec_i - 1].get("dynamic", 1.0)
-        curr_dyn = sections[sec_i].get("dynamic", 1.0)
-        if curr_dyn <= prev_dyn + 0.05:
-            continue
-        sec_start   = float(sections[sec_i]["offset"])
-        ramp_beats  = min(8.0, sections[sec_i]["bars"] * 4 * 0.5)
-        start_ratio = prev_dyn / curr_dyn   # factor at the downbeat of the new section
-        for part, evts in all_events.items():
-            if part == "drums":
-                continue
-            ramped: list[NoteEvent] = []
-            for e in evts:
-                if sec_start <= e.start < sec_start + ramp_beats:
-                    t_in   = e.start - sec_start
-                    factor = start_ratio + (1.0 - start_ratio) * (t_in / ramp_beats)
-                    ramped.append(NoteEvent(
-                        e.pitch, e.start, e.duration,
-                        max(1, min(127, int(e.velocity * factor))), e.channel,
-                    ))
-                else:
-                    ramped.append(e)
-            all_events[part] = ramped
+    if not mel_events:
+        return None
+    from app.theory.scales import build_scale
+    lattice = build_scale(key, scale, octave_start=2, num_octaves=6)
+    pitches = [e.pitch for e in sorted(mel_events, key=lambda e: e.start)[:5]]
+    if len(pitches) < 2:
+        return None
+    idxs = [min(range(len(lattice)), key=lambda i: abs(lattice[i] - p)) for p in pitches]
+    intervals = [idxs[k + 1] - idxs[k] for k in range(len(idxs) - 1)]
+    # An all-zero motif (repeated note) carries no shape worth reusing
+    return intervals if any(intervals) else None
 
 
 def _chord_tones_by_bar(chord_notes, bars: int) -> list | None:
@@ -524,47 +118,6 @@ def _chord_tones_by_bar(chord_notes, bars: int) -> list | None:
         elif nxt is not None:
             tones[i] = set(nxt)
     return [sorted(t) for t in tones]
-
-
-def _generate_808_pitch_bends(events: list[NoteEvent], channel: int) -> list[PitchBendEvent]:
-    """Pitch bend slide-in curves for 808 bass notes (±2 semitone range assumed)."""
-    pb: list[PitchBendEvent] = []
-    for e in sorted(events, key=lambda x: x.start):
-        t = e.start
-        # Reset to 0 just before each slide starts (prevents carry-over from previous note)
-        pb.append(PitchBendEvent(0,     max(0.0, t - 0.09), channel))
-        pb.append(PitchBendEvent(-3000, max(0.0, t - 0.05), channel))
-        pb.append(PitchBendEvent(-1500, t + 0.04,            channel))
-        pb.append(PitchBendEvent(-300,  t + 0.10,            channel))
-        pb.append(PitchBendEvent(0,     t + 0.16,            channel))
-    return pb
-
-
-def _drop_quiet(events: list[NoteEvent]) -> list[NoteEvent]:
-    return [e for e in events if e.velocity >= _VELOCITY_DROP]
-
-
-def _scale_velocity(events: list[NoteEvent], part: str, style_id: str = "") -> list[NoteEvent]:
-    if part == "arpeggio" and style_id in _STYLE_ARPEGGIO_VEL:
-        factor = _STYLE_ARPEGGIO_VEL[style_id]
-    else:
-        factor = _VELOCITY_SCALE.get(part, 1.0)
-    if factor == 1.0:
-        return events
-    return [
-        NoteEvent(pitch=e.pitch, start=e.start, duration=e.duration,
-                  velocity=max(1, min(127, int(e.velocity * factor))),
-                  channel=e.channel)
-        for e in events
-    ]
-
-
-def _shift(events: list[NoteEvent], beats: float) -> list[NoteEvent]:
-    return [
-        NoteEvent(pitch=e.pitch, start=e.start + beats, duration=e.duration,
-                  velocity=e.velocity, channel=e.channel)
-        for e in events
-    ]
 
 
 def _prevent_parallel_motion(
@@ -631,81 +184,6 @@ def _prevent_parallel_motion(
     return fixed
 
 
-def _plan_sections(total_bars: int, complexity: float, requested_parts: list[str],
-                   base_key: str = "C", key_shift: int = 0) -> list[dict]:
-    """Return an arrangement arc as a list of section dicts.
-
-    Each dict has: bars, complexity, parts, offset (in beats).
-    Sections progress from sparse (foundation only) → full arrangement → sparse outro,
-    so the output feels like a song with an energy curve rather than a looping pattern.
-    """
-    full   = list(requested_parts)
-    no_arp = [p for p in requested_parts if p != "arpeggio"]
-    sparse = [p for p in requested_parts if p in ("drums", "bass", "chords")]
-    found  = [p for p in requested_parts if p in ("drums", "bass")]
-
-    chorus_key = _transpose_key(base_key, key_shift) if key_shift else base_key
-
-    def sec(b: int, c_mul: float, p: list, off: int, key: str = base_key, dyn: float = 1.0) -> dict:
-        return {"bars": b, "complexity": max(0.1, complexity * c_mul), "parts": p, "offset": off, "key": key, "dynamic": dyn}
-
-    if total_bars <= 4:
-        return [sec(total_bars, 1.0, full, 0, dyn=1.0)]
-
-    if total_bars <= 8:
-        intro = max(1, total_bars // 4)
-        return [
-            sec(intro,              0.35, found, 0,          dyn=0.72),
-            sec(total_bars - intro, 1.0,  full,  intro * 4,  dyn=1.0),
-        ]
-
-    if total_bars <= 16:
-        intro  = max(1, total_bars // 6)
-        outro  = intro
-        mid    = total_bars - intro - outro
-        verse  = mid // 2
-        chorus = mid - verse
-        secs, off = [], 0
-        secs.append(sec(intro,  0.3,  found,  off, dyn=0.70)); off += intro  * 4
-        secs.append(sec(verse,  0.65, sparse, off, dyn=0.85)); off += verse  * 4
-        secs.append(sec(chorus, 1.0,  full,   off, key=chorus_key, dyn=1.00)); off += chorus * 4
-        secs.append(sec(outro,  0.35, found,  off, dyn=0.72))
-        return secs
-
-    # 17-24 bars: compact full arc — 2-bar intro/outro, verse gets 2/3 of middle (min 8)
-    if total_bars <= 24:
-        intro  = 2
-        outro  = 2
-        mid    = total_bars - intro - outro
-        verse  = max(8, (mid * 2) // 3)
-        chorus = mid - verse
-        if chorus < 4:
-            chorus = 4
-            verse  = mid - chorus
-        secs, off = [], 0
-        secs.append(sec(intro,  0.25, found,  off, dyn=0.70)); off += intro  * 4
-        secs.append(sec(verse,  0.6,  no_arp, off, dyn=0.85)); off += verse  * 4
-        secs.append(sec(chorus, 1.0,  full,   off, key=chorus_key, dyn=1.00)); off += chorus * 4
-        secs.append(sec(outro,  0.3,  found,  off, dyn=0.72))
-        return secs
-
-    # 25+ bars: full song arc — 4-bar intro/outro, verse ≥ 16 bars, chorus ≥ 8 bars
-    intro  = 4
-    outro  = 4
-    mid    = total_bars - intro - outro
-    verse  = max(16, (mid * 2) // 3)
-    chorus = mid - verse
-    if chorus < 8:
-        chorus = 8
-        verse  = mid - chorus
-    secs, off = [], 0
-    secs.append(sec(intro,  0.25, found,  off, dyn=0.70)); off += intro  * 4
-    secs.append(sec(verse,  0.6,  no_arp, off, dyn=0.85)); off += verse  * 4
-    secs.append(sec(chorus, 1.0,  full,   off, key=chorus_key, dyn=1.00)); off += chorus * 4
-    secs.append(sec(outro,  0.3,  found,  off, dyn=0.72))
-    return secs
-
-
 _MAX_QUALITY_ATTEMPTS = 5
 _GREEN_THRESHOLD = 0.82
 _GENERATION_TIMEOUT_S = 30
@@ -714,63 +192,6 @@ _QUALITY_DIMS = ("harmonic", "separation", "rhythm", "density", "mix")
 
 def _all_green(quality_raw: dict) -> bool:
     return all(quality_raw.get(d, 0.0) >= _GREEN_THRESHOLD for d in _QUALITY_DIMS)
-
-
-def _apply_groove_push(events: list[NoteEvent], push: float) -> list[NoteEvent]:
-    """Shift all notes by a systematic beat offset.
-
-    Negative push = behind the beat (lazy hip-hop/jazz feel).
-    Positive push = ahead of the beat (forward funk/soul feel).
-    Applied to melodic parts only (drums are the timing reference).
-    """
-    if abs(push) < 0.0005:
-        return events
-    return [
-        NoteEvent(e.pitch, max(0.0, e.start + push), e.duration, e.velocity, e.channel)
-        for e in events
-    ]
-
-
-def _apply_dynamic(events: list[NoteEvent], factor: float) -> list[NoteEvent]:
-    """Scale all note velocities by a section-level dynamic factor."""
-    if abs(factor - 1.0) < 0.01:
-        return events
-    return [
-        NoteEvent(e.pitch, e.start, e.duration, max(1, min(127, int(e.velocity * factor))), e.channel)
-        for e in events
-    ]
-
-
-def _auto_arc_section_type(sections: list[dict], i: int) -> str | None:
-    """Map _plan_sections' anonymous arc slots onto section types for the drums.
-
-    The auto-arc has no explicit section names, but its shape is fixed:
-    first = intro, last = outro, the loudest middle slot = chorus, rest = verse.
-    Returns None for a single-section plan (plain loop — no arrangement context).
-    """
-    if len(sections) < 2:
-        return None
-    if i == 0:
-        return "intro"
-    if i == len(sections) - 1:
-        return "outro"
-    peak = max(s.get("dynamic", 1.0) for s in sections[1:-1])
-    return "chorus" if sections[i].get("dynamic", 1.0) >= peak - 1e-9 else "verse"
-
-
-def _section_end_bars(sections: list[dict], current_section_offset: int) -> list[int]:
-    """Return bar indices (relative to current section) that are section boundaries.
-
-    Used to tell the drum generator where to place builds/fills at section transitions.
-    """
-    end_bars = []
-    for sec in sections:
-        sec_end_beat = sec["offset"] + sec["bars"] * 4
-        # Convert to bar index within the current section
-        bar_idx = (sec_end_beat - current_section_offset) // 4 - 1
-        if 0 <= bar_idx:
-            end_bars.append(int(bar_idx))
-    return end_bars
 
 
 def _prior_name(style: dict) -> str:
@@ -825,6 +246,8 @@ def _run_attempt(
     regen_part: str | None = None,
     regen_salt: int = 0,
     fixed_progression: list[str] | None = None,
+    chords_prev_voicing: list[int] | None = None,
+    melody_seed_motif: list[int] | None = None,
 ) -> tuple[dict, dict, dict, list, dict | None, dict, list]:
     """Run one generation attempt for a given seed.
 
@@ -842,6 +265,11 @@ def _run_attempt(
     one harmonic identity instead of each section type independently rolling its own
     progression; per-section chord substitutions (resolve_progression, seeded per
     section) still vary, giving related-but-not-identical harmony across sections.
+
+    chords_prev_voicing — the previous song section's final chord voicing, threaded
+    into generate_chords so voice leading continues across section seams.
+    melody_seed_motif — scale-step motif intervals from an earlier section (the
+    verse theme), passed to generate_melody so choruses develop the verse's idea.
     """
     def _pseed(sec_i: int, part: str) -> int:
         s = (seed + regen_salt) if (regen_part and part == regen_part) else seed
@@ -866,6 +294,7 @@ def _run_attempt(
         sections = _plan_sections(req.bars, req.complexity, req.parts, req.key, key_shift)
 
     all_events: dict[str, list[NoteEvent]] = {part: [] for part in req.parts}
+    _chords_prev = list(chords_prev_voicing) if chords_prev_voicing else None
 
     for section_i, section in enumerate(sections):
         s_bars  = section["bars"]
@@ -896,6 +325,11 @@ def _run_attempt(
             s_next_type = (_auto_arc_section_type(sections, section_i + 1)
                            if section_i + 1 < len(sections) else None)
 
+        # Harmonic rhythm: choruses/pre-choruses change chords faster. The boost
+        # feeds one shared value into chords, bass, and melody so their grids agree.
+        _harm_boost = SECTION_PROFILES.get(s_sec_type or "", {}).get("harmonic_boost", 0.0)
+        harmony_cplx = min(1.0, backing_cplx + _harm_boost)
+
         kick_times: list[float] = []
         if "drums" in req.parts and "drums" in s_parts:
             random.seed(_pseed(section_i, "drums"))
@@ -922,7 +356,8 @@ def _run_attempt(
             mel_evts = generate_melody(style, s_key, req.scale, s_bars, mel_cplx,
                                        eff_var, s_resolved, is_loop=is_loop,
                                        melody_model=_melody_model,
-                                       harmony_complexity=backing_cplx)
+                                       harmony_complexity=harmony_cplx,
+                                       seed_motif=melody_seed_motif)
             mel_evts = _apply_dynamic(mel_evts, s_dyn)
             all_events["melody"].extend(_shift(mel_evts, s_off))
             if mel_evts:
@@ -953,16 +388,20 @@ def _run_attempt(
                                        eff_var, progression, s_resolved,
                                        melody_ceiling=melody_ceiling,
                                        kick_times=kick_times,
-                                       melody_rests=mel_rests if has_melody else None)
+                                       melody_rests=mel_rests if has_melody else None,
+                                       harmony_complexity=harmony_cplx,
+                                       prev_voicing=_chords_prev)
                 section_chord_tones = _chord_tones_by_bar(
                     [(e.start, e.pitch) for e in evts], s_bars)
+                _chords_prev = _final_chord_voicing(evts)
             elif part == "pads":
                 evts = generate_pads(style, s_key, req.scale, s_bars, backing_cplx,
                                      eff_var, s_resolved)
             elif part == "bass":
                 evts = generate_bass(style, s_key, req.scale, s_bars, backing_cplx,
                                      eff_var, bass_prog, kick_times,
-                                     melody_rests=mel_rests)
+                                     melody_rests=mel_rests,
+                                     harmony_complexity=harmony_cplx)
             elif part == "arpeggio":
                 arp_octave = 6 if has_melody else 5
                 # When melody is active, pull arpeggio back so it supports rather than competes.
@@ -1558,76 +997,6 @@ def download_export(gen_id: str, filename: str):
     return FileResponse(str(file_path), media_type="audio/midi", filename=filename)
 
 
-# ── Full Song Builder ────────────────────────────────────────────────────────
-#
-# Templates define an ordered sequence of sections. Each entry specifies:
-#   section_type  — maps to SECTION_PROFILES for energy/complexity shaping
-#   bars          — length of this section
-#   parts_mode    — "full" | "no_arp" | "sparse" | "foundation"
-#   chorus_key    — True to transpose by style's chorus_key_shift
-#
-# parts_mode meanings (filtered against the user's selected parts):
-#   foundation    drums + bass only
-#   sparse        drums + bass + chords
-#   no_arp        all parts except arpeggio
-#   full          all user-selected parts
-#   melodic       chords + melody only (no rhythm section — soft intro/outro)
-#   no_drums      all parts except drums (full arrangement, no percussion)
-#   chords_only   chords only (solo piano/pad intro)
-
-_SONG_TEMPLATES: dict[str, list[dict]] = {
-    # Standard pop/R&B — melodic intro/outro, 16-bar verses.
-    "verse_chorus": [
-        {"name": "Intro",    "section_type": "intro",   "bars": 4,  "parts_mode": "melodic"},
-        {"name": "Verse",    "section_type": "verse",   "bars": 16, "parts_mode": "no_arp"},
-        {"name": "Chorus",   "section_type": "chorus",  "bars": 8,  "parts_mode": "full", "chorus_key": True},
-        {"name": "Verse 2",  "section_type": "verse",   "bars": 16, "parts_mode": "no_arp"},
-        {"name": "Chorus 2", "section_type": "chorus",  "bars": 8,  "parts_mode": "full", "chorus_key": True},
-        {"name": "Outro",    "section_type": "outro",   "bars": 4,  "parts_mode": "melodic"},
-    ],  # 56 bars
-    # Classic pop/rock — fuller no-drum intro, pre-chorus builds, melodic outro.
-    "verse_chorus_bridge": [
-        {"name": "Intro",         "section_type": "intro",       "bars": 4,  "parts_mode": "no_drums"},
-        {"name": "Verse",         "section_type": "verse",       "bars": 16, "parts_mode": "no_arp"},
-        {"name": "Pre-Chorus",    "section_type": "pre_chorus",  "bars": 4,  "parts_mode": "sparse"},
-        {"name": "Chorus",        "section_type": "chorus",      "bars": 8,  "parts_mode": "full", "chorus_key": True},
-        {"name": "Verse 2",       "section_type": "verse",       "bars": 16, "parts_mode": "no_arp"},
-        {"name": "Pre-Chorus 2",  "section_type": "pre_chorus",  "bars": 4,  "parts_mode": "sparse"},
-        {"name": "Chorus 2",      "section_type": "chorus",      "bars": 8,  "parts_mode": "full", "chorus_key": True},
-        {"name": "Bridge",        "section_type": "bridge",      "bars": 8,  "parts_mode": "full", "bridge_key": True},
-        {"name": "Final Chorus",  "section_type": "chorus",      "bars": 8,  "parts_mode": "full", "chorus_key": True},
-        {"name": "Outro",         "section_type": "outro",       "bars": 4,  "parts_mode": "melodic"},
-    ],  # 80 bars
-    # Extended with instrumental solo — drums-first intro (electronic/hip-hop feel).
-    "extended": [
-        {"name": "Intro",         "section_type": "intro",             "bars": 4,  "parts_mode": "foundation"},
-        {"name": "Verse",         "section_type": "verse",             "bars": 16, "parts_mode": "sparse"},
-        {"name": "Chorus",        "section_type": "chorus",            "bars": 8,  "parts_mode": "full", "chorus_key": True},
-        {"name": "Verse 2",       "section_type": "verse",             "bars": 16, "parts_mode": "no_arp"},
-        {"name": "Chorus 2",      "section_type": "chorus",            "bars": 8,  "parts_mode": "full", "chorus_key": True},
-        {"name": "Instrumental",  "section_type": "instrumental_solo", "bars": 8,  "parts_mode": "full"},
-        {"name": "Bridge",        "section_type": "bridge",            "bars": 8,  "parts_mode": "full", "bridge_key": True},
-        {"name": "Final Chorus",  "section_type": "chorus",            "bars": 8,  "parts_mode": "full", "chorus_key": True},
-        {"name": "Outro",         "section_type": "outro",             "bars": 4,  "parts_mode": "foundation"},
-    ],  # 80 bars
-    # Compact sketch — 8-bar verses, solo chords intro/outro for a simple feel.
-    "compact": [
-        {"name": "Intro",    "section_type": "intro",   "bars": 4, "parts_mode": "chords_only"},
-        {"name": "Verse",    "section_type": "verse",   "bars": 8, "parts_mode": "no_arp"},
-        {"name": "Chorus",   "section_type": "chorus",  "bars": 8, "parts_mode": "full", "chorus_key": True},
-        {"name": "Verse 2",  "section_type": "verse",   "bars": 8, "parts_mode": "no_arp"},
-        {"name": "Chorus 2", "section_type": "chorus",  "bars": 8, "parts_mode": "full", "chorus_key": True},
-        {"name": "Outro",    "section_type": "outro",   "bars": 4, "parts_mode": "chords_only"},
-    ],  # 40 bars
-    # Minimal — foundation intro builds into full arrangement.
-    "minimal": [
-        {"name": "Intro",  "section_type": "intro",  "bars": 4,  "parts_mode": "foundation"},
-        {"name": "Main",   "section_type": "verse",  "bars": 16, "parts_mode": "full"},
-        {"name": "Outro",  "section_type": "outro",  "bars": 4,  "parts_mode": "melodic"},
-    ],  # 24 bars
-}
-
-
 def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
                             secondary_dominants, tritone_sub, groove_push,
                             regen_part=None, regen_salt=0, bridge_key_shift=0,
@@ -1685,6 +1054,11 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     last_chorus_i = max((i for i, s in enumerate(template)
                          if s["section_type"] == "chorus"), default=-1)
 
+    # Threaded across sections: the closing chord voicing (voice-leading
+    # continuity at seams) and the verse's opening motif (chorus develops it).
+    prev_voicing: list[int] | None = None
+    verse_motif: list[int] | None = None
+
     for sec_i, sec_def in enumerate(template):
         sec_type   = sec_def["section_type"]
         sec_bars   = sec_def.get("bars", 8)
@@ -1723,6 +1097,9 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
             blend_amount=0.5, use_priors=req.use_priors,
         )
 
+        # Choruses develop the verse's motif; other section types keep their own ideas.
+        sec_motif = verse_motif if sec_type == "chorus" else None
+
         if fixed_section_seeds is not None:
             # Replay: reuse the exact seed the original build_song call landed on
             # for this section — no re-search, so untouched parts stay identical.
@@ -1732,6 +1109,7 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
                     sec_req, style, winning_seed, True, groove_push, secondary_dominants, tritone_sub,
                     scoring_style=scoring_style, regen_part=regen_part, regen_salt=regen_salt,
                     fixed_progression=song_progression,
+                    chords_prev_voicing=prev_voicing, melody_seed_motif=sec_motif,
                 )
             except Exception as exc:
                 logger.error("build_song section %r failed: %s", sec_name, exc, exc_info=True)
@@ -1748,6 +1126,7 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
                         sec_req, style, attempt_seed, True, groove_push, secondary_dominants, tritone_sub,
                         scoring_style=scoring_style, regen_part=regen_part, regen_salt=regen_salt,
                         fixed_progression=song_progression,
+                        chords_prev_voicing=prev_voicing, melody_seed_motif=sec_motif,
                     )
                 except Exception as exc:
                     logger.error("build_song section %r attempt %d failed: %s", sec_name, attempt, exc, exc_info=True)
@@ -1781,6 +1160,13 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
                     evts["melody"], sec_key, req.scale, sec_bars,
                     song_progression, style)
 
+        # Thread voice-leading and the verse theme into the next section: the
+        # post-theme-swap events are what actually sound, so extract from those.
+        if evts.get("chords"):
+            prev_voicing = _final_chord_voicing(evts["chords"])
+        if verse_motif is None and sec_type == "verse" and evts.get("melody"):
+            verse_motif = _melody_motif_intervals(evts["melody"], req.key, req.scale)
+
         for part, part_evts in evts.items():
             if part in song_events and part_evts:
                 song_events[part].extend(_shift(part_evts, beat_offset))
@@ -1803,7 +1189,101 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     if len(ramp_sections) > 1:
         _apply_section_ramp(song_events, ramp_sections)
 
+    # ── Ending bar ────────────────────────────────────────────────────────────
+    # A real cadence instead of just stopping: the tonic chord, bass root, and a
+    # kick+crash land on one extra bar and ring out (the tempo map's ritardando
+    # covers this bar). Deterministic from base_seed so every regeneration flow
+    # reproduces identical ending events for untouched parts.
+    random.seed(_part_seed(base_seed, len(template), "ending"))
+    ending_start = float(total_bars * 4)
+    tonic_roman = "i" if req.scale in ("minor", "dorian", "phrygian", "harmonic_minor",
+                                       "pentatonic_minor", "blues", "locrian") else "I"
+    tonic = roman_to_chord(tonic_roman, req.key, req.scale, octave=4)
+    ring = 4.0
+    if "chords" in song_events:
+        base = sorted(tonic)
+        for ni, p in enumerate(base):
+            song_events["chords"].append(NoteEvent(
+                pitch=p, start=ending_start + ni * 0.012, duration=ring,
+                velocity=max(1, 84 - ni * 4), channel=0))
+    if "pads" in song_events and song_events.get("pads"):
+        for ni, p in enumerate(sorted(tonic)):
+            song_events["pads"].append(NoteEvent(
+                pitch=min(127, p + 12), start=ending_start, duration=ring,
+                velocity=56 - ni * 2, channel=4))
+    if "bass" in song_events:
+        song_events["bass"].append(NoteEvent(
+            pitch=max(0, tonic[0] - 24), start=ending_start, duration=ring,
+            velocity=92, channel=1))
+    if "melody" in song_events and song_events.get("melody"):
+        mel_range = style.get("melody", {}).get("range", [60, 79])
+        root_pc = tonic[0] % 12
+        candidates = [p for p in range(mel_range[0], mel_range[1] + 1) if p % 12 == root_pc]
+        if candidates:
+            song_events["melody"].append(NoteEvent(
+                pitch=candidates[len(candidates) // 2], start=ending_start,
+                duration=ring, velocity=78, channel=2))
+    if "drums" in song_events:
+        song_events["drums"].append(NoteEvent(DRUM_MAP["kick"], ending_start, 0.1, 116, 9))
+        song_events["drums"].append(NoteEvent(DRUM_MAP["crash"], ending_start, ring, 104, 9))
+    section_results.append({
+        "name": "End", "section_type": "ending",
+        "bars": 1, "start_bar": total_bars, "key": req.key,
+    })
+    total_bars += 1
+
     return song_events, section_results, total_bars, section_seeds
+
+
+def _write_song_output(song_events: dict, output_dir, gen_id: str, bpm: int, style: dict,
+                       programs: dict, parts: list[str], total_bars: int,
+                       section_results: list[dict]) -> list[FileInfo]:
+    """Write every stem + song.mid for a built song (CC, pitch bends, tempo map).
+
+    Shared by build_song and regenerate_song_section so both produce identical
+    file layouts. The tempo map (chorus push + ending ritardando) is written
+    into every stem so they stay sample-locked in any DAW.
+    """
+    song_cc: dict[str, list] = {}
+    for part in parts:
+        if part == "drums" or not song_events.get(part):
+            continue
+        channel = _PART_CHANNELS.get(part, 0)
+        song_cc[part] = _generate_part_cc(part, total_bars, channel, style=style)
+
+    if song_events.get("melody"):
+        ch = _PART_CHANNELS.get("melody", 2)
+        song_cc.setdefault("melody", []).extend(
+            _generate_melody_expression_cc(song_events["melody"], ch)
+        )
+
+    song_pb: dict[str, list] = {}
+    if song_events.get("bass") and style.get("bass", {}).get("bass_style") == "808":
+        ch = _PART_CHANNELS.get("bass", 1)
+        song_pb["bass"] = _generate_808_pitch_bends(song_events["bass"], ch)
+
+    tempo_map = _song_tempo_map(section_results, bpm, ending_bars=1)
+
+    files: list[FileInfo] = []
+    _sid = style.get("id", "")
+    for part, evts in song_events.items():
+        if not evts:
+            continue
+        clean = _drop_quiet(_scale_velocity(evts, part, _sid))
+        if not clean:
+            continue
+        fname = f"{part}.mid"
+        write_midi(clean, output_dir / fname, bpm=bpm, program=programs.get(part),
+                   cc_events=song_cc.get(part), pb_events=song_pb.get(part),
+                   tempo_events=tempo_map)
+        files.append(FileInfo(part=part, filename=fname, url=f"/exports/{gen_id}/{fname}"))
+
+    if len([p for p, e in song_events.items() if e]) > 1:
+        clean_all = {p: _drop_quiet(_scale_velocity(e, p, _sid)) for p, e in song_events.items() if e}
+        write_combined_midi(clean_all, output_dir / "song.mid", bpm=bpm, programs=programs,
+                            cc_parts=song_cc, pb_parts=song_pb, tempo_events=tempo_map)
+        files.append(FileInfo(part="song", filename="song.mid", url=f"/exports/{gen_id}/song.mid"))
+    return files
 
 
 @router.post("/build-song", response_model=BuildSongResponse)
@@ -1852,49 +1332,10 @@ def build_song(req: BuildSongRequest):
         "section_seeds": section_seeds,
     }))
 
-    # Regenerate CC and PB events for the full song duration (pan, sustain, expression)
-    song_cc: dict[str, list] = {}
-    for part in req.parts:
-        if part == "drums" or not song_events.get(part):
-            continue
-        channel = _PART_CHANNELS.get(part, 0)
-        song_cc[part] = _generate_part_cc(part, total_bars, channel, style=style)
+    files = _write_song_output(song_events, output_dir, gen_id, bpm, style, programs,
+                               list(req.parts), total_bars, section_results)
 
-    if "melody" in song_events and song_events["melody"]:
-        ch = _PART_CHANNELS.get("melody", 2)
-        song_cc.setdefault("melody", []).extend(
-            _generate_melody_expression_cc(song_events["melody"], ch)
-        )
-
-    song_pb: dict[str, list] = {}
-    if "bass" in song_events and song_events["bass"]:
-        bass_cfg = style.get("bass", {})
-        if bass_cfg.get("bass_style") == "808":
-            ch = _PART_CHANNELS.get("bass", 1)
-            song_pb["bass"] = _generate_808_pitch_bends(song_events["bass"], ch)
-
-    # Write per-part and combined MIDI files
     import json as _jsong
-    files = []
-    _sid = style.get("id", "")
-    for part, evts in song_events.items():
-        if not evts:
-            continue
-        scaled = _scale_velocity(evts, part, _sid)
-        clean  = _drop_quiet(scaled)
-        if not clean:
-            continue
-        fname = f"{part}.mid"
-        write_midi(clean, output_dir / fname, bpm=bpm, program=programs.get(part),
-                   cc_events=song_cc.get(part), pb_events=song_pb.get(part))
-        files.append(FileInfo(part=part, filename=fname, url=f"/exports/{gen_id}/{fname}"))
-
-    if len([p for p, e in song_events.items() if e]) > 1:
-        clean_all = {p: _drop_quiet(_scale_velocity(e, p, _sid)) for p, e in song_events.items() if e}
-        write_combined_midi(clean_all, output_dir / "song.mid", bpm=bpm, programs=programs,
-                            cc_parts=song_cc, pb_parts=song_pb)
-        files.append(FileInfo(part="song", filename="song.mid", url=f"/exports/{gen_id}/song.mid"))
-
     (output_dir / "song_structure.json").write_text(_jsong.dumps(section_results, indent=2))
 
     return BuildSongResponse(
@@ -1987,6 +1428,7 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
     if req.part == "bass" and style.get("bass", {}).get("bass_style") == "808":
         part_pb = _generate_808_pitch_bends(evts, _PART_CHANNELS.get("bass", 1))
 
+    tempo_map = _song_tempo_map(_sections, bpm, ending_bars=1)
     scaled = _drop_quiet(_scale_velocity(evts, req.part, _sid))
     fname = f"{req.part}.mid"
     part_path = output_dir / fname
@@ -1995,10 +1437,10 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
     if part_path.exists():
         shutil.copy(part_path, output_dir / f"{req.part}.prev")
     write_midi(scaled, part_path, bpm=bpm, program=programs.get(req.part),
-               cc_events=part_cc, pb_events=part_pb)
+               cc_events=part_cc, pb_events=part_pb, tempo_events=tempo_map)
 
     # Rebuild song.mid from all stems on disk (new part + untouched others).
-    rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid")
+    rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid", tempo_events=tempo_map)
 
     # An added part becomes a first-class member of the song so later
     # regenerations and undos treat it like any originally-built stem.
@@ -2007,6 +1449,20 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
         meta_path.write_text(_json_module.dumps(meta))
 
     return FileInfo(part=req.part, filename=fname, url=f"/exports/{req.generation_id}/{fname}")
+
+
+def _template_section_results(template_name: str, key: str = "C") -> list[dict]:
+    """Section layout (start_bar/bars/type) for a template, including the ending
+    bar — enough to rebuild the tempo map without regenerating any music."""
+    template = _SONG_TEMPLATES.get(template_name, _SONG_TEMPLATES["verse_chorus"])
+    out, sb = [], 0
+    for sd in template:
+        bars = sd.get("bars", 8)
+        out.append({"name": sd.get("name", sd["section_type"]), "section_type": sd["section_type"],
+                    "bars": bars, "start_bar": sb, "key": key})
+        sb += bars
+    out.append({"name": "End", "section_type": "ending", "bars": 1, "start_bar": sb, "key": key})
+    return out
 
 
 @router.post("/undo-song-part", response_model=FileInfo)
@@ -2019,12 +1475,81 @@ def undo_song_part(req: RegenerateSongPartRequest):
     meta_path = output_dir / "song_meta.json"
     meta = _json_module.loads(meta_path.read_text()) if meta_path.exists() else {}
     bpm = meta.get("bpm", 120)
+    tempo_map = _song_tempo_map(
+        _template_section_results(meta.get("template", "verse_chorus"), meta.get("key", "C")),
+        bpm, ending_bars=1)
 
     shutil.copy(prev, output_dir / f"{req.part}.mid")
     prev.unlink()   # one level of undo only
-    rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid")
+    rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid", tempo_events=tempo_map)
     return FileInfo(part=req.part, filename=f"{req.part}.mid",
                     url=f"/exports/{req.generation_id}/{req.part}.mid")
+
+
+@router.post("/regenerate-song-section", response_model=list[FileInfo])
+def regenerate_song_section(req: RegenerateSongSectionRequest):
+    """Re-roll one section of a built song, keeping every other section identical.
+
+    Replaces the stored winning seed for that section and replays the song's
+    section loop, so all parts of the target section get fresh music while the
+    rest of the song reproduces byte-for-byte from the persisted seeds. Note the
+    ripple rules: re-rolling the first occurrence of a section type also updates
+    later sections of that type (they reuse its theme), and re-rolling a verse
+    can reshape choruses (they develop the verse's motif) — musically intended.
+    """
+    output_dir = EXPORTS_DIR / req.generation_id
+    meta_path = output_dir / "song_meta.json"
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail="Song not found or too old to regenerate")
+    meta = _json_module.loads(meta_path.read_text())
+    section_seeds = list(meta.get("section_seeds") or [])
+    template = _SONG_TEMPLATES.get(meta.get("template", ""), _SONG_TEMPLATES["verse_chorus"])
+    if not section_seeds:
+        raise HTTPException(status_code=400, detail="This song predates section re-roll — rebuild it once to enable")
+    if not (0 <= req.section_index < len(template)):
+        raise HTTPException(status_code=400, detail=f"section_index must be 0..{len(template) - 1}")
+
+    try:
+        style = load_style(meta["style_id"])
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    bpm_min, bpm_max = style.get("bpm_range", [40, 240])
+    bpm = max(bpm_min, min(bpm_max, meta["bpm"]))
+    secondary_dominants = style.get("secondary_dominants", False)
+    tritone_sub = style.get("tritone_substitution", False)
+    groove_push = style.get("groove_push", 0.0)
+    style = {**style, "_humanize_scale": meta["humanize"]}
+    programs = {**_DEFAULT_PROGRAMS, **_STYLE_PROGRAMS.get(meta["style_id"], {})}
+
+    section_seeds[req.section_index] = secrets.randbelow(2 ** 31)
+
+    song_req = BuildSongRequest.model_construct(
+        style_id=meta["style_id"], key=meta["key"], scale=meta["scale"], bpm=meta["bpm"],
+        complexity=meta["complexity"], variation=meta["variation"], humanize=meta["humanize"],
+        parts=meta["parts"], template=meta["template"], use_priors=meta["use_priors"],
+        seed=meta["base_seed"], chorus_key_shift=meta["chorus_key_shift"],
+    )
+    song_events, section_results, total_bars, _seeds = _generate_song_sections(
+        song_req, style, bpm, meta["base_seed"], meta["chorus_key_shift"],
+        secondary_dominants, tritone_sub, groove_push,
+        bridge_key_shift=meta.get("bridge_key_shift", 0),
+        fixed_section_seeds=section_seeds,
+    )
+
+    # Back up all stems (one level of undo per part via /undo-song-part)
+    for part in meta["parts"]:
+        p = output_dir / f"{part}.mid"
+        if p.exists():
+            shutil.copy(p, output_dir / f"{part}.prev")
+
+    files = _write_song_output(song_events, output_dir, req.generation_id, bpm, style,
+                               programs, list(meta["parts"]), total_bars, section_results)
+
+    meta["section_seeds"] = section_seeds
+    meta_path.write_text(_json_module.dumps(meta))
+    (output_dir / "song_structure.json").write_text(_json_module.dumps(section_results, indent=2))
+    return files
 
 
 _SAFE_PATH = re.compile(r'^[a-zA-Z0-9_\-]{1,80}$')

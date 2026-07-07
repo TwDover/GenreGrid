@@ -52,17 +52,26 @@ def generate_counter_melody(
         chord_idx = int(beat / beats_per_bar) % prog_len
         return {p % 12 for p in roman_to_chord(progression[chord_idx], key, scale, octave=4)}
 
+    def _select(min_dur: float, strong_only: bool) -> list:
+        picked, last = [], -1.0
+        for note in sorted(melody_events, key=lambda e: e.start):
+            beat_in_bar = note.start % beats_per_bar
+            is_strong = (beat_in_bar % 1.0) < 0.13
+            if note.duration < min_dur or (strong_only and not is_strong):
+                continue
+            if note.start - last < 0.5:   # at most one harmony note per half-beat
+                continue
+            picked.append(note)
+            last = note.start
+        return picked
+
+    # Prefer long notes on strong beats; if the melody is busy (few long notes),
+    # relax so the harmony line always exists when a melody does.
+    selected = _select(0.45, strong_only=True) or _select(0.25, strong_only=False)
+
     events: List[NoteEvent] = []
-    last_start = -1.0
-    for note in sorted(melody_events, key=lambda e: e.start):
+    for note in selected:
         beat_in_bar = note.start % beats_per_bar
-        is_strong = (beat_in_bar % 1.0) < 0.13
-        is_structural = note.duration >= 0.45 and is_strong
-        if not is_structural:
-            continue
-        # Density guard: at most one harmony note per half-beat window
-        if note.start - last_start < 0.5:
-            continue
 
         # Nearest scale index at or below the melody pitch
         below = [i for i, n in enumerate(scale_notes) if n <= note.pitch]
@@ -94,6 +103,5 @@ def generate_counter_melody(
             velocity=max(1, min(127, int(note.velocity * vel_scale))),
             channel=5,
         ))
-        last_start = note.start
 
     return events

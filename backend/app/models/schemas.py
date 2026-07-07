@@ -122,6 +122,11 @@ class RegenerateSongPartRequest(BaseModel):
     part: str
 
 
+class RegenerateSongSectionRequest(BaseModel):
+    generation_id: str
+    section_index: int  # index into the song's template sections (the ending bar is not re-rollable)
+
+
 class SongSectionResult(BaseModel):
     name: str
     section_type: str
