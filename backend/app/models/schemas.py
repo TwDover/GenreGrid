@@ -153,6 +153,21 @@ class SetPartGainRequest(BaseModel):
     gain: float = Field(default=1.0, ge=0.1, le=2.0)  # 1.0 = as generated
 
 
+class EditedNote(BaseModel):
+    """One note of a hand-edited stem (times in beats, like NoteEvent)."""
+    pitch: int = Field(ge=0, le=127)
+    start: float = Field(ge=0)
+    duration: float = Field(gt=0)
+    velocity: int = Field(ge=1, le=127)
+
+
+class EditPartRequest(BaseModel):
+    """Replace a song stem's notes with a hand-edited list (piano-roll editing)."""
+    generation_id: str
+    part: str
+    notes: list[EditedNote] = Field(max_length=5000)
+
+
 class SongSectionResult(BaseModel):
     name: str
     section_type: str

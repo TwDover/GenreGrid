@@ -282,3 +282,20 @@ export async function saveCustomStyle(style: Record<string, any>): Promise<Recor
   }
   return res.json()
 }
+
+export async function editPart(req: {
+  generation_id: string
+  part: string
+  notes: { pitch: number; start: number; duration: number; velocity: number }[]
+}): Promise<FileInfo> {
+  const res = await fetch(`${BASE_URL}/edit-part`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Saving note edits failed')
+  }
+  return res.json()
+}

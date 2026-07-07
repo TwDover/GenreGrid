@@ -26,7 +26,7 @@ from fastapi import File as FastAPIFile
 from app.models.schemas import (GenerateRequest, FileInfo, BuildSongRequest, BuildSongResponse,
                                 SongSectionResult, RegenerateSongPartRequest,
                                 RegenerateSongSectionRequest, RestoreSongVersionRequest,
-                                SetPartGainRequest)
+                                SetPartGainRequest, EditPartRequest)
 from app.services.style_loader import load_style
 from app.services.midi_writer import (NoteEvent, write_midi, write_combined_midi,
                                       rebuild_combined_from_parts, mido_key_signature)
@@ -43,6 +43,7 @@ from app.services.mixdown import (
     _DEFAULT_PROGRAMS, _STYLE_PROGRAMS, _PART_CHANNELS,
     _generate_part_cc, _generate_melody_expression_cc,
     _generate_808_pitch_bends, _drop_quiet, _scale_velocity, _shift,
+    generate_build_sweeps, generate_section_crescendo,
 )
 from app.api.routes_generate import (
     _run_attempt, _choose_progression, _blend_styles, _all_green,
@@ -480,6 +481,13 @@ def _write_song_output(song_events: dict, output_dir, gen_id: str, bpm: int, sty
             _generate_melody_expression_cc(song_events["melody"], ch)
         )
 
+    # Section-level automation: pre-chorus filter sweeps + crescendo into the chorus.
+    for automation in (generate_build_sweeps(section_results, parts),
+                       generate_section_crescendo(section_results, parts)):
+        for part, evs in automation.items():
+            if song_events.get(part):
+                song_cc.setdefault(part, []).extend(evs)
+
     song_pb: dict[str, list] = {}
     if song_events.get("bass") and style.get("bass", {}).get("bass_style") == "808":
         ch = _PART_CHANNELS.get("bass", 1)
@@ -679,6 +687,11 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
         part_cc = _generate_part_cc(req.part, total_bars, channel, style=style)
         if req.part == "melody":
             part_cc = part_cc + _generate_melody_expression_cc(evts, channel)
+        # A re-rolled stem keeps its pre-chorus sweeps/crescendo (build_song adds
+        # these in _write_song_output, which this single-stem path bypasses)
+        for automation in (generate_build_sweeps(_sections, [req.part]),
+                           generate_section_crescendo(_sections, [req.part])):
+            part_cc = part_cc + automation.get(req.part, [])
     part_pb = None
     if req.part == "bass" and style.get("bass", {}).get("bass_style") == "808":
         part_pb = _generate_808_pitch_bends(evts, _PART_CHANNELS.get("bass", 1))
@@ -829,6 +842,66 @@ def set_part_gain(req: SetPartGainRequest):
                                        custom=meta.get("custom_template"))
     rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid",
                                 tempo_events=_song_tempo_map(layout, bpm, ending_bars=1),
+                                markers=_section_markers(layout, meta.get("key", "C")),
+                                key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")))
+    return FileInfo(part=req.part, filename=f"{req.part}.mid",
+                    url=f"/exports/{req.generation_id}/{req.part}.mid")
+
+
+@router.post("/edit-part", response_model=FileInfo)
+def edit_part(req: EditPartRequest):
+    """Light note editing: replace a song stem's notes with a hand-edited list.
+
+    The stem is rewritten on disk (same tempo map, program, and part CC as the
+    sibling endpoints) and song.mid is rebuilt from the stems, so preview,
+    drag-to-DAW, and exports all reflect the edit. The pre-edit state is
+    snapshotted first, so an edit is restorable from the History picker.
+    """
+    if not _SAFE_PATH.match(req.generation_id):
+        raise HTTPException(status_code=400, detail="Invalid generation id")
+    if req.part not in _ALL_SONG_PARTS:
+        raise HTTPException(status_code=400, detail=f"Unknown part '{req.part}'")
+    output_dir = EXPORTS_DIR / req.generation_id
+    meta_path = output_dir / "song_meta.json"
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail="Song not found")
+    part_path = output_dir / f"{req.part}.mid"
+    if not part_path.exists():
+        raise HTTPException(status_code=404, detail=f"No {req.part} stem in this song")
+
+    meta = _json_module.loads(meta_path.read_text())
+    _snapshot_song(output_dir)   # version history: state before this mutation
+
+    bpm = meta.get("bpm", 120)
+    layout = _template_section_results(meta.get("template", "verse_chorus"), meta.get("key", "C"),
+                                       custom=meta.get("custom_template"))
+    tempo_map = _song_tempo_map(layout, bpm, ending_bars=1)
+    total_bars = sum(s["bars"] for s in layout)
+
+    channel = 9 if req.part == "drums" else _PART_CHANNELS.get(req.part, 0)
+    events = [NoteEvent(n.pitch, n.start, n.duration, n.velocity, channel) for n in req.notes]
+
+    # Same CC treatment as regenerate_song_part — pan/reverb per part, plus
+    # expression swells re-derived from the edited melody line.
+    part_cc = None
+    if req.part != "drums":
+        try:
+            style = load_style(meta["style_id"])
+        except (ValueError, KeyError):
+            style = None
+        part_cc = _generate_part_cc(req.part, total_bars, channel, style=style)
+        if req.part == "melody":
+            part_cc = part_cc + _generate_melody_expression_cc(events, channel)
+        # An edited stem keeps its pre-chorus sweeps/crescendo too
+        for automation in (generate_build_sweeps(layout, [req.part]),
+                           generate_section_crescendo(layout, [req.part])):
+            part_cc = part_cc + automation.get(req.part, [])
+
+    programs = {**_DEFAULT_PROGRAMS, **_STYLE_PROGRAMS.get(meta.get("style_id", ""), {})}
+    write_midi(events, part_path, bpm=bpm, program=programs.get(req.part),
+               cc_events=part_cc, tempo_events=tempo_map)
+
+    rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid", tempo_events=tempo_map,
                                 markers=_section_markers(layout, meta.get("key", "C")),
                                 key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")))
     return FileInfo(part=req.part, filename=f"{req.part}.mid",

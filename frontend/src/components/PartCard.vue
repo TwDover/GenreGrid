@@ -56,16 +56,30 @@
         <span v-else-if="saved">✓</span>
         <span v-else>{{ hasPicker ? 'Save to…' : '↓ .mid' }}</span>
       </button>
+      <button
+        v-if="editable && editDirty"
+        class="save-btn edit-save-btn"
+        :disabled="savingEdits"
+        @click="saveEdits"
+        :title="editError || 'Write note edits into the stem and rebuild song.mid'"
+      >
+        <span v-if="savingEdits">…</span>
+        <span v-else>Save edits</span>
+      </button>
     </div>
 
     <div class="track-roll">
       <PianoRoll
         v-if="midiData"
+        ref="rollRef"
         :notes="midiData.notes"
         :duration="midiData.duration"
         :playing="playing"
         :keyRoot="keyRoot"
         :scale="scale"
+        :editable="editable"
+        :seconds-per-beat="secondsPerBeat"
+        @notes-changed="onNotesChanged"
       />
       <div v-else class="roll-empty" />
     </div>
@@ -74,9 +88,11 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
+import { Midi } from '@tonejs/midi'
+import type { Header } from '@tonejs/midi'
 import type { FileInfo } from '../types/midi'
-import { downloadUrl } from '../services/api'
-import { useMidiPlayer } from '../composables/useMidiPlayer'
+import { downloadUrl, editPart } from '../services/api'
+import { useMidiPlayer, type ParsedNote } from '../composables/useMidiPlayer'
 import PianoRoll from './PianoRoll.vue'
 
 const props = defineProps<{
@@ -89,6 +105,7 @@ const props = defineProps<{
   scale?: string
   simple?: boolean
   gain?: number   // mixer gain (1.0 = generated balance); undefined hides the slider
+  editable?: boolean   // enable piano-roll note editing (song stems only)
 }>()
 
 defineEmits<{
@@ -112,6 +129,61 @@ const { toggle, currentlyPlaying, isLoading, getMidiData, prefetchMidi } = useMi
 const playing = computed(() => currentlyPlaying.value === props.file.url)
 const midiData = computed(() => getMidiData(props.file.url))
 
+// ── Note editing (song stems) ────────────────────────────────────────────────
+const rollRef = ref<InstanceType<typeof PianoRoll> | null>(null)
+const editedNotes = ref<ParsedNote[] | null>(null)
+const editDirty = ref(false)
+const savingEdits = ref(false)
+const editError = ref('')
+const secondsPerBeat = ref(0.5)
+let midiHeader: Header | null = null   // tempo map of the current file (seconds ↔ ticks)
+
+function onNotesChanged(notes: ParsedNote[], dirty: boolean) {
+  editedNotes.value = notes
+  editDirty.value = dirty
+  if (dirty) editError.value = ''
+}
+
+async function saveEdits() {
+  const notes = editedNotes.value
+  if (!notes || savingEdits.value) return
+  savingEdits.value = true
+  editError.value = ''
+  try {
+    // file.url format: /exports/{gen_id}/{part}.mid
+    const segs = props.file.url.split('/').filter(Boolean)
+    const genId = segs[segs.length - 2]
+    if (!genId) throw new Error(`Cannot derive generation id from ${props.file.url}`)
+
+    // The roll edits in seconds; the backend wants beats. The file's own tempo
+    // map (header) makes the conversion exact even with chorus pushes and the
+    // ending ritardando; fall back to the nominal tempo if parsing failed.
+    const toBeats = (sec: number) =>
+      midiHeader ? midiHeader.secondsToTicks(sec) / midiHeader.ppq : sec / secondsPerBeat.value
+    const payload = notes.map(n => {
+      const start = Math.max(0, toBeats(n.time))
+      const end = toBeats(n.time + n.duration)
+      return {
+        pitch: Math.max(0, Math.min(127, Math.round(n.midi))),
+        start: +start.toFixed(4),
+        duration: +Math.max(0.01, end - start).toFixed(4),
+        velocity: Math.max(1, Math.min(127, Math.round(n.velocity * 127))),
+      }
+    })
+
+    await editPart({ generation_id: genId, part: props.file.part, notes: payload })
+    editDirty.value = false
+    editedNotes.value = null
+    rollRef.value?.markSaved()
+    await cacheTempFile(props.file.url)   // re-verify + refresh caches / drag temp file
+  } catch (e: any) {
+    // Keep the edits on screen; surface the failure via the button title.
+    editError.value = e?.message ?? 'Save failed'
+  } finally {
+    savingEdits.value = false
+  }
+}
+
 async function cacheTempFile(url: string) {
   expired.value = false
   // One GET verifies the export still exists (a cleaned-up file 404s) and, in
@@ -126,9 +198,23 @@ async function cacheTempFile(url: string) {
   }
   if (!res.ok) { expired.value = true; return }
   prefetchMidi(url)   // warm the piano-roll cache (served from the HTTP cache)
-  if (!isElectron) return
+  let buf: ArrayBuffer | null = null
+  if (isElectron || props.editable) {
+    try { buf = await res.arrayBuffer() } catch { buf = null }
+  }
+  if (props.editable && buf) {
+    // Keep the file's tempo header: seconds → beats conversion for note edits,
+    // and the seconds-per-beat step size for the roll's arrow-key nudges.
+    try {
+      const midi = new Midi(buf)
+      midiHeader = midi.header
+      secondsPerBeat.value = 60 / (midi.header.tempos[0]?.bpm ?? 120)
+    } catch {
+      midiHeader = null
+    }
+  }
+  if (!isElectron || !buf) return
   try {
-    const buf = await res.arrayBuffer()
     const data = Array.from(new Uint8Array(buf))
     tempFilePath.value = await (window as any).electronAPI.saveTempFile(props.file.filename, data)
   } catch {
@@ -294,6 +380,11 @@ async function saveTo() {
 }
 .save-btn:hover:not(:disabled) { background: #122f40; }
 .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.edit-save-btn {
+  border-color: #00c8ff88;
+  background: #003450;
+}
 
 .gain-slider {
   width: 64px;

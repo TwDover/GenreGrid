@@ -47,7 +47,7 @@
           v-for="(sec, i) in result.sections"
           :key="sec.name"
           class="sr-tl-block"
-          :class="[`seg-${sec.section_type}`, { 'sr-tl-busy': sectionRegenLoading === i }]"
+          :class="[`seg-${sec.section_type}`, { 'sr-tl-busy': sectionRegenLoading === i, 'sr-tl-playing': playingSectionIndex === i }]"
           :style="{ flex: sec.bars }"
           :title="`${sec.name} · ${sec.bars} bars${sec.quality != null ? ` · quality ${(sec.quality * 100).toFixed(0)}%` : ''} — click to play from here`"
           @click="seekToSection(sec)"
@@ -66,6 +66,7 @@
             @click.stop="onRegenSection(i)"
           >{{ sectionRegenLoading === i ? '…' : '⟳' }}</button>
         </div>
+        <div v-if="playheadPct !== null" class="sr-playhead" :style="{ left: `${playheadPct}%` }" />
       </div>
 
       <!-- Draggable per-part stems -->
@@ -82,6 +83,7 @@
           :regenLoading="regenLoading === file.part"
           :hasUndo="undoable.has(file.part)"
           :simple="true"
+          :editable="true"
           :gain="partGains[file.part] ?? 1.0"
           @regen="onRegen"
           @undo="onUndo(file.part)"
@@ -113,11 +115,13 @@ import { ref, reactive, computed, watch } from 'vue'
 import type { BuildSongResponse, FileInfo } from '../types/midi'
 import { downloadUrl, regenerateSongPart, regenerateSongSection, undoSongPart, listSongVersions, restoreSongVersion, setPartGain, type SongVersion } from '../services/api'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
+import { useToasts } from '../composables/useToasts'
 import PartCard from './PartCard.vue'
 
 const props = defineProps<{ result: BuildSongResponse | null; label: string }>()
 
-const { toggle, stop: stopPlayer, currentlyPlaying, seek } = useMidiPlayer()
+const { toggle, stop: stopPlayer, currentlyPlaying, seek, positionSeconds } = useMidiPlayer()
+const { toast } = useToasts()
 let songBlobUrl: string | null = null
 
 // Cache-bust versions per part (and the song) after a regeneration.
@@ -155,6 +159,37 @@ const songUrl = computed(() => {
 })
 const isPlaying = computed(() => songBlobUrl !== null && currentlyPlaying.value === songBlobUrl)
 
+// ── Live playhead ────────────────────────────────────────────────────────────
+// Playback position in bars, mirroring the piecewise tempo map used by
+// seekToSection (choruses run 1.2% faster than the base tempo).
+const playheadBar = computed<number | null>(() => {
+  if (!props.result || !isPlaying.value) return null
+  const bpm = props.result.bpm || 120
+  let remaining = positionSeconds.value
+  let bars = 0
+  for (const s of props.result.sections) {
+    const isChorus = s.section_type === 'chorus' || s.section_type === 'post_chorus'
+    const secDur = s.bars * 4 * 60 / (isChorus ? bpm * 1.012 : bpm)
+    if (remaining < secDur) return bars + (remaining / secDur) * s.bars
+    remaining -= secDur
+    bars += s.bars
+  }
+  return bars
+})
+const playheadPct = computed<number | null>(() => {
+  if (playheadBar.value === null || !props.result?.total_bars) return null
+  return Math.min(100, (playheadBar.value / props.result.total_bars) * 100)
+})
+const playingSectionIndex = computed(() => {
+  if (playheadBar.value === null || !props.result) return -1
+  let acc = 0
+  for (let i = 0; i < props.result.sections.length; i++) {
+    acc += props.result.sections[i].bars
+    if (playheadBar.value < acc) return i
+  }
+  return -1
+})
+
 async function onRegen(part: string) {
   if (!props.result || regenLoading.value) return
   regenLoading.value = part
@@ -165,8 +200,10 @@ async function onRegen(part: string) {
     versions[part] = v      // reload the stem card + piano roll
     versions.song = v       // and the whole-song playback
     undoable.add(part)
+    toast(`Re-rolled ${part.replace('_', ' ')}`)
   } catch (e: any) {
     regenError.value = e.message ?? 'Regeneration failed'
+    toast(regenError.value ?? 'Regeneration failed', 'error')
   } finally {
     regenLoading.value = null
   }
@@ -191,9 +228,11 @@ async function onGain(part: string, gain: number) {
     const v = Date.now()
     versions[part] = v
     versions.song = v
+    toast(`${part.replace('_', ' ')} volume applied`)
   } catch (e: any) {
     partGains[part] = prev
     regenError.value = e.message ?? 'Volume change failed'
+    toast(regenError.value ?? 'Volume change failed', 'error')
   }
 }
 
@@ -225,8 +264,10 @@ async function onRestore(versionId: string) {
     addedFiles.value = addedFiles.value.filter(f => restored.has(f.part))
     historyOpen.value = false
     songVersions.value = await listSongVersions(props.result.generation_id)
+    toast('Version restored')
   } catch (e: any) {
     regenError.value = e.message ?? 'Restore failed'
+    toast(regenError.value ?? 'Restore failed', 'error')
   } finally {
     restoreLoading.value = null
   }
@@ -247,8 +288,10 @@ async function onRegenSection(index: number) {
     for (const f of files) versions[f.part] = v
     versions.song = v
     for (const f of files) if (f.part !== 'song') undoable.add(f.part)
+    toast(`Re-rolled ${props.result.sections[index]?.name ?? 'section'}`)
   } catch (e: any) {
     regenError.value = e.message ?? 'Section regeneration failed'
+    toast(regenError.value ?? 'Section regeneration failed', 'error')
   } finally {
     sectionRegenLoading.value = null
   }
@@ -279,8 +322,10 @@ async function onAdd(part: string) {
     const v = Date.now()
     versions[part] = v
     versions.song = v   // song.mid was rebuilt with the new stem
+    toast(`Added ${part.replace('_', ' ')}`)
   } catch (e: any) {
     regenError.value = e.message ?? `Could not add ${part}`
+    toast(regenError.value ?? `Could not add ${part}`, 'error')
   } finally {
     addLoading.value = null
   }
@@ -370,7 +415,12 @@ function download() {
 .sr-history-item:disabled { opacity: 0.5; cursor: wait; }
 
 /* Timeline */
-.sr-timeline { display: flex; height: 30px; border-radius: 5px; overflow: hidden; gap: 1px; background: #020608; }
+.sr-timeline { position: relative; display: flex; height: 30px; border-radius: 5px; overflow: hidden; gap: 1px; background: #020608; }
+.sr-playhead {
+  position: absolute; top: 0; bottom: 0; width: 2px;
+  background: #00c8ff; box-shadow: 0 0 6px #00c8ff99;
+  pointer-events: none; z-index: 2;
+}
 .sr-tl-block {
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 0.35rem; overflow: hidden; min-width: 0; gap: 0.2rem;
@@ -379,6 +429,7 @@ function download() {
 }
 .sr-tl-block:hover { filter: brightness(1.2); }
 .sr-tl-block.sr-tl-busy { filter: brightness(0.7); cursor: wait; }
+.sr-tl-block.sr-tl-playing { filter: brightness(1.3); box-shadow: inset 0 0 0 1px #00c8ff88; }
 .sr-tl-name { font-size: 0.58rem; color: rgba(255,255,255,0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .sr-tl-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
 .q-good { background: #4ade80; }
