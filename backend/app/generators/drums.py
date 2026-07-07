@@ -62,42 +62,6 @@ def _jitter(inst: str, h: float) -> float:
     return random.uniform(-spread, spread)
 
 
-def _vary_kick_bar2(kick_beats: list, complexity: float) -> list:
-    """Return a rhythmically varied kick list for bar 2 of a 2-bar phrase.
-
-    Several strategies are weighted by complexity so simpler settings stay basic
-    while higher complexity produces more adventurous second-bar patterns.
-    """
-    beats = list(kick_beats)
-    # Weight per strategy: (threshold, action_lambda)
-    r = random.random()
-    if r < 0.28:
-        # Setup kick before next bar 1 (and-of-4 anticipation)
-        if 3.75 not in beats:
-            beats.append(3.75)
-    elif r < 0.48 and complexity > 0.35:
-        # Anticipate beat 3 with a 16th-early syncopation
-        if 1.75 not in beats:
-            beats.append(1.75)
-    elif r < 0.62 and complexity > 0.50:
-        # Double 16th near beat 3 for punch (pick one of two options)
-        extras = [b for b in [2.5, 2.75] if b not in beats]
-        if extras:
-            beats.append(random.choice(extras))
-    elif r < 0.73 and len(beats) > 2:
-        # Remove one non-downbeat kick — leave space before the next phrase
-        removable = [b for b in beats if b > 0.15]
-        if removable:
-            beats.remove(random.choice(removable))
-    elif r < 0.84 and complexity > 0.60:
-        # Add both setup (3.75) AND syncopation (1.75)
-        for b in [1.75, 3.75]:
-            if b not in beats:
-                beats.append(b)
-    # else ~16% chance: exact repeat of bar 1
-    return sorted(beats)
-
-
 def _plan_open_hats(bar_in_pair: int, complexity: float) -> set:
     """Return the set of beat-in-bar positions that should use open hat.
 
@@ -123,6 +87,13 @@ def _plan_open_hats(bar_in_pair: int, complexity: float) -> set:
 # the groove's pulse; the fill adds toms, snares, crash, claps, open hats).
 _FILL_LAYER_KEYS = frozenset({"tom_hi", "tom_mid", "tom_lo", "snare", "clap", "crash", "open_hat"})
 
+# Relative energy of each section type — drives how hard the fill into that
+# section hits (big fill into a chorus, barely-there fill into an outro).
+_SECTION_ENERGY = {
+    "intro": 0.30, "verse": 0.55, "pre_chorus": 0.70, "chorus": 1.00,
+    "post_chorus": 0.80, "bridge": 0.60, "instrumental_solo": 0.75, "outro": 0.25,
+}
+
 
 def generate_drums(
     style: dict,
@@ -131,14 +102,36 @@ def generate_drums(
     variation: float,
     section_end_bars: list[int] | None = None,
     is_loop: bool = False,
+    section_type: str | None = None,
+    next_section_type: str | None = None,
 ) -> List[NoteEvent]:
+    """`section_type` / `next_section_type` — song-section context (loop-mode song
+    building). The groove *arranges* per section instead of playing the same beat
+    at every point in the song: intros strip to kick+hats, pre-choruses build hat
+    density toward the drop, choruses open with a crash and play the fullest
+    groove, bridges flip to a half-time feel, outros decay bar over bar. The fill
+    at a section boundary is sized by the energy of what comes next, and any
+    section leading into a chorus gets a snare-roll build. Both default to None
+    (plain loop / non-song generation), which preserves the original behavior.
+    """
     events: List[NoteEvent] = []
     drum_cfg = style.get("drums", {})
     h = _humanize(style)
 
+    sec = section_type or ""
+    is_intro     = sec == "intro"
+    is_chorus    = sec in ("chorus", "post_chorus")
+    is_prechorus = sec == "pre_chorus"
+    is_outro     = sec == "outro"
+    # Bridge half-time: snare moves to beat 3, hats thin to 8ths, kick strips back.
+    half_time = sec == "bridge" and drum_cfg.get("half_time_bridge", True)
+    next_energy = _SECTION_ENERGY.get(next_section_type) if next_section_type else None
+
     hat_density        = drum_cfg.get("hat_density", 0.7)
     triplet_prob       = drum_cfg.get("triplet_probability", 0.2)
     snare_beats        = drum_cfg.get("snare_standard_beats", [2, 4])
+    if half_time:
+        snare_beats = [3]
     swing_amount       = drum_cfg.get("swing", 0.0)
     use_ride           = drum_cfg.get("use_ride", False)
     use_clap           = drum_cfg.get("use_clap", False)
@@ -187,11 +180,31 @@ def generate_drums(
         # 4-bar phrase energy envelope — applied to all instruments
         phrase_dyn = _PHRASE_DYN[bar % 4]
 
+        # Outro: the whole kit decays bar over bar so the song winds down
+        if is_outro:
+            phrase_dyn *= 1.0 - 0.38 * (bar / max(1, bars - 1))
+
+        # Per-section hat scaling: stripped intro, building pre-chorus, thinning
+        # outro, boosted chorus. Verse/bridge/solo stay at the style's density.
+        if is_intro:
+            sec_hat = 0.60
+        elif is_prechorus:
+            sec_hat = min(1.0, 0.78 + 0.50 * (bar / max(1, bars - 1)))
+        elif is_outro:
+            sec_hat = max(0.35, 1.0 - 0.50 * (bar / max(1, bars - 1)))
+        elif is_chorus:
+            sec_hat = 1.12
+        else:
+            sec_hat = 1.0
+
         # Hat breath: bar 4 of every 8-bar phrase slightly thinner
         hat_breath = 0.72 if bar_in_8 == 4 else 1.0
 
         # ── Crash ──────────────────────────────────────────────────────────────
-        if crash_on_bar_1 and (bar == 0 or (complexity > 0.7 and bar % 4 == 0)):
+        # A chorus always announces itself with a crash on its first downbeat,
+        # independent of the style's crash_on_bar_1 flag.
+        if (is_chorus and bar == 0) or (
+                crash_on_bar_1 and (bar == 0 or (complexity > 0.7 and bar % 4 == 0))):
             events.append(NoteEvent(
                 pitch=DRUM_MAP["crash"],
                 start=bar_start + _jitter("fill", h),
@@ -226,6 +239,13 @@ def generate_drums(
             else list(kick_beats_bar1)
         )
 
+        # Intro: strip the kick to its anchors — the groove arrives with the verse
+        if is_intro:
+            kick_beats = [b for b in kick_beats if b in (0.0, 2.0)] or [0.0]
+        # Half-time bridge: kick on 1, optional lazy "and of 3"
+        elif half_time:
+            kick_beats = [0.0] + ([2.5] if complexity > 0.5 and should_trigger(0.4) else [])
+
         for b in kick_beats:
             t      = bar_start + b
             t_tick = int(t * ticks_per_beat)
@@ -248,7 +268,9 @@ def generate_drums(
             ))
 
         # ── Snare ──────────────────────────────────────────────────────────────
-        for snare_b in snare_beats:
+        # Intro carries no backbeat — kick and hats set the pulse, the snare
+        # lands when the first real section starts.
+        for snare_b in ([] if is_intro else snare_beats):
             b_f    = float(snare_b) - 1.0
             t      = bar_start + b_f
             t_tick = int(t * ticks_per_beat)
@@ -275,7 +297,7 @@ def generate_drums(
             ))
 
         # Snare upbeat hits ("and of 1", "and of 3")
-        if snare_upbeat_prob > 0:
+        if snare_upbeat_prob > 0 and not is_intro and not half_time:
             for upbeat_b in [0.5, 2.5]:
                 if should_trigger(snare_upbeat_prob):
                     t = bar_start + upbeat_b
@@ -291,7 +313,7 @@ def generate_drums(
                     ))
 
         # Beat-3 snare (funk / soul syncopation)
-        if snare_beat3_prob > 0 and should_trigger(snare_beat3_prob):
+        if snare_beat3_prob > 0 and not is_intro and not half_time and should_trigger(snare_beat3_prob):
             t = bar_start + 2.0
             t_tick = int(t * ticks_per_beat)
             t_tick = apply_swing(t_tick, swing_amount, ticks_per_beat)
@@ -305,7 +327,7 @@ def generate_drums(
             ))
 
         # Clap layered on snare beats
-        if use_clap:
+        if use_clap and not is_intro:
             for snare_b in snare_beats:
                 b_f    = float(snare_b) - 1.0
                 t      = bar_start + b_f
@@ -327,6 +349,9 @@ def generate_drums(
             hat_steps = [bar_start + i / 3.0 for i in range(12)]
         else:
             hat_steps = [bar_start + i * step for i in range(int(beats_per_bar / step))]
+        # Half-time bridge: hats fall back to the 8th-note grid
+        if half_time and not use_triplet:
+            hat_steps = [t for t in hat_steps if round((t - bar_start) % 0.5, 4) < 0.01]
 
         # EDM drop: strip hats from beat 2 onward on section-end bars
         is_section_end  = bar in section_ends
@@ -338,7 +363,7 @@ def generate_drums(
             open_hat_positions: set = set()  # handled inline below
             use_planned_open = False
         else:
-            open_hat_positions = _plan_open_hats(bar_in_pair, complexity)
+            open_hat_positions = set() if is_intro else _plan_open_hats(bar_in_pair, complexity)
             use_planned_open = True
 
         rolled_positions: set[float] = set()
@@ -388,6 +413,7 @@ def generate_drums(
                     place_p = mined_hat_pattern[step_idx % 16] * hat_breath
                 else:
                     place_p = hat_density * hat_breath * (0.70 + complexity * 0.30)
+                place_p = min(1.0, place_p * sec_hat)
                 if not should_trigger(place_p):
                     continue
 
@@ -478,7 +504,7 @@ def generate_drums(
                     ))
 
         # ── Ghost notes ───────────────────────────────────────────────────────
-        if ghost_note_prob > 0:
+        if ghost_note_prob > 0 and not is_intro:
             main_positions = set()
             for b_f in [float(b) - 1.0 for b in snare_beats]:
                 main_positions.add(round(b_f % beats_per_bar, 2))
@@ -529,8 +555,26 @@ def generate_drums(
             (tom_fills and bar % 4 == 3 and complexity > 0.3 and not is_last_bar)
             or (is_section_end and not is_last_bar)
         )
+        # Outros wind down — no fill vocabulary, the section just decays
+        if is_outro:
+            do_fill = False
 
-        if edm_drops and is_section_end and not is_last_bar and complexity > 0.2:
+        # Size the section-boundary fill by the energy of what comes next: a fill
+        # into a chorus hits hard, a fill into an outro barely registers.
+        transition_scale = 1.0
+        if is_section_end and next_energy is not None:
+            transition_scale = 0.55 + 0.55 * next_energy
+            if next_energy <= 0.35:
+                do_fill = False   # heading into intro/outro energy: no tom flourish
+
+        # Snare-roll build: always into a chorus (any style), plus wherever the
+        # style asks for EDM-style drops at section ends.
+        build_roll = (
+            is_section_end and not is_last_bar and not is_outro and complexity > 0.2
+            and next_section_type == "chorus"
+        )
+
+        if (edm_drops and is_section_end and not is_last_bar and complexity > 0.2) or build_roll:
             # Snare roll: 8 32nd notes from 3.5 → 4.0, velocity builds 52 → 120
             for r_i in range(8):
                 r_start = bar_start + 3.5 + r_i * 0.0625
@@ -547,7 +591,7 @@ def generate_drums(
             # toms / snares / crash across the bar; the kick/hat groove already
             # placed above keeps the pulse underneath.
             chosen = random.choice(mined_fills)
-            fill_intensity = 0.7 + complexity * 0.25
+            fill_intensity = min(1.0, (0.7 + complexity * 0.25) * transition_scale)
             for entry in chosen:
                 key, vel = entry[1], entry[2]
                 if key not in _FILL_LAYER_KEYS or not should_trigger(fill_intensity):
@@ -562,7 +606,7 @@ def generate_drums(
                 ))
 
         elif do_fill:
-            fill_intensity = 0.55 + complexity * 0.35
+            fill_intensity = min(1.0, (0.55 + complexity * 0.35) * transition_scale)
 
             # Micro fill (subtle): always precedes a big fill to signal it
             # — one soft snare accent 3 16ths before bar end, always present

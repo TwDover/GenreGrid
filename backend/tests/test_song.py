@@ -48,8 +48,8 @@ def test_recurring_sections_reuse_the_theme():
                            template="verse_chorus", parts=["chords", "bass", "melody", "drums"],
                            seed=11)
     style = {**load_style("lofi"), "_humanize_scale": 0.5}
-    ev, secs, _ = _generate_song_sections(req, style, 90, 11, 0, False, False,
-                                          style.get("groove_push", 0.0))
+    ev, secs, _, _ = _generate_song_sections(req, style, 90, 11, 0, False, False,
+                                             style.get("groove_push", 0.0))
 
     def section_part(name, part):
         s = next(x for x in secs if x["name"] == name)

@@ -287,7 +287,7 @@ const emit = defineEmits<{
 }>()
 
 const keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-const allParts = ['chords', 'bass', 'melody', 'drums', 'arpeggio']
+const allParts = ['chords', 'bass', 'melody', 'drums', 'arpeggio', 'pads', 'counter_melody']
 
 const form = reactive<GenerateRequest>({
   style_id: props.styles[0]?.id ?? 'dark_trap',
@@ -313,20 +313,28 @@ const selectedStyle = computed(() => props.styles.find(s => s.id === form.style_
 // When the parent drives the mode via the top tab, keep the form in sync.
 watch(() => props.forcedMode, (m) => { if (m) form.mode = m }, { immediate: true })
 
-// Clamp BPM and set default scale when style changes (also on first load, so the
-// initial BPM matches the style shown in the dropdown rather than the raw default).
+// Selecting a style adopts its typical BPM (midpoint of its range) and its
+// default scale — also on first load, so the initial BPM matches the style
+// shown in the dropdown rather than the raw default.
+// Replay and randomize set their own BPM (and, for replay, scale) together
+// with the style; they mark the change source so the watcher (which flushes
+// after their handler) doesn't overwrite the values they chose.
+let styleChangeSource: 'replay' | 'randomize' | null = null
 watch(selectedStyle, (style) => {
   if (!style) return
-  const [min, max] = style.bpm_range
-  if (form.bpm < min || form.bpm > max) {
+  const src = styleChangeSource
+  styleChangeSource = null
+  if (src === null) {
+    const [min, max] = style.bpm_range
     form.bpm = Math.round((min + max) / 2)
   }
-  if (style.default_scale) form.scale = style.default_scale
+  if (src !== 'replay' && style.default_scale) form.scale = style.default_scale
 }, { immediate: true })
 
 // Pre-fill form on replay
 watch(() => props.replayData, (data) => {
   if (!data) return
+  if (data.style !== form.style_id) styleChangeSource = 'replay'
   form.style_id = data.style
   form.key = data.summary.key_root
   form.scale = data.summary.scale
@@ -467,6 +475,7 @@ function randomize() {
   if (props.styles.length === 0) return
   const style = props.styles[Math.floor(Math.random() * props.styles.length)]
   const [min, max] = style.bpm_range
+  if (style.id !== form.style_id) styleChangeSource = 'randomize'
   form.style_id = style.id
   form.key = keys[Math.floor(Math.random() * keys.length)]
   form.bpm = Math.round(min + Math.random() * (max - min))

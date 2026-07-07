@@ -22,6 +22,7 @@ class GenerateRequest(BaseModel):
     mode: str = "loop"   # "loop" | "arrangement"
     seed: Optional[int] = None
     section_type: Optional[str] = None  # intro | verse | pre_chorus | chorus | post_chorus | bridge | instrumental_solo | outro
+    next_section_type: Optional[str] = None  # section that follows this one in a built song — sizes the drum fill/build at the boundary
     humanize: float = Field(default=0.5, ge=0.0, le=1.0)  # 0 = quantized, 1 = loose
     custom_progression: Optional[List[str]] = None  # e.g. ["i", "VI", "III", "VII"]
     blend_style_id: Optional[str] = None   # second style to blend with
@@ -113,6 +114,7 @@ class BuildSongRequest(BaseModel):
     seed: Optional[int] = None
     use_priors: bool = True
     chorus_key_shift: Optional[int] = Field(default=None, ge=-12, le=12)  # semitone lift on chorus sections; None = use the style's default
+    bridge_key_shift: Optional[int] = Field(default=None, ge=-12, le=12)  # semitone shift on bridge sections; None = use the style's default (5 = subdominant lift)
 
 
 class RegenerateSongPartRequest(BaseModel):

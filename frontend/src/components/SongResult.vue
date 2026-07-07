@@ -61,13 +61,29 @@
           @undo="onUndo(file.part)"
         />
       </div>
+
+      <!-- Parts not in this build — one click generates and adds the stem -->
+      <div v-if="missingParts.length" class="sr-add-row">
+        <span class="sr-add-label">Add a part</span>
+        <button
+          v-for="p in missingParts"
+          :key="p"
+          class="sr-add-btn"
+          :disabled="addLoading !== null"
+          :title="`Generate ${p} for this song`"
+          @click="onAdd(p)"
+        >
+          <span v-if="addLoading === p">…</span>
+          <span v-else>＋ {{ p.replace('_', ' ') }}</span>
+        </button>
+      </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
-import type { BuildSongResponse } from '../types/midi'
+import { ref, reactive, computed, watch } from 'vue'
+import type { BuildSongResponse, FileInfo } from '../types/midi'
 import { downloadUrl, regenerateSongPart, undoSongPart } from '../services/api'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 import PartCard from './PartCard.vue'
@@ -83,7 +99,23 @@ const regenLoading = ref<string | null>(null)
 const regenError = ref<string | null>(null)
 const undoable = reactive(new Set<string>())
 
-const stemFiles = computed(() => (props.result?.files ?? []).filter(f => f.part !== 'song'))
+// Every part the song builder can produce — parts absent from the build are
+// offered as one-click "add" buttons under the stems.
+const ALL_PARTS = ['chords', 'bass', 'melody', 'drums', 'arpeggio', 'pads', 'counter_melody']
+// Stems generated after the build via "add a part" (the result prop is immutable)
+const addedFiles = ref<FileInfo[]>([])
+const addLoading = ref<string | null>(null)
+watch(() => props.result?.generation_id, () => { addedFiles.value = [] })
+
+const stemFiles = computed(() => [
+  ...(props.result?.files ?? []).filter(f => f.part !== 'song'),
+  ...addedFiles.value,
+])
+const missingParts = computed(() => {
+  if (!props.result) return []
+  const have = new Set(stemFiles.value.map(f => f.part))
+  return ALL_PARTS.filter(p => !have.has(p))
+})
 const bustedStems = computed(() => stemFiles.value.map(f =>
   versions[f.part] ? { ...f, url: `${f.url}?v=${versions[f.part]}` } : f))
 const keyRoot = computed(() => (props.result?.key ?? 'C').split(' ')[0])
@@ -110,6 +142,23 @@ async function onRegen(part: string) {
     regenError.value = e.message ?? 'Regeneration failed'
   } finally {
     regenLoading.value = null
+  }
+}
+
+async function onAdd(part: string) {
+  if (!props.result || addLoading.value) return
+  addLoading.value = part
+  regenError.value = null
+  try {
+    const fi = await regenerateSongPart({ generation_id: props.result.generation_id, part })
+    addedFiles.value = [...addedFiles.value, fi]
+    const v = Date.now()
+    versions[part] = v
+    versions.song = v   // song.mid was rebuilt with the new stem
+  } catch (e: any) {
+    regenError.value = e.message ?? `Could not add ${part}`
+  } finally {
+    addLoading.value = null
   }
 }
 
@@ -199,6 +248,20 @@ function download() {
 .sr-stems { display: flex; flex-direction: column; gap: 0.4rem; }
 
 .sr-error { font-size: 0.72rem; color: #f87171; background: #2a1010; border-radius: 4px; padding: 0.3rem 0.5rem; }
+
+/* "Add a part" ghost row */
+.sr-add-row { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.sr-add-label {
+  font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: #2a4550;
+  flex-shrink: 0;
+}
+.sr-add-btn {
+  font-size: 0.7rem; padding: 0.3rem 0.6rem;
+  background: transparent; border: 1px dashed #0d2535; border-radius: 6px;
+  color: #4a7080; cursor: pointer; transition: border-color 0.15s, color 0.15s;
+}
+.sr-add-btn:hover:not(:disabled) { border-color: #00c8ff66; color: #00c8ff; }
+.sr-add-btn:disabled { opacity: 0.5; cursor: wait; }
 
 /* Section type colors */
 .seg-intro { background: #1a4060; }

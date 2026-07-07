@@ -27,6 +27,8 @@ from app.generators.bass import generate_bass
 from app.generators.melody import generate_melody
 from app.generators.drums import generate_drums
 from app.generators.arpeggio import generate_arpeggio
+from app.generators.pads import generate_pads
+from app.generators.counter_melody import generate_counter_melody
 from app.core.config import EXPORTS_DIR
 from app.core.constants import DRUM_MAP
 from app.services.quality import score_generation, extract_rhythm_patterns
@@ -52,6 +54,8 @@ _DEFAULT_PROGRAMS: dict[str, int] = {
     "bass":     33,  # Electric Bass (finger)
     "melody":   73,  # Flute — cuts above chord register without fighting EP
     "arpeggio": 11,  # Vibraphone — distinct attack; doesn't blur into pad/piano textures
+    "pads":     89,  # Pad Warm — sustained glue layer above the comp
+    "counter_melody": 48,  # String Ensemble — backing harmony line under the lead
 }
 _STYLE_PROGRAMS: dict[str, dict[str, int]] = {
     # ── Jazz / Soul / Funk ───────────────────────────────────────────────────
@@ -316,6 +320,8 @@ _VELOCITY_SCALE: dict[str, float] = {
     "chords":   0.68,
     "melody":   1.00,
     "arpeggio": 0.62,
+    "pads":     0.52,
+    "counter_melody": 0.82,
 }
 
 _NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
@@ -337,8 +343,8 @@ def _transpose_key(key: str, semitones: int) -> str:
     return _NOTE_NAMES[(pc + semitones) % 12]
 
 
-_PART_PAN = {"bass": 64, "chords": 46, "melody": 80, "arpeggio": 76}
-_PART_CHANNELS = {"chords": 0, "bass": 1, "melody": 2, "arpeggio": 3}
+_PART_PAN = {"bass": 64, "chords": 46, "melody": 80, "arpeggio": 76, "pads": 40, "counter_melody": 92}
+_PART_CHANNELS = {"chords": 0, "bass": 1, "melody": 2, "arpeggio": 3, "pads": 4, "counter_melody": 5}
 
 # Comp styles that use short articulated hits — sustain pedal would blur their
 # intended staccato character. Styles with chord_rhythm also get the same treatment
@@ -353,7 +359,7 @@ _NO_SUSTAIN_STYLE_IDS = frozenset({"epic_orchestral"})
 
 # CC91 reverb send per part: bass dry/upfront, arpeggio spacious/behind.
 # Creates a front-to-back depth gradient that separates parts spatially.
-_PART_REVERB = {"bass": 12, "chords": 28, "melody": 48, "arpeggio": 58}
+_PART_REVERB = {"bass": 12, "chords": 28, "melody": 48, "arpeggio": 58, "pads": 66, "counter_melody": 52}
 
 # Per-style reverb overrides — atmospheric/cinematic styles need more room.
 # Parts not listed fall back to _PART_REVERB.
@@ -735,6 +741,23 @@ def _apply_dynamic(events: list[NoteEvent], factor: float) -> list[NoteEvent]:
     ]
 
 
+def _auto_arc_section_type(sections: list[dict], i: int) -> str | None:
+    """Map _plan_sections' anonymous arc slots onto section types for the drums.
+
+    The auto-arc has no explicit section names, but its shape is fixed:
+    first = intro, last = outro, the loudest middle slot = chorus, rest = verse.
+    Returns None for a single-section plan (plain loop — no arrangement context).
+    """
+    if len(sections) < 2:
+        return None
+    if i == 0:
+        return "intro"
+    if i == len(sections) - 1:
+        return "outro"
+    peak = max(s.get("dynamic", 1.0) for s in sections[1:-1])
+    return "chorus" if sections[i].get("dynamic", 1.0) >= peak - 1e-9 else "verse"
+
+
 def _section_end_bars(sections: list[dict], current_section_offset: int) -> list[int]:
     """Return bar indices (relative to current section) that are section boundaries.
 
@@ -801,6 +824,7 @@ def _run_attempt(
     scoring_style: dict | None = None,
     regen_part: str | None = None,
     regen_salt: int = 0,
+    fixed_progression: list[str] | None = None,
 ) -> tuple[dict, dict, dict, list, dict | None, dict, list]:
     """Run one generation attempt for a given seed.
 
@@ -812,6 +836,12 @@ def _run_attempt(
     regen_part/regen_salt re-roll a single part in place: only that part's seed is
     salted, so harmony and every other part come out byte-identical — used to
     regenerate one stem of a song without disturbing the rest.
+
+    fixed_progression — when given, skips the per-call progression draw and uses this
+    progression instead. Used by the song builder so every section of a song shares
+    one harmonic identity instead of each section type independently rolling its own
+    progression; per-section chord substitutions (resolve_progression, seeded per
+    section) still vary, giving related-but-not-identical harmony across sections.
     """
     def _pseed(sec_i: int, part: str) -> int:
         s = (seed + regen_salt) if (regen_part and part == regen_part) else seed
@@ -819,7 +849,7 @@ def _run_attempt(
 
     _use_priors = getattr(req, "use_priors", True) and not getattr(req, "custom_progression", None)
     style = _overlay_groove(style, getattr(req, "use_priors", True))
-    progression = _choose_progression(style, _use_priors, seed, req.scale)
+    progression = fixed_progression if fixed_progression is not None else _choose_progression(style, _use_priors, seed, req.scale)
     _melody_model = melody_prior_for(_prior_name(style), getattr(req, "use_priors", True))
 
     # Resolve section profile for loop-mode shaping
@@ -856,12 +886,24 @@ def _run_attempt(
         mel_cplx     = min(1.0, s_cplx * _sec_profile.get("melody_complexity_scale",  1.0))
         backing_cplx = min(1.0, s_cplx * _sec_profile.get("backing_complexity_scale", 1.0))
 
+        # Section context for the drums: explicit in song-builder loop mode,
+        # derived from the auto-arc's shape otherwise.
+        if is_loop:
+            s_sec_type  = req.section_type
+            s_next_type = getattr(req, "next_section_type", None)
+        else:
+            s_sec_type  = _auto_arc_section_type(sections, section_i)
+            s_next_type = (_auto_arc_section_type(sections, section_i + 1)
+                           if section_i + 1 < len(sections) else None)
+
         kick_times: list[float] = []
         if "drums" in req.parts and "drums" in s_parts:
             random.seed(_pseed(section_i, "drums"))
             drum_evts = generate_drums(style, s_bars, s_cplx, eff_var,
                                        section_end_bars=_section_end_bars(sections, s_off),
-                                       is_loop=is_loop)
+                                       is_loop=is_loop,
+                                       section_type=s_sec_type,
+                                       next_section_type=s_next_type)
             drum_evts = _apply_dynamic(drum_evts, s_dyn)
             all_events["drums"].extend(_shift(drum_evts, s_off))
             kick_times = [e.start for e in drum_evts if e.pitch == DRUM_MAP["kick"]]
@@ -874,11 +916,13 @@ def _run_attempt(
         melody_ceiling = mel_range[0] if has_melody else None
 
         mel_rests: list = []
+        mel_evts: list = []
         if has_melody and "melody" in req.parts:
             random.seed(_pseed(section_i, "melody"))
             mel_evts = generate_melody(style, s_key, req.scale, s_bars, mel_cplx,
                                        eff_var, s_resolved, is_loop=is_loop,
-                                       melody_model=_melody_model)
+                                       melody_model=_melody_model,
+                                       harmony_complexity=backing_cplx)
             mel_evts = _apply_dynamic(mel_evts, s_dyn)
             all_events["melody"].extend(_shift(mel_evts, s_off))
             if mel_evts:
@@ -889,10 +933,18 @@ def _run_attempt(
                     if gap_e - gap_s >= 1.5:
                         mel_rests.append((round(gap_s, 3), round(gap_e, 3)))
 
+        # Counter-melody: harmony line derived from the melody's structural notes
+        if mel_evts and "counter_melody" in req.parts and "counter_melody" in s_parts:
+            random.seed(_pseed(section_i, "counter_melody"))
+            cm_evts = generate_counter_melody(mel_evts, s_key, req.scale, s_bars,
+                                              s_resolved, style)
+            cm_evts = _apply_dynamic(cm_evts, s_dyn)
+            all_events["counter_melody"].extend(_shift(cm_evts, s_off))
+
         # Fixed order so chords are generated before the arpeggio, letting the arp
         # arpeggiate the chords' real voiced harmony (chord_tones below).
         section_chord_tones: list | None = None
-        for part in ("chords", "bass", "arpeggio"):
+        for part in ("chords", "pads", "bass", "arpeggio"):
             if part not in req.parts or part not in s_parts:
                 continue
             random.seed(_pseed(section_i, part))
@@ -904,6 +956,9 @@ def _run_attempt(
                                        melody_rests=mel_rests if has_melody else None)
                 section_chord_tones = _chord_tones_by_bar(
                     [(e.start, e.pitch) for e in evts], s_bars)
+            elif part == "pads":
+                evts = generate_pads(style, s_key, req.scale, s_bars, backing_cplx,
+                                     eff_var, s_resolved)
             elif part == "bass":
                 evts = generate_bass(style, s_key, req.scale, s_bars, backing_cplx,
                                      eff_var, bass_prog, kick_times,
@@ -925,7 +980,7 @@ def _run_attempt(
         _apply_section_ramp(all_events, sections)
 
     if groove_push:
-        for gp_part in ("melody", "chords", "arpeggio", "bass"):
+        for gp_part in ("melody", "chords", "arpeggio", "bass", "pads", "counter_melody"):
             if gp_part in all_events and all_events[gp_part]:
                 all_events[gp_part] = _apply_groove_push(all_events[gp_part], groove_push)
 
@@ -1351,7 +1406,13 @@ def regenerate_part(req: RegeneratePartRequest):
 
         # Re-resolve substitutions with this section's complexity so the
         # regenerated part stays harmonically aligned with the original session.
+        # Resolved on the same deterministic "harmony" seed _run_attempt used when the
+        # sibling parts were first generated (isolated via save/restore so it doesn't
+        # perturb the independent content randomness this regenerated part should get).
+        saved_content_state = random.getstate()
+        random.seed(_part_seed(req.seed, section_i, "harmony"))
         s_resolved = resolve_progression(progression, req.scale, s_cplx, secondary_dominants, tritone_sub)
+        random.setstate(saved_content_state)
 
         kick_times: list[float] = []
         if req.part in ("bass", "chords"):
@@ -1376,6 +1437,22 @@ def regenerate_part(req: RegeneratePartRequest):
                                    req.variation, s_resolved,
                                    melody_model=melody_prior_for(_prior_name(style),
                                                                  getattr(req, "use_priors", True)))
+        elif req.part == "pads":
+            evts = generate_pads(style, s_key, req.scale, s_bars, s_cplx,
+                                 req.variation, s_resolved)
+        elif req.part == "counter_melody":
+            # Rebuild the sibling melody deterministically (same part-seed the
+            # original generation used) so the re-rolled harmony line tracks the
+            # melody that's actually on disk.
+            saved_cm_state = random.getstate()
+            random.seed(_part_seed(req.seed, section_i, "melody"))
+            sib_mel = generate_melody(style, s_key, req.scale, s_bars, s_cplx,
+                                      req.variation, s_resolved,
+                                      melody_model=melody_prior_for(_prior_name(style),
+                                                                    getattr(req, "use_priors", True)))
+            random.setstate(saved_cm_state)
+            evts = generate_counter_melody(sib_mel, s_key, req.scale, s_bars,
+                                           s_resolved, style)
         elif req.part == "drums":
             evts = generate_drums(style, s_bars, s_cplx, req.variation,
                                   section_end_bars=_section_end_bars(sections, s_off))
@@ -1517,7 +1594,7 @@ _SONG_TEMPLATES: dict[str, list[dict]] = {
         {"name": "Verse 2",       "section_type": "verse",       "bars": 16, "parts_mode": "no_arp"},
         {"name": "Pre-Chorus 2",  "section_type": "pre_chorus",  "bars": 4,  "parts_mode": "sparse"},
         {"name": "Chorus 2",      "section_type": "chorus",      "bars": 8,  "parts_mode": "full", "chorus_key": True},
-        {"name": "Bridge",        "section_type": "bridge",      "bars": 8,  "parts_mode": "full"},
+        {"name": "Bridge",        "section_type": "bridge",      "bars": 8,  "parts_mode": "full", "bridge_key": True},
         {"name": "Final Chorus",  "section_type": "chorus",      "bars": 8,  "parts_mode": "full", "chorus_key": True},
         {"name": "Outro",         "section_type": "outro",       "bars": 4,  "parts_mode": "melodic"},
     ],  # 80 bars
@@ -1529,7 +1606,7 @@ _SONG_TEMPLATES: dict[str, list[dict]] = {
         {"name": "Verse 2",       "section_type": "verse",             "bars": 16, "parts_mode": "no_arp"},
         {"name": "Chorus 2",      "section_type": "chorus",            "bars": 8,  "parts_mode": "full", "chorus_key": True},
         {"name": "Instrumental",  "section_type": "instrumental_solo", "bars": 8,  "parts_mode": "full"},
-        {"name": "Bridge",        "section_type": "bridge",            "bars": 8,  "parts_mode": "full"},
+        {"name": "Bridge",        "section_type": "bridge",            "bars": 8,  "parts_mode": "full", "bridge_key": True},
         {"name": "Final Chorus",  "section_type": "chorus",            "bars": 8,  "parts_mode": "full", "chorus_key": True},
         {"name": "Outro",         "section_type": "outro",             "bars": 4,  "parts_mode": "foundation"},
     ],  # 80 bars
@@ -1553,11 +1630,21 @@ _SONG_TEMPLATES: dict[str, list[dict]] = {
 
 def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
                             secondary_dominants, tritone_sub, groove_push,
-                            regen_part=None, regen_salt=0):
-    """Run a song template's section loop → (song_events, section_results, total_bars).
+                            regen_part=None, regen_salt=0, bridge_key_shift=0,
+                            fixed_section_seeds=None):
+    """Run a song template's section loop → (song_events, section_results, total_bars, section_seeds).
 
     Shared by build_song and regenerate_song_part. regen_part/regen_salt re-roll one
     part in place while harmony and every other part stay identical.
+
+    Each section runs the same quality-scored, multi-attempt search plain /generate
+    uses (`_MAX_QUALITY_ATTEMPTS`, best-of scoring) instead of a single unscreened
+    attempt — sections used to ship whatever the first random roll produced.
+
+    `fixed_section_seeds` — when given (regenerate_song_part), replays the exact
+    winning attempt seed chosen for each section by the original build_song call
+    instead of re-deriving and re-searching, so non-regenerated parts come out
+    byte-identical to what's already on disk.
     """
     template = _SONG_TEMPLATES.get(req.template, _SONG_TEMPLATES["verse_chorus"])
     full_parts   = list(req.parts)
@@ -1573,8 +1660,18 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
         "no_drums": no_drums, "chords_only": chords_only or foundation,
     }
 
+    scoring_style = build_scoring_style(style, req.style_id)
+
+    # One progression for the whole song so every section shares a harmonic identity.
+    # Per-section chord substitutions (inside _run_attempt, seeded per section) still
+    # vary each section's exact chords, so chorus/bridge relate to the verse instead
+    # of each section type independently rolling an unrelated progression.
+    song_progression = _choose_progression(style, req.use_priors, base_seed, req.scale)
+
     song_events: dict[str, list] = {p: [] for p in req.parts}
     section_results: list[dict] = []
+    section_seeds: list[int] = []
+    ramp_sections: list[dict] = []
     beat_offset = 0.0
     total_bars = 0
     type_seed: dict[str, int] = {}
@@ -1583,18 +1680,31 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     # later sections of the same type reuse the theme (the verse tune returns).
     type_theme: dict[str, dict] = {}
 
+    # The counter-melody is reserved for the climactic last chorus so the final
+    # chorus sounds bigger than the ones before it.
+    last_chorus_i = max((i for i, s in enumerate(template)
+                         if s["section_type"] == "chorus"), default=-1)
+
     for sec_i, sec_def in enumerate(template):
         sec_type   = sec_def["section_type"]
         sec_bars   = sec_def.get("bars", 8)
         sec_name   = sec_def.get("name", sec_type)
         parts_mode = sec_def.get("parts_mode", "full")
-        sec_parts  = parts_modes.get(parts_mode, full_parts) or full_parts
+        sec_parts  = list(parts_modes.get(parts_mode, full_parts) or full_parts)
 
-        sec_key = (
-            _transpose_key(req.key, chorus_key_shift)
-            if sec_def.get("chorus_key") and chorus_key_shift
-            else req.key
+        # Arrangement colors: pads fill out only the big sections; the
+        # counter-melody appears only on the final chorus.
+        if "pads" in sec_parts and sec_type not in ("chorus", "bridge"):
+            sec_parts = [p for p in sec_parts if p != "pads"]
+        if "counter_melody" in sec_parts and sec_i != last_chorus_i:
+            sec_parts = [p for p in sec_parts if p != "counter_melody"]
+
+        key_shift = (
+            chorus_key_shift if sec_def.get("chorus_key")
+            else bridge_key_shift if sec_def.get("bridge_key")
+            else 0
         )
+        sec_key = _transpose_key(req.key, key_shift) if key_shift else req.key
 
         occ = type_occurrence.get(sec_type, 0)
         if sec_type not in type_seed:
@@ -1602,22 +1712,54 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
         type_occurrence[sec_type] = occ + 1
         sec_seed = (type_seed[sec_type] + occ * 73_856) % (2 ** 31)
 
+        next_sec_type = template[sec_i + 1]["section_type"] if sec_i + 1 < len(template) else None
+
         sec_req = GenerateRequest.model_construct(
             style_id=req.style_id, key=sec_key, scale=req.scale, bpm=bpm,
             bars=sec_bars, complexity=req.complexity, variation=req.variation,
             parts=sec_parts, mode="loop", seed=sec_seed, section_type=sec_type,
+            next_section_type=next_sec_type,
             humanize=req.humanize, custom_progression=None, blend_style_id=None,
             blend_amount=0.5, use_priors=req.use_priors,
         )
 
-        try:
-            evts, _cc, _pb, _prog, _quality, _patterns, _secs = _run_attempt(
-                sec_req, style, sec_seed, True, groove_push, secondary_dominants, tritone_sub,
-                regen_part=regen_part, regen_salt=regen_salt,
-            )
-        except Exception as exc:
-            logger.error("build_song section %r failed: %s", sec_name, exc, exc_info=True)
-            evts = {}
+        if fixed_section_seeds is not None:
+            # Replay: reuse the exact seed the original build_song call landed on
+            # for this section — no re-search, so untouched parts stay identical.
+            winning_seed = fixed_section_seeds[sec_i] if sec_i < len(fixed_section_seeds) else sec_seed
+            try:
+                evts, _cc, _pb, _prog, _qraw, _patterns, _secs = _run_attempt(
+                    sec_req, style, winning_seed, True, groove_push, secondary_dominants, tritone_sub,
+                    scoring_style=scoring_style, regen_part=regen_part, regen_salt=regen_salt,
+                    fixed_progression=song_progression,
+                )
+            except Exception as exc:
+                logger.error("build_song section %r failed: %s", sec_name, exc, exc_info=True)
+                evts = {}
+        else:
+            # Quality-gated multi-attempt search, mirroring plain /generate's
+            # _run_best_attempt — song sections previously ran once with no
+            # quality check at all.
+            best_evts, best_total, winning_seed = None, -1.0, sec_seed
+            for attempt in range(_MAX_QUALITY_ATTEMPTS):
+                attempt_seed = sec_seed if attempt == 0 else _part_seed(sec_seed, attempt, "retry")
+                try:
+                    evts, _cc, _pb, _prog, qraw, _patterns, _secs = _run_attempt(
+                        sec_req, style, attempt_seed, True, groove_push, secondary_dominants, tritone_sub,
+                        scoring_style=scoring_style, regen_part=regen_part, regen_salt=regen_salt,
+                        fixed_progression=song_progression,
+                    )
+                except Exception as exc:
+                    logger.error("build_song section %r attempt %d failed: %s", sec_name, attempt, exc, exc_info=True)
+                    continue
+                total = qraw.get("total", 0.0) if qraw is not None else 0.0
+                if best_evts is None or total > best_total:
+                    best_evts, best_total, winning_seed = evts, total, attempt_seed
+                if qraw is not None and _all_green(qraw):
+                    break
+            evts = best_evts or {}
+
+        section_seeds.append(winning_seed)
 
         # Cross-section motif reuse: the first section of each type sets the theme
         # (melody + harmony); later sections of that type reuse it, keeping fresh
@@ -1629,6 +1771,15 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
             for p, cached in type_theme[sec_type].items():
                 if p in evts:
                     evts[p] = list(cached)
+            # The theme swap replaced this section's melody with the cached one, so
+            # any counter-melody derived from the discarded fresh melody would be
+            # harmonizing a line that no longer sounds — re-derive it from the
+            # melody that will actually play.
+            if "counter_melody" in evts and evts.get("melody"):
+                random.seed(_part_seed(winning_seed, 0, "counter_melody"))
+                evts["counter_melody"] = generate_counter_melody(
+                    evts["melody"], sec_key, req.scale, sec_bars,
+                    song_progression, style)
 
         for part, part_evts in evts.items():
             if part in song_events and part_evts:
@@ -1638,10 +1789,21 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
             "name": sec_name, "section_type": sec_type,
             "bars": sec_bars, "start_bar": total_bars, "key": sec_key,
         })
+        ramp_sections.append({
+            "offset": beat_offset, "bars": sec_bars,
+            "dynamic": SECTION_PROFILES.get(sec_type, {}).get("velocity_scale", 1.0),
+        })
         beat_offset += sec_bars * 4
         total_bars  += sec_bars
 
-    return song_events, section_results, total_bars
+    # Smooth velocity jumps at section boundaries (verse→chorus lift, etc.). This
+    # previously only ran inside a single _run_attempt's own internal auto-arc
+    # sections and never across the song builder's independently-generated
+    # sections, so every Verse→Chorus/Chorus→Bridge transition was a hard jump.
+    if len(ramp_sections) > 1:
+        _apply_section_ramp(song_events, ramp_sections)
+
+    return song_events, section_results, total_bars, section_seeds
 
 
 @router.post("/build-song", response_model=BuildSongResponse)
@@ -1665,13 +1827,18 @@ def build_song(req: BuildSongRequest):
     groove_push = style.get("groove_push", 0.0)
     # User-controlled chorus modulation overrides the style default when provided.
     chorus_key_shift = req.chorus_key_shift if req.chorus_key_shift is not None else style.get("chorus_key_shift", 0)
+    # Bridges default to a lift to the subdominant (a common bridge-modulation target)
+    # unless the style or request overrides it — unlike chorus_key_shift, which
+    # defaults to no shift, bridges benefit from contrast out of the box.
+    bridge_key_shift = req.bridge_key_shift if req.bridge_key_shift is not None else style.get("bridge_key_shift", 5)
     style = {**style, "_humanize_scale": req.humanize}
 
     base_seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
 
-    song_events, section_results, total_bars = _generate_song_sections(
+    song_events, section_results, total_bars, section_seeds = _generate_song_sections(
         req, style, bpm, base_seed, chorus_key_shift,
         secondary_dominants, tritone_sub, groove_push,
+        bridge_key_shift=bridge_key_shift,
     )
 
     # Persist the params needed to regenerate a single part later.
@@ -1681,7 +1848,8 @@ def build_song(req: BuildSongRequest):
         "bpm": bpm, "complexity": req.complexity, "variation": req.variation,
         "humanize": req.humanize, "parts": list(req.parts), "template": req.template,
         "use_priors": req.use_priors, "chorus_key_shift": chorus_key_shift,
-        "base_seed": base_seed,
+        "bridge_key_shift": bridge_key_shift, "base_seed": base_seed,
+        "section_seeds": section_seeds,
     }))
 
     # Regenerate CC and PB events for the full song duration (pan, sustain, expression)
@@ -1742,21 +1910,31 @@ def build_song(req: BuildSongRequest):
     )
 
 
+_ALL_SONG_PARTS = frozenset({"chords", "bass", "melody", "drums", "arpeggio", "pads", "counter_melody"})
+
+
 @router.post("/regenerate-song-part", response_model=FileInfo)
 def regenerate_song_part(req: RegenerateSongPartRequest):
-    """Re-roll a single part of a built song across its section template.
+    """Re-roll a single part of a built song — or add a part that wasn't built.
 
     Reruns the song's section loop with only the target part's seed salted, so
     harmony and every other part stay identical; writes the new stem and rebuilds
-    song.mid from the on-disk stems.
+    song.mid from the on-disk stems. When the requested part wasn't in the
+    original build (e.g. the user forgot to tick pads), it is generated fresh
+    against the song's persisted seeds and added to the song's part list.
     """
     output_dir = EXPORTS_DIR / req.generation_id
     meta_path = output_dir / "song_meta.json"
     if not meta_path.exists():
         raise HTTPException(status_code=404, detail="Song not found or too old to regenerate")
     meta = _json_module.loads(meta_path.read_text())
-    if req.part not in meta.get("parts", []):
-        raise HTTPException(status_code=400, detail=f"Part '{req.part}' is not in this song")
+    is_new_part = req.part not in meta.get("parts", [])
+    if is_new_part:
+        if req.part not in _ALL_SONG_PARTS:
+            raise HTTPException(status_code=400, detail=f"Unknown part '{req.part}'")
+        if req.part == "counter_melody" and "melody" not in meta.get("parts", []):
+            raise HTTPException(status_code=400,
+                                detail="counter_melody needs the melody part in the song")
 
     try:
         style = load_style(meta["style_id"])
@@ -1771,23 +1949,32 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
     style = {**style, "_humanize_scale": meta["humanize"]}
     programs = {**_DEFAULT_PROGRAMS, **_STYLE_PROGRAMS.get(meta["style_id"], {})}
 
+    gen_parts = list(meta["parts"]) + ([req.part] if is_new_part else [])
     song_req = BuildSongRequest.model_construct(
         style_id=meta["style_id"], key=meta["key"], scale=meta["scale"], bpm=meta["bpm"],
         complexity=meta["complexity"], variation=meta["variation"], humanize=meta["humanize"],
-        parts=meta["parts"], template=meta["template"], use_priors=meta["use_priors"],
+        parts=gen_parts, template=meta["template"], use_priors=meta["use_priors"],
         seed=meta["base_seed"], chorus_key_shift=meta["chorus_key_shift"],
     )
 
     salt = secrets.randbelow(2 ** 31) or 1   # non-zero so the part actually changes
-    song_events, _sections, total_bars = _generate_song_sections(
+    song_events, _sections, total_bars, _seeds = _generate_song_sections(
         song_req, style, bpm, meta["base_seed"], meta["chorus_key_shift"],
         secondary_dominants, tritone_sub, groove_push,
         regen_part=req.part, regen_salt=salt,
+        bridge_key_shift=meta.get("bridge_key_shift", 0),
+        fixed_section_seeds=meta.get("section_seeds"),
     )
 
     evts = song_events.get(req.part) or []
     if not evts:
-        raise HTTPException(status_code=500, detail=f"Regeneration produced no events for {req.part}")
+        hint = ""
+        if req.part == "counter_melody":
+            hint = " — the counter-melody plays only in the final chorus, and this template has no chorus"
+        elif req.part == "pads":
+            hint = " — pads play only in chorus and bridge sections, and this template has neither"
+        raise HTTPException(status_code=400 if is_new_part else 500,
+                            detail=f"No events generated for {req.part}{hint}")
 
     _sid = style.get("id", "")
     part_cc = None
@@ -1812,6 +1999,12 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
 
     # Rebuild song.mid from all stems on disk (new part + untouched others).
     rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid")
+
+    # An added part becomes a first-class member of the song so later
+    # regenerations and undos treat it like any originally-built stem.
+    if is_new_part:
+        meta["parts"] = gen_parts
+        meta_path.write_text(_json_module.dumps(meta))
 
     return FileInfo(part=req.part, filename=fname, url=f"/exports/{req.generation_id}/{fname}")
 
