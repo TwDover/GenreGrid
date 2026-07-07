@@ -54,7 +54,11 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,    # keep console for error visibility; set False to suppress on Windows
+    console=False,   # windowed: no blank terminal behind the app on Windows.
+                     # The Electron shell captures stdout/stderr into
+                     # <userData>/logs/backend.log, so errors stay visible.
+                     # For standalone debugging run the dev server instead
+                     # (uvicorn app.main:app --reload).
     disable_windowed_traceback=False,
     target_arch=None,
     codesign_identity=None,
