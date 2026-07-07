@@ -147,6 +147,12 @@ class RestoreSongVersionRequest(BaseModel):
     version_id: str  # millisecond-timestamp folder name from /song-versions
 
 
+class SetPartGainRequest(BaseModel):
+    generation_id: str
+    part: str
+    gain: float = Field(default=1.0, ge=0.1, le=2.0)  # 1.0 = as generated
+
+
 class SongSectionResult(BaseModel):
     name: str
     section_type: str
@@ -166,3 +172,4 @@ class BuildSongResponse(BaseModel):
     sections: List[SongSectionResult]
     bpm: int
     key: str
+    mixer: Optional[dict] = None  # per-part gain (1.0 = as generated), persisted in song_meta

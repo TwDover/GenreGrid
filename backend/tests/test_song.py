@@ -8,7 +8,7 @@
 # <https://www.gnu.org/licenses/> for details.
 """Song building + per-part song regeneration."""
 from app.models.schemas import BuildSongRequest, RegenerateSongPartRequest
-from app.api.routes_generate import build_song, regenerate_song_part
+from app.api.routes_song import build_song, regenerate_song_part
 from app.core.config import EXPORTS_DIR
 
 
@@ -42,7 +42,7 @@ def test_regenerate_song_part_isolates_the_target():
 def test_recurring_sections_reuse_the_theme():
     """Verse 2 reuses Verse's theme (with light variation); drums stay fresh."""
     from app.services.style_loader import load_style
-    from app.api.routes_generate import _generate_song_sections
+    from app.api.routes_song import _generate_song_sections
 
     req = BuildSongRequest(style_id="lofi", key="C", scale="major", bpm=90,
                            template="verse_chorus", parts=["chords", "bass", "melody", "drums"],

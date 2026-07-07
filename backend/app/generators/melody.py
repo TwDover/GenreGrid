@@ -16,6 +16,7 @@ from app.theory.notes import note_name_to_midi
 from app.services.variation import should_trigger
 from app.services.humanize import beat_velocity, timing_jitter, velocity_arc, micro_jitter, phrase_breath_factor, style_jitter, style_velocity_variation
 from app.theory.rhythm import apply_swing
+from app.theory.phrase_plan import plan_phrases
 
 
 def _trill_events(note: NoteEvent, trill_pitch: int, vel_variation: int = 4) -> List[NoteEvent]:
@@ -218,7 +219,13 @@ def generate_melody(
     prog_len = len(progression)
     total_beats = bars * beats_per_bar
     phrase_beats = beats_per_bar * 4  # 4-bar phrases
-    question_beats = phrase_beats / 2  # first half = question
+
+    # Phrase architecture: every phrase gets a role (statement/contrast/climax/...)
+    # from a form grammar BEFORE any notes exist. The plan decides each phrase's
+    # contour peak, register target, density, cadence, and motif restatement --
+    # the note-level logic below fills the phrases in.
+    _num_phrases = max(1, int((total_beats + phrase_beats - 1) // phrase_beats))
+    _plans = plan_phrases(_num_phrases)
 
     current_note_idx = len(scale_notes) // 2  # always start in the normal (low) register
     _prev_pitch: int | None = None     # anti-repetition tracking
@@ -239,23 +246,27 @@ def generate_melody(
         beat_in_phrase = beat % phrase_beats
         is_phrase_start = beat > 0.5 and beat_in_phrase < step
 
-        # Switch registers at phrase boundaries (climax = high octave for expressive lift)
+        # Switch registers at phrase boundaries: the PLANNED climax phrase gets
+        # the high octave (styles opt in via phrase_climax_prob); every phrase
+        # glides toward its planned register target so the section has shape.
         phrase_idx = int(beat / phrase_beats)
+        plan = _plans[min(phrase_idx, len(_plans) - 1)]
         if phrase_idx != current_phrase_idx:
             current_phrase_idx = phrase_idx
-            prev_hi = use_hi_register
-            climax_trigger_prob = phrase_climax_prob * max(0.0, (complexity - 0.5) * 2)
-            use_hi_register = phrase_climax_prob > 0 and should_trigger(climax_trigger_prob)
+            use_hi_register = plan.climax and phrase_climax_prob > 0
             new_scale = scale_notes_hi if use_hi_register else scale_notes
             if new_scale is not active_scale:
                 # Re-anchor index to the nearest pitch in the new scale
                 cur_pitch = active_scale[current_note_idx] if active_scale else 60
                 active_scale = new_scale
                 current_note_idx = min(range(len(active_scale)), key=lambda i: abs(active_scale[i] - cur_pitch))
+            # Glide halfway toward the phrase's register target
+            _reg_target = int(plan.register * (len(active_scale) - 1))
+            current_note_idx = (current_note_idx + _reg_target) // 2
         is_cadence_bar = beat_in_phrase >= phrase_beats - beats_per_bar  # last bar of phrase
         is_phrase_tail = beat_in_phrase >= phrase_beats - 1.0  # last beat of phrase
-        # Call/response: question = first half of phrase, response = second half
-        is_question = beat_in_phrase < question_beats
+        # Call/response: "question" = before the phrase's planned contour peak
+        is_question = (beat_in_phrase / phrase_beats) < plan.contour_peak
         is_response_tail = beat_in_phrase >= phrase_beats - beats_per_bar * 1.5
 
         # Motif development: lock seed motif after first phrase, replay at subsequent phrase starts
@@ -276,11 +287,11 @@ def generate_melody(
                             pass
                 _motif_locked = True
 
-            # Replay motif at phrase boundaries (not the first phrase). A motif
-            # inherited from an earlier section replays earlier and more often —
-            # it's the song's theme, not just local development material.
-            if _motif_locked and _motif_intervals and (phrase_idx > 1 or _motif_seeded):
-                if should_trigger(0.55 if _motif_seeded else 0.35):
+            # Replay the motif when this phrase's ROLE calls for restatement
+            # (a seeded song-level theme replays at least that often).
+            _replay_p = max(plan.replay_motif, 0.55 if _motif_seeded else 0.0)
+            if _motif_locked and _motif_intervals and _replay_p > 0:
+                if should_trigger(_replay_p):
                     for interval in _motif_intervals:
                         new_idx = max(0, min(len(active_scale) - 1, current_note_idx + interval))
                         current_note_idx = new_idx
@@ -304,11 +315,11 @@ def generate_melody(
         # Phrase tail: hold on a long cadential note then rest
         if is_phrase_tail:
             ct = _chord_tone_indices(current_roman, key, scale, active_scale)
-            # Antecedent phrase (even phrase index): open/questioning cadence — target sd2 or sd5
-            # Consequent phrase (odd phrase index): closed/resolving cadence — target sd1 (tonic)
-            # In loop mode the very last phrase always resolves to tonic so the loop-back sounds clean.
+            # The PLAN decides open (half cadence: sd2/sd5) vs closed (tonic).
+            # In loop mode the very last phrase always resolves so the loop-back
+            # sounds clean (the planner also forces the section's last phrase closed).
             is_last_phrase = (beat + phrase_beats - beat_in_phrase >= total_beats)
-            is_antecedent = (phrase_idx % 2 == 0) and not (is_loop and is_last_phrase)
+            is_antecedent = plan.cadence_open and not (is_loop and is_last_phrase)
             if is_antecedent:
                 # Open cadence: scale degree 2 (maj 2nd above root) or scale degree 5 (perf 5th)
                 open_pcs = {(key_root_pc + 2) % 12, (key_root_pc + 7) % 12}
@@ -342,8 +353,10 @@ def generate_melody(
             beat = (int(beat / phrase_beats) + 1) * phrase_beats
             continue
 
-        # Cadence bar: reduce density for breathing room, strong chord-tone bias
-        effective_density = density * 0.72 if is_cadence_bar else density
+        # Cadence bar: reduce density for breathing room, strong chord-tone bias.
+        # The phrase's planned density multiplier shapes the section (sparser
+        # contrast phrases, busier climax).
+        effective_density = density * plan.density_mult * (0.72 if is_cadence_bar else 1.0)
         if not should_trigger(effective_density):
             beat += step
             continue
@@ -392,20 +405,21 @@ def generate_melody(
                 phrase_pos  = beat_in_phrase / phrase_beats  # 0.0 → 1.0 through the phrase
 
                 # Range extremes override everything to pull back toward center
-                if range_frac > 0.8:
+                # (the climax phrase is allowed to sit near the top)
+                if range_frac > (0.94 if plan.climax else 0.8):
                     d_weights = [0.85, 0.15]
                 elif range_frac < 0.2:
                     d_weights = [0.15, 0.85]
                 else:
-                    # Call/response arch contour:
-                    # Question (0→0.5): build upward tension
-                    # Response (0.5→1.0): resolve downward
-                    if phrase_pos < 0.45:
-                        d_weights = [0.32, 0.68]   # upward — building question
-                    elif phrase_pos > 0.75:
-                        d_weights = [0.72, 0.28]   # downward — resolving response
+                    # Arch contour around the phrase's PLANNED peak: rise into
+                    # it, hover near it, resolve downward after.
+                    _peak = plan.contour_peak
+                    if phrase_pos < _peak - 0.08:
+                        d_weights = [0.32, 0.68]   # rising toward the peak
+                    elif phrase_pos > _peak + 0.12:
+                        d_weights = [0.72, 0.28]   # resolving after the peak
                     else:
-                        d_weights = [0.5, 0.5]
+                        d_weights = [0.5, 0.5]     # hovering at the peak
 
                 direction = random.choices([-1, 1], weights=d_weights)[0]
                 # Post-leap rule: after a leap larger than a 4th (>2 scale steps),
@@ -428,6 +442,13 @@ def generate_melody(
                     leap = random.choice([-3, -2])
                 current_note_idx = max(0, min(len(chord_pool) - 1, current_note_idx + leap))
                 _last_interval = leap
+
+        # Reserve the top of the range for the climax phrase: everything else
+        # gets a soft ceiling, so the section's high point lands where planned.
+        if not plan.climax:
+            _ceiling = int((len(chord_pool) - 1) * 0.82)
+            if current_note_idx > _ceiling:
+                current_note_idx = _ceiling
 
         chord_note_idx = min(current_note_idx, len(chord_pool) - 1)
         pitch = chord_pool[chord_note_idx]
@@ -577,6 +598,16 @@ def generate_melody(
         # Recapitulation: the final block restates the opening motif (exact or
         # lightly pitch-shifted) so the phrase returns to its theme to close.
         is_last_block = block == num_blocks - 1
+
+        # The phrase PLAN outranks block-level motif development: climax blocks
+        # always keep their phrase-shaped content (that's the planned high point),
+        # and elsewhere transforms apply only about half the time so motif unity
+        # doesn't erase the planned contour. The final block's recapitulation is
+        # exempt — restating the theme to close is part of the form.
+        blk_plan = _plans[min((block * 2) // 4, len(_plans) - 1)]
+        if not is_last_block and (blk_plan.climax or random.random() < 0.45):
+            final.extend(existing)
+            continue
         roll = random.uniform(0.0, 0.45) if (is_last_block and num_blocks > 2) else random.random()
         if roll < 0.27:
             # Exact repeat with velocity shift + per-note micro-jitter
@@ -587,10 +618,12 @@ def generate_melody(
                     final.append(NoteEvent(n.pitch, max(0.0, t), min(n.duration, total_beats - t),
                                            max(1, min(127, n.velocity + vel_shift + random.randint(-3, 3))), n.channel))
         elif roll < 0.48:
-            # Pitch-shifted repeat
+            # Pitch-shifted repeat (capped below the climax's reserved top
+            # unless this block IS the climax)
+            _blk_top = scale_notes[-1] if blk_plan.climax else scale_notes[int(0.82 * (len(scale_notes) - 1))]
             shift = random.choice([-5, -4, -3, -2, 2, 3, 4, 5])
             for n in motif:
-                shifted = n.pitch + shift
+                shifted = min(n.pitch + shift, _blk_top)
                 if note_range[0] <= shifted <= note_range[1] and scale_notes:
                     new_p = min(scale_notes, key=lambda s: abs(s - shifted))
                     t = b_start + (n.start % block_beats) + micro_jitter()
@@ -629,9 +662,10 @@ def generate_melody(
             shift_steps = random.choice([-5, -3, -2, 2, 3, 5])  # scale steps
             _vel_var = style_velocity_variation(style)
             vel_shift = random.randint(-_vel_var, _vel_var)
+            _blk_ceil = (len(scale_notes) - 1) if blk_plan.climax else int(0.82 * (len(scale_notes) - 1))
             for n in motif:
                 idx = min(range(len(scale_notes)), key=lambda i: abs(scale_notes[i] - n.pitch))
-                new_idx = max(0, min(len(scale_notes) - 1, idx + shift_steps))
+                new_idx = max(0, min(_blk_ceil, idx + shift_steps))
                 new_p = scale_notes[new_idx]
                 if note_range[0] <= new_p <= note_range[1]:
                     t = b_start + (n.start % block_beats) + micro_jitter()
