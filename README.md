@@ -97,9 +97,23 @@ Verse sections are 16 bars in all mainstream templates (Verse–Chorus, V–C–
 - Python 3.11+
 - Node.js 20+ (CI builds and releases on Node 22)
 
-### One command (recommended)
+### Just run the app — one command
 
-Starts the backend (`:8000`, auto-reload) and the frontend (`:5173`) together — Ctrl+C stops both. First run creates the venv and installs all dependencies automatically.
+Builds the frontend once, starts the backend, serves the app at `http://localhost:4173`, and opens your browser. Ctrl+C stops everything. First run creates the venv and installs all dependencies automatically; later runs reuse the build (pass `--rebuild` / `-Rebuild` after pulling changes).
+
+**Windows**
+```powershell
+.\start.ps1
+```
+
+**Linux / macOS**
+```bash
+./start.sh
+```
+
+### Develop — one command
+
+Same idea but with live reload on both sides: backend (`:8000`, uvicorn `--reload`) and frontend (`:5173`, Vite dev server with HMR). Use this when editing code.
 
 **Windows**
 ```powershell
