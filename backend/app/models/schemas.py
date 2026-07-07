@@ -101,6 +101,16 @@ class GenerateResponse(BaseModel):
     progression: list[str] = []
 
 
+class SongSectionDef(BaseModel):
+    """One section of a custom song template."""
+    section_type: str  # intro | verse | pre_chorus | chorus | post_chorus | bridge | instrumental_solo | outro
+    bars: int = Field(default=8, ge=1, le=32)
+    name: Optional[str] = None
+    parts_mode: str = "full"  # full | no_arp | sparse | foundation | melodic | no_drums | chords_only
+    chorus_key: bool = False
+    bridge_key: bool = False
+
+
 class BuildSongRequest(BaseModel):
     style_id: str
     key: str = "C"
@@ -115,6 +125,8 @@ class BuildSongRequest(BaseModel):
     use_priors: bool = True
     chorus_key_shift: Optional[int] = Field(default=None, ge=-12, le=12)  # semitone lift on chorus sections; None = use the style's default
     bridge_key_shift: Optional[int] = Field(default=None, ge=-12, le=12)  # semitone shift on bridge sections; None = use the style's default (5 = subdominant lift)
+    final_chorus_lift: Optional[int] = Field(default=None, ge=-12, le=12)  # extra semitone lift on the LAST chorus only (gear change); None = style default (+1)
+    custom_template: Optional[List[SongSectionDef]] = Field(default=None, max_length=20)  # overrides `template` when provided
 
 
 class RegenerateSongPartRequest(BaseModel):
@@ -133,6 +145,7 @@ class SongSectionResult(BaseModel):
     bars: int
     start_bar: int
     key: str
+    quality: Optional[float] = None  # composite quality score (0-1) of the section's winning attempt
 
 
 class BuildSongResponse(BaseModel):

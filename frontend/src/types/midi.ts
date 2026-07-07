@@ -98,6 +98,15 @@ export interface BatchGenerateRequest {
   count: number
 }
 
+export interface SongSectionDef {
+  section_type: string
+  bars: number
+  name?: string
+  parts_mode?: string
+  chorus_key?: boolean
+  bridge_key?: boolean
+}
+
 export interface BuildSongRequest {
   style_id: string
   key: string
@@ -111,6 +120,8 @@ export interface BuildSongRequest {
   seed?: number
   use_priors?: boolean
   chorus_key_shift?: number
+  final_chorus_lift?: number
+  custom_template?: SongSectionDef[]
 }
 
 export interface SongSectionResult {
@@ -119,6 +130,7 @@ export interface SongSectionResult {
   bars: number
   start_bar: number
   key: string
+  quality?: number | null
 }
 
 export interface BuildSongResponse {

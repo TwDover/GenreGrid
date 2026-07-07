@@ -479,7 +479,7 @@ export function useMidiPlayer() {
     url: string,
     styleId: string | undefined,
     durationSeconds: number,
-    channelFilter: 'all' | 'drums' | 'bass' | 'melodic' = 'all',
+    channelFilter: 'all' | 'melodic' | PlayerPart = 'all',
     onProgress?: (v: number) => void,
   ): Promise<Blob> {
     isRendering.value = true
@@ -499,6 +499,12 @@ export function useMidiPlayer() {
       const tail = isPad ? 2.5 : 1.2
       const totalDuration = durationSeconds + tail
 
+      // Which parts this render includes: 'all', the legacy 'melodic' bucket,
+      // or any single part name (per-part stem export).
+      const wantsPart = (p: PlayerPart): boolean =>
+        channelFilter === 'all' || channelFilter === p ||
+        (channelFilter === 'melodic' && p !== 'drums' && p !== 'bass')
+
       const toneBuffer = await Tone.Offline(async () => {
         const dest = Tone.getDestination()
         dest.volume.value = 0
@@ -509,13 +515,13 @@ export function useMidiPlayer() {
         // ── Drum kit ─────────────────────────────────────────────────────
         // Same synthesized engine as live playback, routed to the offline
         // compressor so the export matches what the user auditions.
-        const drumKit = (channelFilter === 'all' || channelFilter === 'drums')
+        const drumKit = wantsPart('drums')
           ? makeSynthKit(drumCharacterForStyle(styleId), comp)
           : null
 
         // ── Bass synth ───────────────────────────────────────────────────
         let bassSynth: Tone.MonoSynth | null = null
-        if (channelFilter === 'all' || channelFilter === 'bass') {
+        if (wantsPart('bass')) {
           bassSynth = new Tone.MonoSynth({
             oscillator: { type: 'sawtooth' },
             filter: { Q: 2, type: 'lowpass', rolloff: -24 },
@@ -631,15 +637,13 @@ export function useMidiPlayer() {
         let stringsSynth: Tone.PolySynth | null = null
         const hasTrackOn = (ch: number) =>
           midi.tracks.some(t => (t.channel ?? 0) === ch && t.notes.length > 0)
-        if (channelFilter === 'all' || channelFilter === 'melodic') {
-          chordsSynth = mkVoice('chords', panForChannel(0))
-          leadSynth   = mkVoice('lead',   panForChannel(2))
-          arpSynth    = mkVoice('arp',    panForChannel(3))
-          // Only built when the file actually carries these parts — keeps the
-          // offline graph light for the common 4-part case.
-          if (hasTrackOn(4)) padsSynth    = mkVoice('pads',    panForChannel(4))
-          if (hasTrackOn(5)) stringsSynth = mkVoice('strings', panForChannel(5))
-        }
+        // Only built when wanted AND the file actually carries the part — keeps
+        // the offline graph light for single-stem renders.
+        if (wantsPart('chords'))   chordsSynth = mkVoice('chords', panForChannel(0))
+        if (wantsPart('melody'))   leadSynth   = mkVoice('lead',   panForChannel(2))
+        if (wantsPart('arpeggio')) arpSynth    = mkVoice('arp',    panForChannel(3))
+        if (wantsPart('pads') && hasTrackOn(4))           padsSynth    = mkVoice('pads',    panForChannel(4))
+        if (wantsPart('counter_melody') && hasTrackOn(5)) stringsSynth = mkVoice('strings', panForChannel(5))
 
         // ── Schedule MIDI events ─────────────────────────────────────────
         for (const track of midi.tracks) {
@@ -658,9 +662,10 @@ export function useMidiPlayer() {
               const { time, duration, velocity } = n
               Tone.getTransport().schedule(t => bassSynth!.triggerAttackRelease(note, duration, t, velocity), time)
             }
-          } else if (!isPerc && channel !== 1 && (chordsSynth || leadSynth || arpSynth)) {
+          } else if (!isPerc && channel !== 1) {
             // channel 2 = melody (lead), 3 = arpeggio (pluck), 4 = pads,
-            // 5 = counter-melody (strings), else chords
+            // 5 = counter-melody (strings), else chords. A null synth means the
+            // part isn't included in this render (per-part stem filtering).
             const synth = channel === 3 ? arpSynth
               : channel === 2 ? leadSynth
               : channel === 4 ? padsSynth
