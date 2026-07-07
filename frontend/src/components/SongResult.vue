@@ -25,6 +25,19 @@
             {{ isPlaying ? '■ Stop' : '▶ Play song' }}
           </button>
           <button class="sr-dl-btn" @click="download">↓ .mid</button>
+          <div class="sr-history">
+            <button class="sr-dl-btn" @click="toggleHistory" title="Restore an earlier version of this song">⟲ History</button>
+            <div v-if="historyOpen" class="sr-history-menu">
+              <div v-if="!songVersions.length" class="sr-history-empty">No earlier versions yet — re-rolls create them</div>
+              <button
+                v-for="v in songVersions"
+                :key="v.id"
+                class="sr-history-item"
+                :disabled="restoreLoading !== null"
+                @click="onRestore(v.id)"
+              >{{ restoreLoading === v.id ? 'Restoring…' : v.saved_at.replace('T', ' ') }}</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -96,7 +109,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import type { BuildSongResponse, FileInfo } from '../types/midi'
-import { downloadUrl, regenerateSongPart, regenerateSongSection, undoSongPart } from '../services/api'
+import { downloadUrl, regenerateSongPart, regenerateSongSection, undoSongPart, listSongVersions, restoreSongVersion, type SongVersion } from '../services/api'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 import PartCard from './PartCard.vue'
 
@@ -154,6 +167,41 @@ async function onRegen(part: string) {
     regenError.value = e.message ?? 'Regeneration failed'
   } finally {
     regenLoading.value = null
+  }
+}
+
+// ── Version history ──────────────────────────────────────────────────────────
+const historyOpen = ref(false)
+const songVersions = ref<SongVersion[]>([])
+const restoreLoading = ref<string | null>(null)
+watch(() => props.result?.generation_id, () => { historyOpen.value = false; songVersions.value = [] })
+
+async function toggleHistory() {
+  historyOpen.value = !historyOpen.value
+  if (historyOpen.value && props.result) {
+    songVersions.value = await listSongVersions(props.result.generation_id)
+  }
+}
+
+async function onRestore(versionId: string) {
+  if (!props.result || restoreLoading.value) return
+  restoreLoading.value = versionId
+  regenError.value = null
+  try {
+    const files = await restoreSongVersion({ generation_id: props.result.generation_id, version_id: versionId })
+    const v = Date.now()
+    for (const f of files) versions[f.part] = v
+    versions.song = v
+    // A restore may add back stems that were later removed, or drop added ones —
+    // reflect the restored file set in the "added" list so the cards match disk.
+    const restored = new Set(files.map(f => f.part))
+    addedFiles.value = addedFiles.value.filter(f => restored.has(f.part))
+    historyOpen.value = false
+    songVersions.value = await listSongVersions(props.result.generation_id)
+  } catch (e: any) {
+    regenError.value = e.message ?? 'Restore failed'
+  } finally {
+    restoreLoading.value = null
   }
 }
 
@@ -276,6 +324,23 @@ function download() {
   transition: background 0.15s, color 0.15s;
 }
 .sr-dl-btn:hover { background: #0d2535; color: #e0e0e8; }
+
+/* Version history dropdown */
+.sr-history { position: relative; }
+.sr-history-menu {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 20;
+  background: #060f14; border: 1px solid #0d2535; border-radius: 6px;
+  min-width: 190px; padding: 0.25rem; display: flex; flex-direction: column; gap: 2px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+}
+.sr-history-empty { font-size: 0.65rem; color: #2a4550; padding: 0.35rem 0.5rem; }
+.sr-history-item {
+  font-size: 0.7rem; font-family: monospace; text-align: left;
+  background: transparent; border: none; border-radius: 4px;
+  color: #4a7080; cursor: pointer; padding: 0.3rem 0.5rem;
+}
+.sr-history-item:hover:not(:disabled) { background: #0d2535; color: #00c8ff; }
+.sr-history-item:disabled { opacity: 0.5; cursor: wait; }
 
 /* Timeline */
 .sr-timeline { display: flex; height: 30px; border-radius: 5px; overflow: hidden; gap: 1px; background: #020608; }

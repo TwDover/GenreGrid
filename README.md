@@ -15,6 +15,8 @@ Grab the latest desktop app from the **[Releases page](https://github.com/TwDove
 
 > **macOS:** the app is currently **unsigned**, so the first time you open it macOS will warn about an unidentified developer. **Right-click the app → Open → Open**, or run `xattr -cr /Applications/GenreGrid.app`. You only need to do this once.
 
+The Windows and Linux apps **auto-update**: when a new release is published, the app downloads it in the background and offers a restart. You can also check on demand with the **Updates** button in the app header. (macOS can't auto-update unsigned builds — Mac users grab new versions from the Releases page.)
+
 Prefer to run from source or build it yourself? See [Running in the browser](#running-in-the-browser) and [Desktop app](#desktop-app-electron) below.
 
 ## What it does
@@ -26,9 +28,13 @@ Prefer to run from source or build it yourself? See [Running in the browser](#ru
 - Drums use genre-appropriate elements (kick patterns, ride, clap, crash, tom fills, swing) per style — and **arrange per section**: stripped intros, building pre-choruses, crash-announced choruses, half-time bridges, decaying outros, with fills sized by the energy of the next section
 - **Loop mode** — generates a single tight section (the default) for a quick idea or a DAW-ready loop
 - **Arrangement mode** — generates a full arrangement arc (intro → verse → chorus → outro) from a single bar count, with per-section complexity, dynamic scaling, and energy ramps at section transitions
-- **Song Builder** — generates a complete song from named templates (Verse–Chorus, V–C–Bridge, Extended, Compact, Minimal) or a **custom template** you arrange yourself. Songs get real song craft: one shared progression across all sections, chord voicings that voice-lead across section seams, choruses that develop the verse's motif, an intro that teases the chorus hook, light variation on repeated sections, chorus/bridge key shifts plus a **final-chorus gear change**, a tempo map (subtle chorus push + closing ritardando), and a proper ending bar that rings out on the tonic
+- **Song Builder** — generates a complete song from named templates (Verse–Chorus, V–C–Bridge, Extended, Compact, Minimal) or a **custom template** you arrange yourself — including a **different style per section** (a lofi verse into a house chorus). Songs get real song craft: one shared progression across all sections, chord voicings that voice-lead across section seams, choruses that develop the verse's motif, an intro that teases the chorus hook, light variation on repeated sections, chorus/bridge key shifts plus a **final-chorus gear change**, a tempo map (subtle chorus push + closing ritardando), and a proper ending bar that rings out on the tonic
+- **Build a song around your melody** — drop a MIDI melody into the Song form: its key is auto-detected (Krumhansl-Schmuckler), a supporting chord progression is derived bar by bar, and your melody becomes the song's chorus hook — repeats, the intro tease, the counter-melody, and every section's motif development grow out of your idea
 - **Per-section quality & re-roll** — every song section runs a quality-gated multi-attempt search; its score shows as a badge on the song timeline, and any section can be re-rolled with one click while the rest of the song stays byte-identical. Individual parts can also be re-rolled — or **added after the fact** if you forgot to select one
-- **Style-aware playback** — in-browser preview uses genre-matched samplers and synthesis engines: acoustic kits, LinnDrum, breakbeats, Techno kit, Rhodes, clavinet, vibraphone, nylon guitar, accordion, strings, synth leads, and pads — routed automatically per style
+- **Version history** — every re-roll/add snapshots the song first; the History picker restores any of the last five states (and a restore is itself restorable)
+- **Style blending** — blend a second style into a loop *or* a whole song (groove, swing, density, and progression pools interpolate)
+- **DAW-ready song files** — `song.mid` carries section markers (Intro/Verse/Chorus… with key changes labeled) and a key signature, so your DAW timeline mirrors the app's
+- **Style-aware playback** — in-browser preview uses genre-matched samplers and synthesis engines: acoustic kits, LinnDrum, breakbeats, Techno kit, Rhodes, clavinet, vibraphone, nylon guitar, accordion, strings, synth leads, and pads — routed automatically per style, with a **sidechain pump** on electronic styles (each kick ducks the mix so it breathes)
 - **Quality scorer** — every generation is scored across up to six musical dimensions (harmonic coherence, part separation, rhythm fit, density, mix balance, and — when a learned corpus prior exists — style-match) and returns a 0–1 score, label, and any issue flags alongside the MIDI
 - **Generation library** — high-scoring generations are saved locally and used to influence rhythm patterns in future generations, improving style consistency over time
 - **Data-driven patterns** — each style ships with idiomatic chord progressions and drum patterns, so a fresh clone generates good output with no setup. An optional mining pipeline can further tailor generation from MIDI corpora **you supply** (e.g. Groove MIDI, POP909, Lakh — used locally under their own licenses; see [Training on real corpora](#training-on-real-corpora-optional)), toggled per generation with a **Use my local MIDI corpus** switch
@@ -74,11 +80,22 @@ Prefer to run from source or build it yourself? See [Running in the browser](#ru
 | **Extended** | 80 | Foundation intro · Verse×2 · Chorus×2 · Instrumental · Bridge · Final chorus |
 | **Compact** | 40 | Chords intro · Verse×2 · Chorus×2 · Chords outro |
 | **Minimal** | 24 | Foundation intro · Main (16 bars) · Melodic outro |
-| **Custom** | — | Arrange your own section sequence (type + bars per section) in the Song form |
+| **Custom** | — | Arrange your own section sequence (type + bars + optional per-section style) in the Song form |
 
 \* Every song gets one extra **ending bar** (held tonic chord + crash, with a ritardando) on top of the listed total.
 
 Verse sections are 16 bars in all mainstream templates (Verse–Chorus, V–C–Bridge, Extended). Chorus sections are 8 bars. Bridges modulate to the subdominant by default; the last chorus adds a configurable **final lift** (+1 semitone by default) on top of any chorus key shift.
+
+### Build around your melody
+
+Drop a `.mid` file into the **Build around my melody** field in the Song form and the builder composes the song around it:
+
+- The **most melody-like track** is picked from the file (non-percussion, highest average pitch among tracks with a real note count)
+- Key and mode are **auto-detected** (Krumhansl-Schmuckler pitch-class correlation) — the form's key/scale are ignored, and the song's BPM comes from the file
+- A supporting **chord progression is derived bar by bar** from what your melody actually outlines, and that progression drives the whole song
+- Your melody becomes the **chorus hook**: chorus repeats, the intro tease, the counter-melody, and every section's motif development all grow out of it
+
+Current assumptions: 4/4 time, and the hook is looped or trimmed to fit the chorus length. Re-rolling parts or sections of an imported song keeps your melody intact.
 
 ---
 
@@ -86,7 +103,7 @@ Verse sections are 16 bars in all mainstream templates (Verse–Chorus, V–C–
 
 - **Backend** — Python, FastAPI, [mido](https://mido.readthedocs.io/)
 - **Frontend** — Vue 3, TypeScript, Vite, [Tone.js](https://tonejs.github.io/), [@tonejs/midi](https://github.com/Tonejs/Midi)
-- **Desktop** — Electron (Windows & Linux)
+- **Desktop** — Electron (Windows, macOS & Linux), with auto-update via [electron-updater](https://www.electron.build/auto-update) on Windows/Linux
 
 ---
 
@@ -240,6 +257,8 @@ git push origin v0.2.0
 ```
 
 > **Keep the tag and the version in sync.** The `version` field in [`frontend/package.json`](frontend/package.json) sets the installer **filenames** (`GenreGrid-0.2.0-arm64.dmg`), while the git **tag** sets the Release name. Tag `v0.2.0` must match version `0.2.0`, or the Release will be titled `v0.2.0` but contain files named `...0.1.0...`. The tag is the trigger — editing `package.json` alone publishes nothing.
+
+> **Auto-update depends on the release assets.** Alongside the installers, CI uploads `latest.yml` (Windows) and `latest-linux.yml` — installed apps poll these to discover new versions. Don't delete them from a Release, or auto-update silently stops finding updates. The build scripts pass `--publish never` to electron-builder; the CI `release` job is the only thing that uploads to GitHub.
 
 The tag (`v*`) triggers four parallel build jobs — Linux, Windows, macOS arm64, macOS Intel — and, once they all pass, a `release` job that attaches every installer (`.exe`, `.dmg`, `.AppImage`, `.deb`, `.zip`) to a new Release with auto-generated notes. Users then download from the [Releases page](https://github.com/TwDover/GenreGrid/releases/latest). Pushes to `main` and pull requests still build and type-check every platform, but only **tags** produce a published release.
 

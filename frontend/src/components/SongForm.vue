@@ -59,11 +59,15 @@
             <option v-for="t in SECTION_TYPES" :key="t" :value="t">{{ t.replace('_', ' ') }}</option>
           </select>
           <input v-model.number="sec.bars" type="number" min="1" max="32" class="sb-input ce-bars" />
+          <select v-model="sec.style_id" class="sb-select ce-style" title="Optional per-section style">
+            <option value="">song style</option>
+            <option v-for="s in styles" :key="s.id" :value="s.id">{{ s.name }}</option>
+          </select>
           <button class="ce-btn" :disabled="i === 0" @click="moveSection(i, -1)" title="Move up">↑</button>
           <button class="ce-btn" :disabled="i === customSections.length - 1" @click="moveSection(i, 1)" title="Move down">↓</button>
           <button class="ce-btn ce-del" :disabled="customSections.length <= 1" @click="customSections.splice(i, 1)" title="Remove">✕</button>
         </div>
-        <button class="ce-add" :disabled="customSections.length >= 20" @click="customSections.push({ section_type: 'verse', bars: 8 })">＋ section</button>
+        <button class="ce-add" :disabled="customSections.length >= 20" @click="customSections.push({ section_type: 'verse', bars: 8, style_id: '' })">＋ section</button>
       </div>
     </div>
 
@@ -136,6 +140,21 @@
       </div>
     </div>
 
+    <!-- Style blend -->
+    <div class="sb-row">
+      <div class="sb-field">
+        <label class="sb-label">Blend with <span class="sb-val">optional second style</span></label>
+        <select v-model="form.blend_style_id" class="sb-select">
+          <option value="">none</option>
+          <option v-for="s in styles.filter(s => s.id !== form.style_id)" :key="s.id" :value="s.id">{{ s.name }}</option>
+        </select>
+      </div>
+      <div class="sb-field" v-if="form.blend_style_id">
+        <label class="sb-label">Blend amount <span class="sb-val">{{ form.blend_amount.toFixed(2) }}</span></label>
+        <input type="range" v-model.number="form.blend_amount" min="0" max="1" step="0.05" class="sb-range" />
+      </div>
+    </div>
+
     <!-- Parts -->
     <div class="sb-field">
       <label class="sb-label">Parts</label>
@@ -155,10 +174,20 @@
       </label>
     </div>
 
+    <!-- Build around my melody -->
+    <div class="sb-field">
+      <label class="sb-label">Build around my melody <span class="sb-val">optional — drop a MIDI melody and it becomes the song's hook (key auto-detected)</span></label>
+      <div class="sb-melody-row">
+        <input ref="melodyInput" type="file" accept=".mid,.midi" class="sb-melody-file" @change="onMelodyFile" />
+        <button v-if="melodyFile" class="sb-melody-clear" @click="clearMelodyFile" title="Remove file">✕</button>
+      </div>
+    </div>
+
     <!-- Generate Button -->
     <button class="sb-generate-btn" :disabled="loading || form.parts.length === 0" @click="generate">
       <span v-if="loading" class="sb-spinner">●</span>
       <span v-if="loading">Building song…</span>
+      <span v-else-if="melodyFile">▶ Build Song Around My Melody</span>
       <span v-else>▶ Build Full Song</span>
     </button>
     <div v-if="error" class="sb-error">{{ error }}</div>
@@ -168,7 +197,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import type { StyleInfo, BuildSongResponse } from '../types/midi'
-import { buildSong } from '../services/api'
+import { buildSong, buildSongFromMelody } from '../services/api'
 
 const props = defineProps<{ styles: StyleInfo[] }>()
 const emit = defineEmits<{
@@ -236,20 +265,24 @@ const form = ref({
   complexity: 0.6,
   variation: 0.4,
   humanize: 0.5,
-  parts: ['chords', 'bass', 'melody', 'drums'],
+  // Pads default on: they only sound in choruses/bridges and are the cheapest
+  // "full arrangement" win — untick to drop them.
+  parts: ['chords', 'bass', 'melody', 'drums', 'pads'],
   template: 'verse_chorus',
   use_priors: false,
   chorus_key_shift: 0,
   final_chorus_lift: 1,
+  blend_style_id: '' as string,
+  blend_amount: 0.5,
 })
 
 // Custom template editor state — seeded with a sensible starting arrangement.
 const SECTION_TYPES = ['intro', 'verse', 'pre_chorus', 'chorus', 'post_chorus', 'bridge', 'instrumental_solo', 'outro']
-const customSections = ref<{ section_type: string; bars: number }[]>([
-  { section_type: 'intro', bars: 4 },
-  { section_type: 'verse', bars: 8 },
-  { section_type: 'chorus', bars: 8 },
-  { section_type: 'outro', bars: 4 },
+const customSections = ref<{ section_type: string; bars: number; style_id?: string }[]>([
+  { section_type: 'intro', bars: 4, style_id: '' },
+  { section_type: 'verse', bars: 8, style_id: '' },
+  { section_type: 'chorus', bars: 8, style_id: '' },
+  { section_type: 'outro', bars: 4, style_id: '' },
 ])
 const customTotalBars = computed(() => customSections.value.reduce((n, s) => n + s.bars, 0))
 
@@ -281,12 +314,41 @@ watch(selectedStyle, (style) => {
 const loading = ref(false)
 const error = ref<string | null>(null)
 
+// ── Melody import ────────────────────────────────────────────────────────────
+const melodyInput = ref<HTMLInputElement | null>(null)
+const melodyFile = ref<File | null>(null)
+
+function onMelodyFile(e: Event) {
+  melodyFile.value = (e.target as HTMLInputElement).files?.[0] ?? null
+}
+function clearMelodyFile() {
+  melodyFile.value = null
+  if (melodyInput.value) melodyInput.value.value = ''
+}
+
 async function generate() {
   loading.value = true
   error.value = null
   emit('building', true)
   try {
+    if (melodyFile.value) {
+      // Key/scale/BPM come from the uploaded melody — the form's are ignored.
+      const result = await buildSongFromMelody(melodyFile.value, {
+        style_id: form.value.style_id,
+        template: form.value.template === 'custom' ? 'verse_chorus' : form.value.template,
+        parts: form.value.parts,
+        complexity: form.value.complexity,
+        variation: form.value.variation,
+        humanize: form.value.humanize,
+        use_priors: form.value.use_priors,
+        chorus_key_shift: form.value.chorus_key_shift,
+        final_chorus_lift: form.value.final_chorus_lift,
+      })
+      emit('built', result, `${templateLabel.value} (your melody)`)
+      return
+    }
     const payload: any = { ...form.value }
+    if (!payload.blend_style_id) delete payload.blend_style_id
     if (form.value.template === 'custom') {
       payload.custom_template = customSections.value.map((s, i) => ({
         section_type: s.section_type,
@@ -295,6 +357,7 @@ async function generate() {
         parts_mode: CUSTOM_PARTS_MODE[s.section_type] ?? 'full',
         chorus_key: s.section_type === 'chorus',
         bridge_key: s.section_type === 'bridge',
+        style_id: s.style_id || undefined,
       }))
     }
     const result = await buildSong(payload)
@@ -382,6 +445,7 @@ async function generate() {
 .ce-row { display: flex; align-items: center; gap: 0.3rem; }
 .ce-type { flex: 1; min-width: 0; }
 .ce-bars { width: 56px; flex-shrink: 0; }
+.ce-style { flex: 1; min-width: 0; opacity: 0.85; }
 .ce-btn {
   width: 24px; height: 24px; flex-shrink: 0; padding: 0;
   background: #0d2535; border: 1px solid #122f40; border-radius: 4px;
@@ -397,4 +461,19 @@ async function generate() {
 }
 .ce-add:hover:not(:disabled) { border-color: #00c8ff66; color: #00c8ff; }
 .ce-add:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Melody import */
+.sb-melody-row { display: flex; align-items: center; gap: 0.4rem; }
+.sb-melody-file { font-size: 0.7rem; color: #4a7080; flex: 1; min-width: 0; }
+.sb-melody-file::file-selector-button {
+  background: #0d2535; border: 1px solid #122f40; border-radius: 5px;
+  color: #00c8ff; font-size: 0.7rem; padding: 0.25rem 0.6rem; cursor: pointer;
+  margin-right: 0.5rem;
+}
+.sb-melody-clear {
+  width: 24px; height: 24px; flex-shrink: 0; padding: 0;
+  background: #0d2535; border: 1px solid #122f40; border-radius: 4px;
+  color: #4a7080; font-size: 0.7rem; cursor: pointer; line-height: 1;
+}
+.sb-melody-clear:hover { color: #f87171; }
 </style>

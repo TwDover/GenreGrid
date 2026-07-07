@@ -18,6 +18,15 @@ export default defineConfig({
     electron({
       main: {
         entry: 'electron/main.ts',
+        vite: {
+          build: {
+            rollupOptions: {
+              // Resolved from packaged node_modules at runtime (electron-builder
+              // ships production deps); bundling it breaks its dynamic requires.
+              external: ['electron-updater'],
+            },
+          },
+        },
       },
       preload: {
         input: 'electron/preload.ts',
