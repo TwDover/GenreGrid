@@ -64,8 +64,11 @@
         </select>
       </div>
       <div class="sb-field sb-field-sm">
-        <label class="sb-label">BPM</label>
-        <input type="number" v-model.number="form.bpm" min="40" max="240" class="sb-input" />
+        <label class="sb-label">BPM <span v-if="selectedStyle" class="sb-val">{{ selectedStyle.bpm_range[0] }}–{{ selectedStyle.bpm_range[1] }}</span></label>
+        <input type="number" v-model.number="form.bpm"
+               :min="selectedStyle?.bpm_range[0] ?? 40"
+               :max="selectedStyle?.bpm_range[1] ?? 240"
+               class="sb-input" />
       </div>
       <div class="sb-field sb-field-sm">
         <label class="sb-label">Chorus <span class="sb-val" title="Transpose chorus sections for a lift">key</span></label>
@@ -123,7 +126,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { StyleInfo, BuildSongResponse } from '../types/midi'
 import { buildSong } from '../services/api'
 
@@ -134,7 +137,7 @@ const emit = defineEmits<{
 }>()
 
 const keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-const allParts = ['chords', 'bass', 'melody', 'drums', 'arpeggio']
+const allParts = ['chords', 'bass', 'melody', 'drums', 'arpeggio', 'pads', 'counter_melody']
 
 interface TemplateSection { name: string; bars: number; type: string }
 interface TemplateOption { id: string; label: string; totalBars: number; sections: TemplateSection[] }
@@ -201,6 +204,16 @@ const form = ref({
 
 const selectedStyle = computed(() => props.styles.find(s => s.id === form.value.style_id))
 const templateLabel = computed(() => templates.find(t => t.id === form.value.template)?.label ?? form.value.template)
+
+// Selecting a style adopts its typical BPM (midpoint of its range) and its
+// default scale — also on first load, so the form always matches the style
+// shown in the dropdown.
+watch(selectedStyle, (style) => {
+  if (!style) return
+  const [min, max] = style.bpm_range
+  form.value.bpm = Math.round((min + max) / 2)
+  if (style.default_scale) form.value.scale = style.default_scale
+}, { immediate: true })
 
 const loading = ref(false)
 const error = ref<string | null>(null)

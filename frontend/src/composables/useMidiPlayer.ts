@@ -157,6 +157,22 @@ function makePad(output: Tone.ToneAudioNode = getMelodicBus()): Tone.PolySynth {
   return synth
 }
 
+// Strings ensemble: soft detuned-saw stack for the counter-melody part —
+// articulate enough to read as a line, slow and dark enough to sit behind
+// the lead instead of competing with it.
+function makeStrings(output: Tone.ToneAudioNode = getMelodicBus()): Tone.PolySynth {
+  const lp = new Tone.Filter({ frequency: 2400, type: 'lowpass', rolloff: -12 }).connect(output)
+  const chorus = new Tone.Chorus({ frequency: 0.8, depth: 0.35, wet: 0.3 }).connect(lp)
+  chorus.start()
+  const synth = new Tone.PolySynth(Tone.Synth, {
+    oscillator: { type: 'fatsawtooth', count: 3, spread: 14 },
+    envelope: { attack: 0.12, decay: 0.3, sustain: 0.8, release: 1.2 },
+    volume: -14,
+  }).connect(chorus)
+  disposables.push(lp, chorus, synth)
+  return synth
+}
+
 // Synth bass: sawtooth MonoSynth with portamento — house/techno/dnb etc.
 function makeSynthBass(): Tone.MonoSynth {
   const comp = getBassBus()
@@ -278,12 +294,20 @@ export function useMidiPlayer() {
         return build(panner)
       }
 
-      // channel 0 = chords, 2 = melody, 3 = arpeggio (see backend _PART_CHANNELS)
+      // channel 0 = chords, 2 = melody, 3 = arpeggio, 4 = pads,
+      // 5 = counter-melody (see backend _PART_CHANNELS)
       function getMelodicInstrument(channel: number, pan: number): Tone.PolySynth | Tone.Sampler {
         if (voiceCache[channel]) return voiceCache[channel]
 
         let inst: Tone.PolySynth | Tone.Sampler
-        if (channel === 3) {
+        if (channel === 4) {
+          // Pads part — always the sustained pad voice, never the sampler, so
+          // the layer washes behind the comp regardless of style.
+          inst = makePanned(makePad, pan)
+        } else if (channel === 5) {
+          // Counter-melody — soft string ensemble under the lead.
+          inst = makePanned(makeStrings, pan)
+        } else if (channel === 3) {
           // Arpeggio — always its own voice so it sparkles above the comp.
           inst = melodicSampler ?? makePanned(makeArpPluck, pan)
         } else if (melodicSampler) {
@@ -499,7 +523,7 @@ export function useMidiPlayer() {
           if (cc && cc.length) return Math.max(-1, Math.min(1, cc[cc.length - 1].value * 2 - 1))
           return 0
         }
-        const mkVoice = (variant: 'chords' | 'lead' | 'arp', pan: number): Tone.PolySynth => {
+        const mkVoice = (variant: 'chords' | 'lead' | 'arp' | 'pads' | 'strings', pan: number): Tone.PolySynth => {
           const panner = new Tone.Panner(pan).connect(comp)
           if (variant === 'arp') {
             const delay = new Tone.FeedbackDelay({ delayTime: '8n.', feedback: 0.24, wet: 0.16 }).connect(panner)
@@ -509,6 +533,26 @@ export function useMidiPlayer() {
               envelope: { attack: 0.004, decay: 0.18, sustain: 0.0, release: 0.25 },
               volume: -11,
             }).connect(lp)
+          }
+          if (variant === 'pads') {
+            // Pads part — same sustained wash as live playback's makePad
+            const delay = new Tone.FeedbackDelay({ delayTime: '4n', feedback: 0.4, wet: 0.3 }).connect(panner)
+            return new Tone.PolySynth(Tone.Synth, {
+              oscillator: { type: 'triangle' },
+              envelope: { attack: 0.8, decay: 0.3, sustain: 0.7, release: 2.0 },
+              volume: -10,
+            }).connect(delay)
+          }
+          if (variant === 'strings') {
+            // Counter-melody — matches makeStrings in live playback
+            const lp = new Tone.Filter({ frequency: 2400, type: 'lowpass' }).connect(panner)
+            const chorus = new Tone.Chorus({ frequency: 0.8, depth: 0.35, wet: 0.3 }).connect(lp)
+            chorus.start()
+            return new Tone.PolySynth(Tone.Synth, {
+              oscillator: { type: 'fatsawtooth', count: 3, spread: 14 },
+              envelope: { attack: 0.12, decay: 0.3, sustain: 0.8, release: 1.2 },
+              volume: -14,
+            }).connect(chorus)
           }
           if (variant === 'lead' && (isPad || isSynth)) {
             // Dedicated articulate melody lead (matches makeMelodyLead in live play):
@@ -572,10 +616,18 @@ export function useMidiPlayer() {
         let chordsSynth: Tone.PolySynth | null = null
         let leadSynth: Tone.PolySynth | null = null
         let arpSynth: Tone.PolySynth | null = null
+        let padsSynth: Tone.PolySynth | null = null
+        let stringsSynth: Tone.PolySynth | null = null
+        const hasTrackOn = (ch: number) =>
+          midi.tracks.some(t => (t.channel ?? 0) === ch && t.notes.length > 0)
         if (channelFilter === 'all' || channelFilter === 'melodic') {
           chordsSynth = mkVoice('chords', panForChannel(0))
           leadSynth   = mkVoice('lead',   panForChannel(2))
           arpSynth    = mkVoice('arp',    panForChannel(3))
+          // Only built when the file actually carries these parts — keeps the
+          // offline graph light for the common 4-part case.
+          if (hasTrackOn(4)) padsSynth    = mkVoice('pads',    panForChannel(4))
+          if (hasTrackOn(5)) stringsSynth = mkVoice('strings', panForChannel(5))
         }
 
         // ── Schedule MIDI events ─────────────────────────────────────────
@@ -596,8 +648,13 @@ export function useMidiPlayer() {
               Tone.getTransport().schedule(t => bassSynth!.triggerAttackRelease(note, duration, t, velocity), time)
             }
           } else if (!isPerc && channel !== 1 && (chordsSynth || leadSynth || arpSynth)) {
-            // channel 2 = melody (lead), 3 = arpeggio (pluck), else chords
-            const synth = channel === 3 ? arpSynth : channel === 2 ? leadSynth : chordsSynth
+            // channel 2 = melody (lead), 3 = arpeggio (pluck), 4 = pads,
+            // 5 = counter-melody (strings), else chords
+            const synth = channel === 3 ? arpSynth
+              : channel === 2 ? leadSynth
+              : channel === 4 ? padsSynth
+              : channel === 5 ? stringsSynth
+              : chordsSynth
             if (synth) {
               for (const n of track.notes) {
                 const note = Tone.Frequency(n.midi, 'midi').toNote()

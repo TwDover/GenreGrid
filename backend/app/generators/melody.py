@@ -127,12 +127,19 @@ def generate_melody(
     progression: list | None = None,
     is_loop: bool = False,
     melody_model: dict | None = None,
+    harmony_complexity: float | None = None,
 ) -> List[NoteEvent]:
     """`melody_model` — optional mined melody prior (interval/phrase-bigram stats).
 
     When supplied, the free-motion connecting notes follow the corpus's real
     interval contour instead of the hand-coded stepwise/leap heuristic; chord-tone
     placement on downbeats and cadences is untouched, so harmony stays intact.
+
+    `harmony_complexity` — the complexity value used by `generate_chords`/`generate_bass`
+    for this same section. The chords-per-bar grid is derived from it (falling back to
+    `complexity` when omitted) so melody's chord-change timing can't drift out of sync
+    with the actual sounding harmony when a section profile scales melody and backing
+    complexity differently.
     """
     events: List[NoteEvent] = []
     _mined_prev_iv: int | None = None
@@ -200,7 +207,8 @@ def generate_melody(
 
     beats_per_bar = 4
     step = 0.25  # 16th notes
-    chords_per_bar = 2 if complexity > 0.6 else 1
+    _harmony_cplx = complexity if harmony_complexity is None else harmony_complexity
+    chords_per_bar = 2 if _harmony_cplx > 0.6 else 1
     beats_per_chord = beats_per_bar / chords_per_bar
     prog_len = len(progression)
     total_beats = bars * beats_per_bar
@@ -286,7 +294,7 @@ def generate_melody(
 
         # Phrase tail: hold on a long cadential note then rest
         if is_phrase_tail:
-            ct = _chord_tone_indices(current_roman, key, mel_scale, active_scale)
+            ct = _chord_tone_indices(current_roman, key, scale, active_scale)
             # Antecedent phrase (even phrase index): open/questioning cadence — target sd2 or sd5
             # Consequent phrase (odd phrase index): closed/resolving cadence — target sd1 (tonic)
             # In loop mode the very last phrase always resolves to tonic so the loop-back sounds clean.
@@ -345,7 +353,7 @@ def generate_melody(
             chord_tone_prob = min(0.92, chord_tone_prob + 0.25)
 
         if (is_chord_downbeat or is_cadence_bar) and should_trigger(chord_tone_prob):
-            ct = _chord_tone_indices(current_roman, key, mel_scale, active_scale)
+            ct = _chord_tone_indices(current_roman, key, scale, active_scale)
             if ct:
                 # In response half, prefer lower (root-ish) chord tones for resolution
                 if is_response_tail and len(ct) > 1:
@@ -355,7 +363,7 @@ def generate_melody(
                     current_note_idx = min(ct, key=lambda i: abs(i - current_note_idx))
                     _last_interval = 0
         elif is_strong_beat and should_trigger(0.35):
-            ct = _chord_tone_indices(current_roman, key, mel_scale, active_scale)
+            ct = _chord_tone_indices(current_roman, key, scale, active_scale)
             if ct:
                 current_note_idx = min(ct, key=lambda i: abs(i - current_note_idx))
                 _last_interval = 0
@@ -435,7 +443,7 @@ def generate_melody(
             pitch = max(active_range[0], min(active_range[1], pitch))
 
         # Chord tones landing on chord downbeats get longer values — structural arrivals ring out
-        _chord_pcs = {p % 12 for p in roman_to_chord(current_roman, key, mel_scale, octave=4)}
+        _chord_pcs = {p % 12 for p in roman_to_chord(current_roman, key, scale, octave=4)}
         _is_structural = is_chord_downbeat and (pitch % 12) in _chord_pcs
         # Data-driven note rhythm: sample the duration from the corpus's real
         # duration distribution when a melody prior is present.
@@ -459,7 +467,7 @@ def generate_melody(
 
         # Grace note: add before chord-tone arrivals on downbeats in expressive styles
         if grace_notes and is_chord_downbeat and is_strong_beat and should_trigger(0.22):
-            ct = _chord_tone_indices(current_roman, key, mel_scale, active_scale)
+            ct = _chord_tone_indices(current_roman, key, scale, active_scale)
             if current_note_idx in ct:
                 _add_grace_note(raw, pitch, max(0.0, _swing(beat) + jitter), vel, channel=2)
 

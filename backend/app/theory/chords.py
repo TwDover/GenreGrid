@@ -9,6 +9,19 @@
 from app.core.constants import SCALE_INTERVALS, ROMAN_TO_DEGREE
 from app.theory.notes import note_name_to_midi
 
+# Scales with fewer than 7 degrees (pentatonic/blues/whole-tone) have no interval
+# defined for every roman-numeral degree 0-6 — indexing them directly wraps degree 5/6
+# onto an unrelated earlier degree (e.g. unflatted "VI" would alias to "I"). Root position
+# for a plain (non-altered) roman numeral is instead looked up in the closest full
+# 7-degree diatonic parent scale; chord quality (major/minor) still comes from the
+# numeral's case, so this only fixes which scale degree the root sits on.
+_DEGREE_LOOKUP_PARENT_SCALE = {
+    "pentatonic_minor": "minor",
+    "pentatonic_major": "major",
+    "blues": "minor",
+    "whole_tone": "major",
+}
+
 
 def _triad(root: int, quality: str) -> list[int]:
     if quality == "major":
@@ -85,7 +98,8 @@ def roman_to_chord(
         major_intervals = SCALE_INTERVALS["major"]
         semitone = major_intervals[degree % len(major_intervals)]
     else:
-        semitone = intervals[degree % len(intervals)]
+        degree_intervals = SCALE_INTERVALS.get(_DEGREE_LOOKUP_PARENT_SCALE.get(scale), None) or intervals
+        semitone = degree_intervals[degree % len(degree_intervals)]
     chord_root = root_midi + semitone + alteration
 
     # Explicit chord type suffix overrides allow_7th / allow_9th style parameters
