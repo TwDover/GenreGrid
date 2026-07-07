@@ -181,7 +181,7 @@ import QualityBadge from './QualityBadge.vue'
 import ArrangementBuilder from './ArrangementBuilder.vue'
 import type { GenerateResponse, FileInfo } from '../types/midi'
 import { regeneratePart, saveToLibrary, bundleUrl, sectionsUrl } from '../services/api'
-import { useMidiPlayer } from '../composables/useMidiPlayer'
+import { useMidiPlayer, type PlayerPart } from '../composables/useMidiPlayer'
 import { resolveProgression } from '../utils/chordResolver'
 
 const props = defineProps<{ history: GenerateResponse[]; loading?: boolean; starredIds?: Set<string> }>()
@@ -385,7 +385,11 @@ async function handleOfflineExport(response: GenerateResponse, mode: 'wav' | 'st
       const blob = await offlineRender(combinedFile.url, response.style, durationSeconds, 'all', v => { exportProgress.value = v })
       triggerDownload(blob, `${label}.wav`)
     } else {
-      const stems = ['drums', 'bass', 'melodic'] as const
+      // One WAV per part actually present in this generation (true per-part
+      // stems, not the old drums/bass/melodic buckets).
+      const stems = response.files
+        .map(f => f.part)
+        .filter(p => p !== 'combined' && p !== 'song') as PlayerPart[]
       for (let i = 0; i < stems.length; i++) {
         const stem = stems[i]
         exportStem.value = stem

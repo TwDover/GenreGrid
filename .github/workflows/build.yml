@@ -32,6 +32,7 @@ jobs:
           source .venv/bin/activate
           pip install -q -r requirements.txt
           pip install -q pyinstaller
+          python -m pytest -q
           pyinstaller genregrid.spec --distpath dist --workpath build/pyinstaller --noconfirm
 
       - name: Install frontend dependencies
@@ -39,6 +40,9 @@ jobs:
 
       - name: Type-check frontend
         run: cd frontend && npx vue-tsc --noEmit
+
+      - name: Frontend tests
+        run: cd frontend && npm test
 
       - name: Package Electron app
         run: cd frontend && npm run build:electron

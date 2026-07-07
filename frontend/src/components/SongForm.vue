@@ -32,6 +32,38 @@
             />
           </div>
         </button>
+        <button
+          class="tpl-card"
+          :class="{ active: form.template === 'custom' }"
+          @click="form.template = 'custom'"
+        >
+          <span class="tpl-name">Custom</span>
+          <span class="tpl-bars">~{{ customTotalBars }}b</span>
+          <div class="tpl-strip">
+            <span
+              v-for="(sec, i) in customSections"
+              :key="i"
+              class="tpl-seg"
+              :class="`seg-${sec.section_type}`"
+              :style="{ flex: sec.bars }"
+              :title="sec.section_type"
+            />
+          </div>
+        </button>
+      </div>
+
+      <!-- Custom template editor -->
+      <div v-if="form.template === 'custom'" class="custom-editor">
+        <div v-for="(sec, i) in customSections" :key="i" class="ce-row">
+          <select v-model="sec.section_type" class="sb-select ce-type">
+            <option v-for="t in SECTION_TYPES" :key="t" :value="t">{{ t.replace('_', ' ') }}</option>
+          </select>
+          <input v-model.number="sec.bars" type="number" min="1" max="32" class="sb-input ce-bars" />
+          <button class="ce-btn" :disabled="i === 0" @click="moveSection(i, -1)" title="Move up">↑</button>
+          <button class="ce-btn" :disabled="i === customSections.length - 1" @click="moveSection(i, 1)" title="Move down">↓</button>
+          <button class="ce-btn ce-del" :disabled="customSections.length <= 1" @click="customSections.splice(i, 1)" title="Remove">✕</button>
+        </div>
+        <button class="ce-add" :disabled="customSections.length >= 20" @click="customSections.push({ section_type: 'verse', bars: 8 })">＋ section</button>
       </div>
     </div>
 
@@ -80,6 +112,14 @@
           <option :value="5">+5 (4th)</option>
           <option :value="-2">−2</option>
           <option :value="-5">−5</option>
+        </select>
+      </div>
+      <div class="sb-field sb-field-sm">
+        <label class="sb-label">Final <span class="sb-val" title="Extra semitone lift on the last chorus only — the classic gear change">lift</span></label>
+        <select v-model.number="form.final_chorus_lift" class="sb-select">
+          <option :value="0">none</option>
+          <option :value="1">+1</option>
+          <option :value="2">+2</option>
         </select>
       </div>
     </div>
@@ -200,7 +240,30 @@ const form = ref({
   template: 'verse_chorus',
   use_priors: false,
   chorus_key_shift: 0,
+  final_chorus_lift: 1,
 })
+
+// Custom template editor state — seeded with a sensible starting arrangement.
+const SECTION_TYPES = ['intro', 'verse', 'pre_chorus', 'chorus', 'post_chorus', 'bridge', 'instrumental_solo', 'outro']
+const customSections = ref<{ section_type: string; bars: number }[]>([
+  { section_type: 'intro', bars: 4 },
+  { section_type: 'verse', bars: 8 },
+  { section_type: 'chorus', bars: 8 },
+  { section_type: 'outro', bars: 4 },
+])
+const customTotalBars = computed(() => customSections.value.reduce((n, s) => n + s.bars, 0))
+
+function moveSection(i: number, dir: number) {
+  const j = i + dir
+  const arr = customSections.value
+  ;[arr[i], arr[j]] = [arr[j], arr[i]]
+}
+
+// Sensible defaults per section type when building a custom template payload
+const CUSTOM_PARTS_MODE: Record<string, string> = {
+  intro: 'melodic', verse: 'no_arp', pre_chorus: 'sparse', chorus: 'full',
+  post_chorus: 'full', bridge: 'full', instrumental_solo: 'full', outro: 'melodic',
+}
 
 const selectedStyle = computed(() => props.styles.find(s => s.id === form.value.style_id))
 const templateLabel = computed(() => templates.find(t => t.id === form.value.template)?.label ?? form.value.template)
@@ -223,7 +286,18 @@ async function generate() {
   error.value = null
   emit('building', true)
   try {
-    const result = await buildSong({ ...form.value })
+    const payload: any = { ...form.value }
+    if (form.value.template === 'custom') {
+      payload.custom_template = customSections.value.map((s, i) => ({
+        section_type: s.section_type,
+        bars: s.bars,
+        name: `${s.section_type.replace('_', ' ')} ${i + 1}`,
+        parts_mode: CUSTOM_PARTS_MODE[s.section_type] ?? 'full',
+        chorus_key: s.section_type === 'chorus',
+        bridge_key: s.section_type === 'bridge',
+      }))
+    }
+    const result = await buildSong(payload)
     emit('built', result, templateLabel.value)
   } catch (e: any) {
     error.value = e.message ?? 'Song generation failed'
@@ -302,4 +376,25 @@ async function generate() {
 .seg-bridge { background: #502060; }
 .seg-instrumental_solo { background: #603020; }
 .seg-outro { background: #102030; }
+
+/* Custom template editor */
+.custom-editor { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.5rem; }
+.ce-row { display: flex; align-items: center; gap: 0.3rem; }
+.ce-type { flex: 1; min-width: 0; }
+.ce-bars { width: 56px; flex-shrink: 0; }
+.ce-btn {
+  width: 24px; height: 24px; flex-shrink: 0; padding: 0;
+  background: #0d2535; border: 1px solid #122f40; border-radius: 4px;
+  color: #4a7080; font-size: 0.7rem; cursor: pointer; line-height: 1;
+}
+.ce-btn:hover:not(:disabled) { color: #00c8ff; }
+.ce-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.ce-del:hover:not(:disabled) { color: #f87171; }
+.ce-add {
+  align-self: flex-start; font-size: 0.7rem; padding: 0.25rem 0.6rem;
+  background: transparent; border: 1px dashed #0d2535; border-radius: 5px;
+  color: #4a7080; cursor: pointer;
+}
+.ce-add:hover:not(:disabled) { border-color: #00c8ff66; color: #00c8ff; }
+.ce-add:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
