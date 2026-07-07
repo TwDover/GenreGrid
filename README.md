@@ -34,6 +34,8 @@ Prefer to run from source or build it yourself? See [Running in the browser](#ru
 - **Per-section quality & re-roll** — every song section runs a quality-gated multi-attempt search; its score shows as a badge on the song timeline, and any section can be re-rolled with one click while the rest of the song stays byte-identical. Individual parts can also be re-rolled — or **added after the fact** if you forgot to select one
 - **Version history** — every re-roll/add snapshots the song first; the History picker restores any of the last five states (and a restore is itself restorable)
 - **In-app mixer** — a volume slider on every song part rebalances the stems on disk (preview, drag-to-DAW, and exports all reflect it); gains are absolute, so 100% always restores the generated balance
+- **Note editing** — click a note in any song part's piano roll to select it, nudge with arrow keys (pitch ±1, Shift = octave, ←/→ = 16th-note steps), Delete to remove; saving rewrites the stem and rebuilds the song, with a version snapshot taken first so edits are undoable from History
+- **Build automation** — pre-chorus sections carry a rising filter sweep (CC74 + half-depth CC1) on chords/pads and an expression crescendo (CC11) into the chorus, so builds sound produced, not just arranged
 - **Songs survive reloads** — the recent-songs list reconciles with what's on disk at startup, so cleaned-up exports disappear and songs built in another session appear
 - **Style blending** — blend a second style into a loop *or* a whole song (groove, swing, density, and progression pools interpolate)
 - **DAW-ready song files** — `song.mid` carries section markers (Intro/Verse/Chorus… with key changes labeled) and a key signature, so your DAW timeline mirrors the app's
@@ -41,7 +43,7 @@ Prefer to run from source or build it yourself? See [Running in the browser](#ru
 - **Quality scorer** — every generation is scored across up to six musical dimensions (harmonic coherence, part separation, rhythm fit, density, mix balance, and — when a learned corpus prior exists — style-match) and returns a 0–1 score, label, and any issue flags alongside the MIDI
 - **Generation library** — high-scoring generations are saved locally and used to influence rhythm patterns in future generations, improving style consistency over time
 - **Data-driven patterns** — each style ships with idiomatic chord progressions and drum patterns, so a fresh clone generates good output with no setup. An optional mining pipeline can further tailor generation from MIDI corpora **you supply** (e.g. Groove MIDI, POP909, Lakh — used locally under their own licenses; see [Training on real corpora](#training-on-real-corpora-optional)), toggled per generation with a **Use my local MIDI corpus** switch
-- In-browser MIDI preview with play/stop, per-part mute (shift-click to solo), and a **seekable song timeline** — click any section block to play from there
+- In-browser MIDI preview with play/stop, per-part mute (shift-click to solo), and a **seekable song timeline** with a live playhead and current-section highlight — click any section block to play from there; elapsed/total time shows in the playback bar, and actions confirm with toast notifications
 - **WAV export** — offline-render the full mix or true per-part stems, matching the preview voices
 - Generation history — last 10 results stay accessible in the UI
 - **Drag to DAW** — in the desktop app, drag any part directly into your DAW using the drag handle on each part card
@@ -64,7 +66,7 @@ Prefer to run from source or build it yourself? See [Running in the browser](#ru
 
 ## Styles
 
-31 built-in styles across electronic, hip-hop, live/band, global, and mood categories:
+31 built-in styles across electronic, hip-hop, live/band, global, and mood categories — the style browser filters by category, pins favorites, and **auditions any style with one click** (generates and plays a 2-bar taste):
 
 `lofi` `boom_bap` `dark_trap` `drill` `grime` `trap_soul` `cloud_rap` `hyperpop`
 `house` `techno` `drum_and_bass` `synthwave` `future_bass` `jersey_club`

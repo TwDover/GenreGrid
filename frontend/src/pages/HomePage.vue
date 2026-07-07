@@ -131,6 +131,8 @@
         </table>
       </div>
     </div>
+
+    <ToastHost />
   </div>
 </template>
 
@@ -142,6 +144,7 @@ import LibraryPanel from '../components/LibraryPanel.vue'
 import NowPlayingBar from '../components/NowPlayingBar.vue'
 import SongForm from '../components/SongForm.vue'
 import SongResult from '../components/SongResult.vue'
+import ToastHost from '../components/ToastHost.vue'
 import { fetchStyles, generate, batchGenerate, listSongs } from '../services/api'
 import type { StyleInfo, GenerateRequest, GenerateResponse, FileInfo, LibraryEntry, BuildSongResponse } from '../types/midi'
 import { useMidiPlayer } from '../composables/useMidiPlayer'

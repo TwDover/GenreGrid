@@ -34,17 +34,38 @@
         >
           <div class="card-top">
             <span class="card-name">{{ style.name }}</span>
-            <button
-              class="card-play"
-              :class="{ playing: isPlayingStyle(style.id) }"
-              :disabled="isLoading && !isPlayingStyle(style.id)"
-              @click.stop="togglePreview(style.id)"
-              :title="isPlayingStyle(style.id) ? 'Stop preview' : 'Preview style'"
-            >{{ isPlayingStyle(style.id) ? '■' : '▶' }}</button>
+            <div class="card-actions">
+              <button
+                class="card-fav"
+                :class="{ faved: favorites.has(style.id) }"
+                @click.stop="toggleFavorite(style.id)"
+                :title="favorites.has(style.id) ? 'Remove from favorites' : 'Add to favorites'"
+              >{{ favorites.has(style.id) ? '★' : '☆' }}</button>
+              <button
+                class="card-play"
+                :class="{ playing: isPlayingStyle(style.id) }"
+                :disabled="isLoading && !isPlayingStyle(style.id)"
+                @click.stop="togglePreview(style.id)"
+                :title="isPlayingStyle(style.id) ? 'Stop preview' : 'Preview style'"
+              >{{ isPlayingStyle(style.id) ? '■' : '▶' }}</button>
+            </div>
           </div>
           <span class="card-bpm">{{ style.bpm_range[0] }}–{{ style.bpm_range[1] }} BPM</span>
           <span class="card-scale">{{ style.default_scale }}</span>
           <span class="card-desc">{{ STYLE_DESCRIPTIONS[style.id] ?? '' }}</span>
+          <div class="card-audition">
+            <button
+              class="audition-btn"
+              :class="{ playing: isAuditionPlaying(style) }"
+              :disabled="auditioningId !== null && auditioningId !== style.id"
+              @click.stop="toggleAudition(style)"
+              :title="isAuditionPlaying(style) ? 'Stop audition' : 'Generate and play a 2-bar loop'"
+            >
+              <span v-if="auditioningId === style.id" class="audition-spinner"></span>
+              <template v-else>{{ isAuditionPlaying(style) ? '■ stop' : '▶ audition' }}</template>
+            </button>
+            <span v-if="auditionErrors[style.id]" class="audition-error">{{ auditionErrors[style.id] }}</span>
+          </div>
         </button>
       </div>
 
@@ -52,9 +73,16 @@
   </div>
 </template>
 
+<script lang="ts">
+// Session-scoped cache: style id → combined-file URL from a prior audition
+// generate. Module-level so it survives the browser overlay being unmounted.
+const auditionCache = new Map<string, string>()
+</script>
+
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { StyleInfo } from '../types/midi'
+import { generate } from '../services/api'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 
 const props = defineProps<{ styles: StyleInfo[]; modelValue: string }>()
@@ -67,14 +95,14 @@ const STYLE_CATEGORIES: Record<string, string> = {
   house: 'Electronic', techno: 'Electronic', drum_and_bass: 'Electronic',
   synthwave: 'Electronic', future_bass: 'Electronic', jersey_club: 'Electronic',
   hyperpop: 'Electronic',
-  boom_bap: 'Hip-Hop', dark_trap: 'Hip-Hop', drill: 'Hip-Hop',
-  trap_soul: 'Hip-Hop', cloud_rap: 'Hip-Hop', lofi: 'Hip-Hop', grime: 'Hip-Hop',
-  rnb: 'Soul / R&B', soul: 'Soul / R&B', funk: 'Soul / R&B',
-  afrobeats: 'Global', afropop: 'Global', dancehall: 'Global',
-  reggaeton: 'Global', cumbia: 'Global', samba: 'Global', baile_funk: 'Global',
-  latin_jazz: 'Latin / Jazz', bossa_nova: 'Latin / Jazz', jazz: 'Latin / Jazz',
-  cinematic: 'Cinematic', epic_orchestral: 'Cinematic',
-  ambient: 'Cinematic', dark_ambient: 'Cinematic',
+  lofi: 'Hip-hop', boom_bap: 'Hip-hop', dark_trap: 'Hip-hop', drill: 'Hip-hop',
+  grime: 'Hip-hop', trap_soul: 'Hip-hop', cloud_rap: 'Hip-hop',
+  jazz: 'Live', latin_jazz: 'Live', bossa_nova: 'Live',
+  soul: 'Live', rnb: 'Live', funk: 'Live',
+  afrobeats: 'Global', afropop: 'Global', samba: 'Global', cumbia: 'Global',
+  reggaeton: 'Global', dancehall: 'Global', baile_funk: 'Global',
+  cinematic: 'Mood', epic_orchestral: 'Mood',
+  ambient: 'Mood', dark_ambient: 'Mood',
 }
 
 const STYLE_DESCRIPTIONS: Record<string, string> = {
@@ -112,10 +140,17 @@ const STYLE_DESCRIPTIONS: Record<string, string> = {
 }
 
 const ALL_CATS = 'All'
-const categories = [ALL_CATS, 'Electronic', 'Hip-Hop', 'Soul / R&B', 'Global', 'Latin / Jazz', 'Cinematic']
-const activeCategory = ref(
-  props.modelValue ? (STYLE_CATEGORIES[props.modelValue] ?? ALL_CATS) : ALL_CATS
-)
+const categories = [ALL_CATS, 'Electronic', 'Hip-hop', 'Live', 'Global', 'Mood', 'Custom']
+
+function categoryOf(style: StyleInfo): string {
+  return style.custom ? 'Custom' : (STYLE_CATEGORIES[style.id] ?? ALL_CATS)
+}
+
+const activeCategory = ref((() => {
+  if (!props.modelValue) return ALL_CATS
+  const current = props.styles.find(s => s.id === props.modelValue)
+  return current ? categoryOf(current) : (STYLE_CATEGORIES[props.modelValue] ?? ALL_CATS)
+})())
 
 const { toggle, currentlyPlaying, isLoading } = useMidiPlayer()
 
@@ -131,11 +166,85 @@ async function togglePreview(styleId: string) {
   await toggle(previewUrl(styleId), styleId, styleId.replace(/_/g, ' '))
 }
 
-const filteredStyles = computed(() =>
-  activeCategory.value === ALL_CATS
+// ── Favorites — persisted ids, sorted to the front of the grid ─────────────
+const FAV_KEY = 'genregrid_fav_styles'
+
+function loadFavorites(): Set<string> {
+  try {
+    const raw = localStorage.getItem(FAV_KEY)
+    const ids = raw ? JSON.parse(raw) : []
+    return new Set(Array.isArray(ids) ? ids.filter(id => typeof id === 'string') : [])
+  } catch {
+    return new Set()
+  }
+}
+
+const favorites = ref<Set<string>>(loadFavorites())
+
+function toggleFavorite(styleId: string) {
+  const next = new Set(favorites.value)
+  if (next.has(styleId)) next.delete(styleId)
+  else next.add(styleId)
+  favorites.value = next
+  try { localStorage.setItem(FAV_KEY, JSON.stringify([...next])) } catch { /* storage unavailable */ }
+}
+
+const filteredStyles = computed(() => {
+  const inCategory = activeCategory.value === ALL_CATS
     ? props.styles
-    : props.styles.filter(s => STYLE_CATEGORIES[s.id] === activeCategory.value)
-)
+    : props.styles.filter(s => categoryOf(s) === activeCategory.value)
+  // Stable sort: favorites first, original backend order otherwise
+  return [...inCategory].sort(
+    (a, b) => Number(favorites.value.has(b.id)) - Number(favorites.value.has(a.id)),
+  )
+})
+
+// ── One-click audition — generate a tiny loop and play its combined file ───
+const auditioningId = ref<string | null>(null)
+const auditionErrors = ref<Record<string, string>>({})
+
+function isAuditionPlaying(style: StyleInfo): boolean {
+  const url = auditionCache.get(style.id)
+  return url !== undefined && currentlyPlaying.value === url
+}
+
+async function toggleAudition(style: StyleInfo) {
+  const label = `${style.name} audition`
+  const cached = auditionCache.get(style.id)
+  if (cached) {
+    // toggle() stops if this url is already playing, otherwise starts it
+    await toggle(cached, style.id, label)
+    return
+  }
+
+  auditioningId.value = style.id
+  delete auditionErrors.value[style.id]
+  try {
+    const res = await generate({
+      style_id: style.id,
+      key: 'C',
+      scale: style.default_scale,
+      bpm: Math.round((style.bpm_range[0] + style.bpm_range[1]) / 2),
+      bars: 2,
+      complexity: 0.5,
+      variation: 0.4,
+      parts: ['chords', 'bass', 'melody', 'drums'],
+      mode: 'loop',
+      humanize: 0.5,
+      blend_amount: 0.5,
+      use_priors: false,
+    })
+    const combined = res.files.find(f => f.part === 'combined')
+    if (!combined) throw new Error('No combined file returned')
+    auditionCache.set(style.id, combined.url)
+    await toggle(combined.url, style.id, label)
+  } catch (e) {
+    auditionErrors.value[style.id] = e instanceof Error ? e.message : 'Audition failed'
+    setTimeout(() => { delete auditionErrors.value[style.id] }, 4000)
+  } finally {
+    auditioningId.value = null
+  }
+}
 
 function select(id: string) {
   emit('update:modelValue', id)
@@ -254,6 +363,31 @@ function select(id: string) {
   color: #e0e0e8;
 }
 
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.card-fav {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: #2a4550;
+  font-size: 0.8rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: color 0.15s;
+}
+.card-fav:hover { color: #ffd257; }
+.card-fav.faved { color: #ffd257; }
+
 .card-play {
   width: 20px;
   height: 20px;
@@ -287,6 +421,51 @@ function select(id: string) {
   color: #2a4550;
   line-height: 1.35;
   margin-top: 0.2rem;
+}
+
+.card-audition {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+.audition-btn {
+  font-size: 0.62rem;
+  padding: 0.2rem 0.55rem;
+  background: #0d2535;
+  border: 1px solid #122f40;
+  border-radius: 4px;
+  color: #00c8ff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 4.5rem;
+  min-height: 1.35rem;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+.audition-btn:hover:not(:disabled) { background: #003450; }
+.audition-btn.playing { background: #003450; border-color: #00c8ff; }
+.audition-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.audition-spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid #0d2535;
+  border-top-color: #00c8ff;
+  border-radius: 50%;
+  animation: audition-spin 0.7s linear infinite;
+}
+@keyframes audition-spin {
+  to { transform: rotate(360deg); }
+}
+
+.audition-error {
+  font-size: 0.6rem;
+  color: #ff7a7a;
+  line-height: 1.3;
 }
 
 </style>
