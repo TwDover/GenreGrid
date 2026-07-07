@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
+# GenreGrid — one-command build for Linux and macOS.
+# Usage:  ./build.sh [--clean]
+# Output: frontend/release/  (AppImage + .deb on Linux, .dmg + .zip on macOS)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$ROOT/backend"
 FRONTEND_DIR="$ROOT/frontend"
 VENV="$BACKEND_DIR/.venv"
+
+# macOS: skip code-signing discovery — builds are unsigned (see README).
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  export CSC_IDENTITY_AUTO_DISCOVERY=false
+fi
 
 CLEAN=false
 for arg in "$@"; do

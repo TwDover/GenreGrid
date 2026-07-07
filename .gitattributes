@@ -1,0 +1,15 @@
+# Line-ending policy for files where it actually matters — overrides
+# core.autocrlf guessing. (Deliberately no global "* text=auto" rule, to
+# avoid renormalizing the whole repo in one noisy commit.)
+
+# Shell scripts MUST be LF: bash errors on CRLF ("\r: command not found").
+*.sh   text eol=lf
+
+# PowerShell is happiest with CRLF on Windows.
+*.ps1  text eol=crlf
+
+# Binary assets — never touch line endings.
+*.mid  binary
+*.png  binary
+*.ico  binary
+*.icns binary

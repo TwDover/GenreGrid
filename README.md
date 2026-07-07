@@ -97,6 +97,22 @@ Verse sections are 16 bars in all mainstream templates (Verse–Chorus, V–C–
 - Python 3.11+
 - Node.js 20+ (CI builds and releases on Node 22)
 
+### One command (recommended)
+
+Starts the backend (`:8000`, auto-reload) and the frontend (`:5173`) together — Ctrl+C stops both. First run creates the venv and installs all dependencies automatically.
+
+**Windows**
+```powershell
+.\dev.ps1
+```
+
+**Linux / macOS**
+```bash
+./dev.sh
+```
+
+Prefer separate terminals? The manual steps:
+
 ### Backend
 
 **Windows**
@@ -135,34 +151,22 @@ The UI runs at `http://localhost:5173`. Run both in separate terminals.
 
 The desktop app bundles the backend into a self-contained executable — no Python or terminal required to run it.
 
-> **Important:** PyInstaller must be run on the same OS you are building for. To produce a Windows `.exe`, build on Windows. To produce a Linux `.deb` / AppImage, build on Linux.
+> **Important:** PyInstaller must be run on the same OS you are building for. To produce a Windows `.exe`, build on Windows. To produce a Linux `.deb` / AppImage, build on Linux. To produce a macOS `.dmg`, build on a Mac.
 
-### Build (Linux — one command)
+Every platform is a one-command build. Each script creates a Python venv if needed, installs dependencies, compiles the backend with PyInstaller, type-checks the frontend, and packages the Electron app. First runs take a few minutes; later runs reuse the venv. Add `--clean` (or `-Clean` on Windows) to wipe previous build artefacts first.
+
+### Build (Linux / macOS — one command)
 
 ```bash
 ./build.sh
 ```
 
-`build.sh` handles everything: creates a Python venv if needed, installs dependencies, compiles the backend with PyInstaller, and packages the Electron app. On first run it will take a few minutes; subsequent runs are faster as the venv is reused.
+**Output** — Linux: `frontend/release/GenreGrid-x.x.x.AppImage` and `genregrid_x.x.x_amd64.deb` · macOS: `frontend/release/GenreGrid-x.x.x-<arch>.dmg` and `.zip` (unsigned; the script sets `CSC_IDENTITY_AUTO_DISCOVERY=false` for you)
 
-**Output** — `frontend/release/GenreGrid-x.x.x.AppImage` and `frontend/release/genregrid_x.x.x_amd64.deb`
-
-### Build (Windows — manual steps)
+### Build (Windows — one command)
 
 ```powershell
-# 1. Bundle the Python backend
-cd backend
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-pip install pyinstaller
-pyinstaller genregrid.spec
-deactivate
-
-# 2. Build the Electron app
-cd ..\frontend
-npm install
-npm run build:electron
+.\build.ps1
 ```
 
 **Output** — `frontend/release/win-unpacked/GenreGrid.exe` (portable) and `frontend/release/GenreGrid Setup x.x.x.exe` (installer)
@@ -193,25 +197,6 @@ Because the app is **unsigned** (no Apple Developer certificate), Gatekeeper blo
 
 - **Right-click** (or Control-click) **GenreGrid.app → Open → Open**, or
 - run `xattr -cr /Applications/GenreGrid.app` in Terminal.
-
-### Build (macOS — manual steps)
-
-```bash
-# 1. Bundle the Python backend (builds for your Mac's architecture)
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt pyinstaller
-pyinstaller genregrid.spec
-deactivate
-
-# 2. Build the Electron app
-cd ../frontend
-npm install
-CSC_IDENTITY_AUTO_DISCOVERY=false npm run build:electron
-```
-
-**Output** — `frontend/release/GenreGrid-x.x.x-<arch>.dmg` and `.zip`
 
 ### Drag to DAW
 
