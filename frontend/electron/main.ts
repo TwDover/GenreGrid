@@ -85,6 +85,10 @@ async function startBackend(): Promise<void> {
   backendProcess = spawn(exePath, [String(backendPort)], {
     env: { ...process.env, GENREGRID_DATA_DIR: dataDir, CORS_ORIGINS: '*' },
     stdio: ['ignore', logFile, logFile],
+    // The backend is a console-subsystem exe (so devs can run it standalone
+    // and see output); CREATE_NO_WINDOW keeps its blank console from popping
+    // up behind the app on Windows. Output still lands in backend.log.
+    windowsHide: true,
   })
 
   backendProcess.on('error', (err) => console.error('Backend error:', err))
