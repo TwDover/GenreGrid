@@ -54,7 +54,17 @@ const isLoading = ref(false)
 const looping = ref(false)
 const isRecording = ref(false)
 const isRendering = ref(false)
-const channelMuted = ref({ drums: false, bass: false, melodic: false })
+// Per-part mute state, keyed by part name (matches backend _PART_CHANNELS).
+export const PLAYER_PARTS = ['drums', 'bass', 'chords', 'melody', 'arpeggio', 'pads', 'counter_melody'] as const
+export type PlayerPart = typeof PLAYER_PARTS[number]
+const _allUnmuted = (): Record<PlayerPart, boolean> =>
+  ({ drums: false, bass: false, chords: false, melody: false, arpeggio: false, pads: false, counter_melody: false })
+const channelMuted = ref<Record<PlayerPart, boolean>>(_allUnmuted())
+
+// MIDI channel → part name (see backend _PART_CHANNELS; 9 = GM percussion)
+const CHANNEL_PART: Record<number, PlayerPart> = {
+  0: 'chords', 1: 'bass', 2: 'melody', 3: 'arpeggio', 4: 'pads', 5: 'counter_melody', 9: 'drums',
+}
 
 // Abort token — incremented on every new play; stale toggles bail out after each await
 let _playToken = 0
@@ -370,8 +380,9 @@ export function useMidiPlayer() {
           const notes = track.notes.map(n => ({
             time: n.time, midi: n.midi, duration: n.duration, velocity: n.velocity,
           }))
+          const mutePart = CHANNEL_PART[channel] ?? 'chords'
           const part = new Tone.Part<{ time: number; midi: number; duration: number; velocity: number }>((time, note) => {
-            if (channelMuted.value.melodic) return
+            if (channelMuted.value[mutePart]) return
             instrument.triggerAttackRelease(
               Tone.Frequency(note.midi, 'midi').toNote(),
               note.duration, time, note.velocity,
@@ -712,8 +723,26 @@ export function useMidiPlayer() {
     }
   }
 
-  function toggleMute(ch: 'drums' | 'bass' | 'melodic') {
+  function toggleMute(ch: PlayerPart) {
     channelMuted.value = { ...channelMuted.value, [ch]: !channelMuted.value[ch] }
+  }
+
+  function soloPart(ch: PlayerPart) {
+    // Solo = mute everything else. Soloing an already-soloed part unmutes all.
+    const isSolo = !channelMuted.value[ch] && PLAYER_PARTS.every(p => p === ch || channelMuted.value[p])
+    if (isSolo) {
+      channelMuted.value = _allUnmuted()
+    } else {
+      const next = _allUnmuted()
+      for (const p of PLAYER_PARTS) next[p] = p !== ch
+      channelMuted.value = next
+    }
+  }
+
+  function seek(seconds: number) {
+    // Jump the transport while a track is playing (timeline section clicks).
+    if (currentlyPlaying.value === null) return
+    Tone.getTransport().seconds = Math.max(0, seconds)
   }
 
   function setVolume(v: number) {
@@ -737,5 +766,5 @@ export function useMidiPlayer() {
     ]).catch(() => { /* best-effort, ignore network errors */ })
   }
 
-  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute }
+  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek }
 }

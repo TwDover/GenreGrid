@@ -28,18 +28,25 @@
         </div>
       </div>
 
-      <!-- Section timeline -->
+      <!-- Section timeline — click a block to play from there, ⟳ to re-roll it -->
       <div class="sr-timeline">
         <div
-          v-for="sec in result.sections"
+          v-for="(sec, i) in result.sections"
           :key="sec.name"
           class="sr-tl-block"
-          :class="`seg-${sec.section_type}`"
+          :class="[`seg-${sec.section_type}`, { 'sr-tl-busy': sectionRegenLoading === i }]"
           :style="{ flex: sec.bars }"
-          :title="`${sec.name} · ${sec.bars} bars`"
+          :title="`${sec.name} · ${sec.bars} bars — click to play from here`"
+          @click="seekToSection(sec)"
         >
           <span class="sr-tl-name">{{ sec.name }}</span>
-          <span class="sr-tl-bars">{{ sec.bars }}b</span>
+          <button
+            v-if="sec.section_type !== 'ending'"
+            class="sr-tl-regen"
+            :disabled="sectionRegenLoading !== null"
+            :title="`Re-roll ${sec.name}`"
+            @click.stop="onRegenSection(i)"
+          >{{ sectionRegenLoading === i ? '…' : '⟳' }}</button>
         </div>
       </div>
 
@@ -84,13 +91,13 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import type { BuildSongResponse, FileInfo } from '../types/midi'
-import { downloadUrl, regenerateSongPart, undoSongPart } from '../services/api'
+import { downloadUrl, regenerateSongPart, regenerateSongSection, undoSongPart } from '../services/api'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 import PartCard from './PartCard.vue'
 
 const props = defineProps<{ result: BuildSongResponse | null; label: string }>()
 
-const { toggle, stop: stopPlayer, currentlyPlaying } = useMidiPlayer()
+const { toggle, stop: stopPlayer, currentlyPlaying, seek } = useMidiPlayer()
 let songBlobUrl: string | null = null
 
 // Cache-bust versions per part (and the song) after a regeneration.
@@ -143,6 +150,35 @@ async function onRegen(part: string) {
   } finally {
     regenLoading.value = null
   }
+}
+
+const sectionRegenLoading = ref<number | null>(null)
+
+async function onRegenSection(index: number) {
+  if (!props.result || sectionRegenLoading.value !== null) return
+  sectionRegenLoading.value = index
+  regenError.value = null
+  try {
+    const files = await regenerateSongSection({
+      generation_id: props.result.generation_id, section_index: index,
+    })
+    // Every stem may have been rewritten (theme/motif ripple) — bust them all.
+    const v = Date.now()
+    for (const f of files) versions[f.part] = v
+    versions.song = v
+    for (const f of files) if (f.part !== 'song') undoable.add(f.part)
+  } catch (e: any) {
+    regenError.value = e.message ?? 'Section regeneration failed'
+  } finally {
+    sectionRegenLoading.value = null
+  }
+}
+
+async function seekToSection(sec: { start_bar: number }) {
+  if (!props.result) return
+  const seconds = sec.start_bar * 4 * 60 / (props.result.bpm || 120)
+  if (!isPlaying.value) await togglePlay()
+  seek(seconds)
 }
 
 async function onAdd(part: string) {
@@ -234,10 +270,19 @@ function download() {
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 0.35rem; overflow: hidden; min-width: 0; gap: 0.2rem;
   transition: filter 0.15s;
+  cursor: pointer;
 }
 .sr-tl-block:hover { filter: brightness(1.2); }
+.sr-tl-block.sr-tl-busy { filter: brightness(0.7); cursor: wait; }
 .sr-tl-name { font-size: 0.58rem; color: rgba(255,255,255,0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.sr-tl-bars { font-size: 0.52rem; font-family: monospace; color: rgba(255,255,255,0.3); flex-shrink: 0; }
+.sr-tl-regen {
+  background: none; border: none; padding: 0; flex-shrink: 0;
+  font-size: 0.6rem; line-height: 1; color: rgba(255,255,255,0.35); cursor: pointer;
+  opacity: 0; transition: opacity 0.15s, color 0.15s;
+}
+.sr-tl-block:hover .sr-tl-regen { opacity: 1; }
+.sr-tl-regen:hover:not(:disabled) { color: #fff; }
+.sr-tl-regen:disabled { cursor: wait; }
 
 .sr-parts-label {
   font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: #4a7080;
@@ -272,4 +317,5 @@ function download() {
 .seg-bridge { background: #502060; }
 .seg-instrumental_solo { background: #603020; }
 .seg-outro { background: #102030; }
+.seg-ending { background: #0a1420; }
 </style>

@@ -128,6 +128,7 @@ def generate_melody(
     is_loop: bool = False,
     melody_model: dict | None = None,
     harmony_complexity: float | None = None,
+    seed_motif: list[int] | None = None,
 ) -> List[NoteEvent]:
     """`melody_model` — optional mined melody prior (interval/phrase-bigram stats).
 
@@ -140,6 +141,10 @@ def generate_melody(
     `complexity` when omitted) so melody's chord-change timing can't drift out of sync
     with the actual sounding harmony when a section profile scales melody and backing
     complexity differently.
+
+    `seed_motif` — scale-step intervals of a motif from an earlier section (e.g. the
+    verse's opening phrase). When provided, this melody develops that motif instead of
+    inventing an unrelated one, so a song's chorus feels like it grew out of its verse.
     """
     events: List[NoteEvent] = []
     _mined_prev_iv: int | None = None
@@ -220,9 +225,11 @@ def generate_melody(
     _rep_count: int = 0
     _last_interval: int = 0            # signed interval in scale steps for post-leap enforcement
 
-    # Motif development: seed motif intervals extracted from the first phrase
-    _motif_intervals: list[int] = []   # scale-step intervals of the seed motif
-    _motif_locked = False               # True once the seed phrase is complete
+    # Motif development: seed motif intervals extracted from the first phrase —
+    # or handed in from an earlier section so the melody develops the song's theme.
+    _motif_seeded = bool(seed_motif)
+    _motif_intervals: list[int] = list(seed_motif) if seed_motif else []
+    _motif_locked = _motif_seeded       # True once the seed phrase is complete
 
     # Generate raw notes for all bars
     raw: List[NoteEvent] = []
@@ -269,9 +276,11 @@ def generate_melody(
                             pass
                 _motif_locked = True
 
-            # Replay motif at phrase boundaries (not the first phrase)
-            if _motif_locked and _motif_intervals and phrase_idx > 1:
-                if should_trigger(0.35):
+            # Replay motif at phrase boundaries (not the first phrase). A motif
+            # inherited from an earlier section replays earlier and more often —
+            # it's the song's theme, not just local development material.
+            if _motif_locked and _motif_intervals and (phrase_idx > 1 or _motif_seeded):
+                if should_trigger(0.55 if _motif_seeded else 0.35):
                     for interval in _motif_intervals:
                         new_idx = max(0, min(len(active_scale) - 1, current_note_idx + interval))
                         current_note_idx = new_idx

@@ -159,7 +159,15 @@ def generate_chords(
     melody_ceiling: int | None = None,
     kick_times: list[float] | None = None,
     melody_rests: list | None = None,
+    harmony_complexity: float | None = None,
+    prev_voicing: list[int] | None = None,
 ) -> List[NoteEvent]:
+    """`harmony_complexity` — the value that decides chords-per-bar, shared with
+    melody/bass so all three parts agree on the harmonic grid (falls back to
+    `complexity`). `prev_voicing` — the final voicing of the previous section,
+    so voice leading continues smoothly across section boundaries instead of
+    resetting to root position at every seam.
+    """
     events: List[NoteEvent] = []
 
     def _in_melody_rest(beat: float) -> bool:
@@ -246,7 +254,8 @@ def generate_chords(
 
     beats_per_bar = 4
     phrase_beats = beats_per_bar * 4  # 4-bar phrase = 16 beats
-    chords_per_bar = 2 if complexity > 0.6 else 1
+    _harmony_cplx = complexity if harmony_complexity is None else harmony_complexity
+    chords_per_bar = 2 if _harmony_cplx > 0.6 else 1
     beats_per_chord = beats_per_bar / chords_per_bar
     total_chords = bars * chords_per_bar
     step = 0.25  # 16th note
@@ -258,7 +267,7 @@ def generate_chords(
         tick = int(beat * ticks_per_beat)
         return apply_swing(tick, swing_amount, ticks_per_beat) / ticks_per_beat
 
-    prev_pitches: list[int] = []  # tracks the sounded voicing for voice leading
+    prev_pitches: list[int] = sorted(prev_voicing) if prev_voicing else []  # tracks the sounded voicing for voice leading
 
     for i in range(total_chords):
         if prog_source is not None:

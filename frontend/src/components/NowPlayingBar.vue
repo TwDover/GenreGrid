@@ -13,13 +13,13 @@
     <span v-else class="np-label">{{ nowPlayingLabel ?? '…' }}</span>
     <template v-if="currentlyPlaying && !isRecording">
       <button
-        v-for="ch in (['drums', 'bass', 'melodic'] as const)"
+        v-for="ch in PLAYER_PARTS"
         :key="ch"
         class="np-mute"
         :class="{ muted: channelMuted[ch] }"
-        @click="toggleMute(ch)"
-        :title="`${channelMuted[ch] ? 'Unmute' : 'Mute'} ${ch}`"
-      >{{ ch[0].toUpperCase() }}</button>
+        @click="(e: MouseEvent) => e.shiftKey ? soloPart(ch) : toggleMute(ch)"
+        :title="`${channelMuted[ch] ? 'Unmute' : 'Mute'} ${partLabel(ch)} — shift-click to solo`"
+      >{{ chipLabel(ch) }}</button>
     </template>
     <button
       class="np-loop"
@@ -33,9 +33,15 @@
 </template>
 
 <script setup lang="ts">
-import { useMidiPlayer } from '../composables/useMidiPlayer'
+import { useMidiPlayer, PLAYER_PARTS, type PlayerPart } from '../composables/useMidiPlayer'
 
-const { currentlyPlaying, nowPlayingLabel, isLoading, stop, looping, setLooping, isRecording, channelMuted, toggleMute } = useMidiPlayer()
+const { currentlyPlaying, nowPlayingLabel, isLoading, stop, looping, setLooping, isRecording, channelMuted, toggleMute, soloPart } = useMidiPlayer()
+
+const partLabel = (ch: PlayerPart) => ch.replace('_', ' ')
+// Chip initials: two letters where one is ambiguous (Chords/Counter-melody)
+const chipLabel = (ch: PlayerPart) => (
+  { drums: 'D', bass: 'B', chords: 'Ch', melody: 'M', arpeggio: 'A', pads: 'P', counter_melody: 'Cm' }[ch]
+)
 </script>
 
 <style scoped>
@@ -48,7 +54,7 @@ const { currentlyPlaying, nowPlayingLabel, isLoading, stop, looping, setLooping,
   border: 1px solid #00c8ff44;
   border-radius: 6px;
   min-width: 0;
-  max-width: 280px;
+  max-width: 380px;
 }
 
 .np-icon {
@@ -94,13 +100,13 @@ const { currentlyPlaying, nowPlayingLabel, isLoading, stop, looping, setLooping,
   font-size: 0.6rem;
   font-weight: 700;
   cursor: pointer;
-  width: 18px;
+  min-width: 18px;
+  padding: 0 3px;
   height: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  padding: 0;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
   line-height: 1;
 }
