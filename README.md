@@ -1,6 +1,6 @@
 # GenreGrid
 
-A style-based MIDI generator. Pick a genre, set your key, BPM, and complexity, and get back downloadable MIDI files for chords, bassline, melody, drums, and arpeggio — all harmonically aligned to the same chord progression.
+A style-based MIDI generator. Pick a genre, set your key, BPM, and complexity, and get back downloadable MIDI files for chords, bassline, melody, drums, arpeggio, pads, and counter-melody — all harmonically aligned to the same chord progression, as a single loop or a fully arranged song.
 
 ## Download
 
@@ -19,21 +19,24 @@ Prefer to run from source or build it yourself? See [Running in the browser](#ru
 
 ## What it does
 
-- Generates MIDI for five parts: **chords**, **bass**, **melody**, **drums**, and **arpeggio**
+- Generates MIDI for seven parts: **chords**, **bass**, **melody**, **drums**, **arpeggio**, **pads**, and **counter-melody**
 - Each part is generated from a style definition (JSON) that controls BPM range, chord progressions, extensions, rhythm density, swing, humanization, and more
 - Melody is chord-aware — targets chord tones on downbeats and uses context-aware note durations (longer notes on structural arrivals)
-- Bass and chords always share the same progression; arpeggio voices the same harmony above the chords
-- Drums use genre-appropriate elements (kick patterns, ride, clap, crash, tom fills, swing) per style
+- Bass, chords, and melody share one harmonic grid — the same progression, resolved substitutions, and chords-per-bar timing — so the parts always agree on what chord is sounding
+- Drums use genre-appropriate elements (kick patterns, ride, clap, crash, tom fills, swing) per style — and **arrange per section**: stripped intros, building pre-choruses, crash-announced choruses, half-time bridges, decaying outros, with fills sized by the energy of the next section
 - **Loop mode** — generates a single tight section (the default) for a quick idea or a DAW-ready loop
 - **Arrangement mode** — generates a full arrangement arc (intro → verse → chorus → outro) from a single bar count, with per-section complexity, dynamic scaling, and energy ramps at section transitions
-- **Song Builder** — generates a complete song by stitching independently-produced sections using named templates (Verse–Chorus, V–C–Bridge, Extended, Compact, Minimal); each section type has distinct part layering, harmonic density, and dynamic profile
+- **Song Builder** — generates a complete song from named templates (Verse–Chorus, V–C–Bridge, Extended, Compact, Minimal) or a **custom template** you arrange yourself. Songs get real song craft: one shared progression across all sections, chord voicings that voice-lead across section seams, choruses that develop the verse's motif, an intro that teases the chorus hook, light variation on repeated sections, chorus/bridge key shifts plus a **final-chorus gear change**, a tempo map (subtle chorus push + closing ritardando), and a proper ending bar that rings out on the tonic
+- **Per-section quality & re-roll** — every song section runs a quality-gated multi-attempt search; its score shows as a badge on the song timeline, and any section can be re-rolled with one click while the rest of the song stays byte-identical. Individual parts can also be re-rolled — or **added after the fact** if you forgot to select one
 - **Style-aware playback** — in-browser preview uses genre-matched samplers and synthesis engines: acoustic kits, LinnDrum, breakbeats, Techno kit, Rhodes, clavinet, vibraphone, nylon guitar, accordion, strings, synth leads, and pads — routed automatically per style
 - **Quality scorer** — every generation is scored across up to six musical dimensions (harmonic coherence, part separation, rhythm fit, density, mix balance, and — when a learned corpus prior exists — style-match) and returns a 0–1 score, label, and any issue flags alongside the MIDI
 - **Generation library** — high-scoring generations are saved locally and used to influence rhythm patterns in future generations, improving style consistency over time
 - **Data-driven patterns** — each style ships with idiomatic chord progressions and drum patterns, so a fresh clone generates good output with no setup. An optional mining pipeline can further tailor generation from MIDI corpora **you supply** (e.g. Groove MIDI, POP909, Lakh — used locally under their own licenses; see [Training on real corpora](#training-on-real-corpora-optional)), toggled per generation with a **Use my local MIDI corpus** switch
-- In-browser MIDI preview with play/stop and mute per layer (drums / bass / melodic)
+- In-browser MIDI preview with play/stop, per-part mute (shift-click to solo), and a **seekable song timeline** — click any section block to play from there
+- **WAV export** — offline-render the full mix or true per-part stems, matching the preview voices
 - Generation history — last 10 results stay accessible in the UI
 - **Drag to DAW** — in the desktop app, drag any part directly into your DAW using the drag handle on each part card
+- **Reproducible seeds** — the same seed always rebuilds the same song, byte for byte, across app restarts
 
 ### Mix quality features
 
@@ -44,8 +47,9 @@ Prefer to run from source or build it yourself? See [Running in the browser](#ru
 - Sustain pedal (CC64) applied only to pad/hold styles; suppressed for staccato comping and orchestral brass/strings
 - Phrase breath dynamics — 4-bar arc of subtle velocity swells across all melodic parts
 - Arpeggio call-and-response — boosts arpeggio velocity during melody rests; reduces arpeggio complexity when melody is active
-- Section energy ramps — gradual velocity fade-in over the first 8 beats of any energy-increasing transition (verse → chorus, intro → verse)
+- Section energy ramps — gradual velocity fade-in over the first 8 beats of any energy-increasing transition (verse → chorus, intro → verse), including across Song Builder section seams
 - Kick-sync chord comping — chord hits that land within an 8th-note of a kick drum receive a small velocity accent
+- Pads sit as a soft, voice-led wash above the comp (choruses/bridges only in songs); the counter-melody harmonizes the lead a diatonic 3rd/6th below, reserved for the final chorus so the ending outsizes what came before
 
 ---
 
@@ -63,15 +67,18 @@ Prefer to run from source or build it yourself? See [Running in the browser](#ru
 
 ## Song Builder templates
 
-| Template | Total bars | Structure |
+| Template | Bars* | Structure |
 |---|---|---|
 | **Verse–Chorus** | 56 | Melodic intro · Verse×2 · Chorus×2 · Melodic outro |
 | **V–C–Bridge** | 80 | No-drum intro · Verse×2 · Pre-chorus×2 · Chorus×2 · Bridge · Final chorus · Melodic outro |
 | **Extended** | 80 | Foundation intro · Verse×2 · Chorus×2 · Instrumental · Bridge · Final chorus |
 | **Compact** | 40 | Chords intro · Verse×2 · Chorus×2 · Chords outro |
 | **Minimal** | 24 | Foundation intro · Main (16 bars) · Melodic outro |
+| **Custom** | — | Arrange your own section sequence (type + bars per section) in the Song form |
 
-Verse sections are 16 bars in all mainstream templates (Verse–Chorus, V–C–Bridge, Extended). Chorus sections are 8 bars.
+\* Every song gets one extra **ending bar** (held tonic chord + crash, with a ritardando) on top of the listed total.
+
+Verse sections are 16 bars in all mainstream templates (Verse–Chorus, V–C–Bridge, Extended). Chorus sections are 8 bars. Bridges modulate to the subdominant by default; the last chorus adds a configurable **final lift** (+1 semitone by default) on top of any chorus key shift.
 
 ---
 
@@ -302,14 +309,18 @@ Key fields:
 | `bass` | object | `pattern_density`, `octave_jumps`, `sustain_bias`, optional `bass_style` (`walking`, `808`, `standard`) |
 | `arpeggio` | object | `pattern` (`up`/`down`/`up_down`/`random`/`chord_burst`), `speed` (beats per note), `include_octave`, `allow_7th` |
 | `melody` | object | `density`, `stepwise_motion`, `leap_probability`, `rest_probability`, `range [lo, hi]` |
-| `melody_scale` | string | Scale used for melody (can differ from harmony, e.g. pentatonic over diatonic chords) |
-| `drums` | object | `hat_density`, `triplet_probability`, `snare_standard_beats`, `swing`, optional `kick_pattern`, `hat_pattern`, `hat_vel`, `use_ride`, `use_clap`, `crash_on_bar_1`, `flam_prob`, `tom_fills` |
+| `melody_scale` | string | Scale used for the melodic contour (can differ from harmony, e.g. pentatonic over diatonic chords; chord-tone targeting always uses the harmonic scale) |
+| `pads` | object | Optional pads-part config: `register [lo, hi]` (default `[64, 86]`), `velocity`, `color_9th_prob` |
+| `counter_melody` | object | Optional counter-melody config: `velocity_scale` (default 0.72), `floor` (lowest harmonized note, default 55) |
+| `drums` | object | `hat_density`, `triplet_probability`, `snare_standard_beats`, `swing`, optional `kick_pattern`, `hat_pattern`, `hat_vel`, `use_ride`, `use_clap`, `crash_on_bar_1`, `flam_prob`, `tom_fills`, `half_time_bridge` (default true — bridges flip to half-time in songs) |
 | `velocity_base` | int | Base MIDI velocity for chord notes |
 | `vel_arc_start` | float | Velocity at bar 1 relative to peak (0.0–1.0); controls the dynamic build across the section |
 | `groove_push` | float | Systematic timing offset in beats (negative = behind beat, positive = ahead) |
 | `secondary_dominants` | bool | Allow secondary dominant substitutions in progressions |
 | `tritone_substitution` | bool | Allow tritone substitutions on V chords |
 | `chorus_key_shift` | int | Semitones to transpose the key for chorus sections in Song Builder |
+| `bridge_key_shift` | int | Semitones to transpose bridge sections (default 5 — subdominant lift) |
+| `final_chorus_lift` | int | Extra semitones added to the LAST chorus only (gear change; default 1) |
 | `prior` | string | Name of a mined harmony prior to bias progressions/melody (defaults to `id`); optional — see [Training](#training-on-real-corpora-optional) |
 | `groove` | string | Name of a mined drum groove to overlay (defaults to `id`); optional |
 
@@ -319,23 +330,34 @@ To add style-aware **playback instruments**, update the mapping dicts in:
 - `frontend/src/soundfonts/drums.ts` — drum kit
 - `frontend/src/composables/useMidiPlayer.ts` — add to `SYNTH_STYLES`, `MELODIC_SYNTH_STYLES`, or `PAD_STYLES` if the style uses synthesis rather than samples
 
+The **pads** and **counter-melody** parts always play through dedicated voices (a sustained pad wash and a soft string ensemble) regardless of style, so they don't need per-style mapping.
+
 ---
 
 ## Running tests
 
-**Windows**
+**Backend (Windows)**
 ```powershell
 cd backend
 .venv\Scripts\activate
 pytest
 ```
 
-**Linux / macOS**
+**Backend (Linux / macOS)**
 ```bash
 cd backend
 source .venv/bin/activate
 pytest
 ```
+
+**Frontend**
+```bash
+cd frontend
+npm test              # vitest
+npx vue-tsc --noEmit  # type-check
+```
+
+CI runs both suites (plus the type-check) on every push and pull request.
 
 ---
 

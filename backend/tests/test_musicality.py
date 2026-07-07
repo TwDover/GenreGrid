@@ -11,14 +11,15 @@ correctness, song endings, tempo maps, and section arrangement rules."""
 import random
 
 import mido
+import pytest
 
 from app.core.constants import DRUM_MAP
 from app.theory.chords import roman_to_chord
 from app.generators.drums import generate_drums
 from app.generators.chords import generate_chords, resolve_progression
 from app.services.style_loader import load_style
-from app.models.schemas import BuildSongRequest
-from app.api.routes_generate import build_song
+from app.models.schemas import BuildSongRequest, SongSectionDef, RegenerateSongPartRequest
+from app.api.routes_generate import build_song, regenerate_song_part
 from app.core.arrangement import _song_tempo_map
 from app.core.config import EXPORTS_DIR
 
@@ -135,6 +136,82 @@ def test_song_has_ending_bar_and_tempo_track():
             if msg.type == "note_on" and msg.velocity > 0 and t / tpb >= ending_beat - 0.5:
                 notes.append(msg.note % 12)
     assert 0 in notes, "ending bar should land on the tonic (C)"
+
+
+@pytest.fixture(scope="module")
+def song_vc():
+    """One verse_chorus build shared by the gear-change/tease/quality tests.
+
+    use_priors=False keeps this hermetic: the mining tests install corpus
+    priors into the shared library, which would otherwise change what this
+    build generates depending on test execution order.
+    """
+    return build_song(BuildSongRequest(style_id="lofi", key="C", scale="major", bpm=90,
+                                       template="verse_chorus",
+                                       parts=["chords", "bass", "melody", "drums"],
+                                       seed=53, chorus_key_shift=0, final_chorus_lift=2,
+                                       use_priors=False))
+
+
+def _note_ons(gen_id: str, part: str) -> list[tuple[float, int]]:
+    mid = mido.MidiFile(str(EXPORTS_DIR / gen_id / f"{part}.mid"))
+    tpb = mid.ticks_per_beat
+    out = []
+    for tr in mid.tracks:
+        t = 0
+        for msg in tr:
+            t += msg.time
+            if msg.type == "note_on" and msg.velocity > 0:
+                out.append((t / tpb, msg.note))
+    return out
+
+
+def _section_events(song, gen_id, part, name):
+    s = next(x for x in song.sections if x.name == name)
+    a, b = s.start_bar * 4, (s.start_bar + s.bars) * 4
+    return {(round(t - a, 2), p) for t, p in _note_ons(gen_id, part) if a <= t < b}
+
+
+def test_final_chorus_gear_change(song_vc):
+    """The last chorus plays the chorus theme lifted by final_chorus_lift semitones."""
+    c1 = _section_events(song_vc, song_vc.generation_id, "melody", "Chorus")
+    c2 = _section_events(song_vc, song_vc.generation_id, "melody", "Chorus 2")
+    lifted = {(t, p + 2) for t, p in c1}
+    overlap = len(c2 & lifted) / max(1, len(lifted))
+    assert overlap >= 0.5, f"final chorus doesn't carry the lifted theme (overlap {overlap:.2f})"
+    # And it should NOT still be in the original key
+    same_key = len(c2 & c1) / max(1, len(c1))
+    assert same_key < overlap, "final chorus melody was not transposed"
+
+
+def test_intro_teases_chorus_hook(song_vc):
+    """The intro melody is a thinned copy of the chorus hook (home key)."""
+    intro = _section_events(song_vc, song_vc.generation_id, "melody", "Intro")
+    chorus = _section_events(song_vc, song_vc.generation_id, "melody", "Chorus")
+    assert intro, "intro should carry the hook tease"
+    matched = sum(1 for ev in intro if ev in chorus)
+    assert matched / len(intro) >= 0.8, "intro melody should come from the chorus hook"
+
+
+def test_sections_carry_quality(song_vc):
+    non_ending = [s for s in song_vc.sections if s.section_type != "ending"]
+    assert all(s.quality is not None and 0.0 <= s.quality <= 1.0 for s in non_ending)
+
+
+def test_custom_template_build_and_regen():
+    custom = [
+        SongSectionDef(section_type="verse", bars=4, parts_mode="no_arp"),
+        SongSectionDef(section_type="chorus", bars=4, parts_mode="full"),
+        SongSectionDef(section_type="outro", bars=2, parts_mode="melodic"),
+    ]
+    r = build_song(BuildSongRequest(style_id="lofi", key="C", scale="major", bpm=90,
+                                    template="custom", custom_template=custom,
+                                    parts=["chords", "bass", "melody", "drums"], seed=9))
+    assert [s.bars for s in r.sections] == [4, 4, 2, 1]   # + ending bar
+    assert r.total_bars == 11
+    # Part regeneration must work against the persisted custom template
+    fi = regenerate_song_part(RegenerateSongPartRequest(generation_id=r.generation_id, part="drums"))
+    assert fi.part == "drums"
 
 
 def test_pads_and_counter_melody_arrangement_rules():

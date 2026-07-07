@@ -40,7 +40,7 @@ def test_regenerate_song_part_isolates_the_target():
 
 
 def test_recurring_sections_reuse_the_theme():
-    """Verse 2 reuses Verse's melody/harmony (motif returns); drums stay fresh."""
+    """Verse 2 reuses Verse's theme (with light variation); drums stay fresh."""
     from app.services.style_loader import load_style
     from app.api.routes_generate import _generate_song_sections
 
@@ -54,8 +54,13 @@ def test_recurring_sections_reuse_the_theme():
     def section_part(name, part):
         s = next(x for x in secs if x["name"] == name)
         a, b = s["start_bar"] * 4, (s["start_bar"] + s["bars"]) * 4
-        return sorted((round(e.start - a, 3), e.pitch) for e in ev[part] if a <= e.start < b)
+        return {(round(e.start - a, 3), e.pitch) for e in ev[part] if a <= e.start < b}
 
-    assert section_part("Verse", "melody") == section_part("Verse 2", "melody")
-    assert section_part("Chorus", "melody") == section_part("Chorus 2", "melody")
+    # Repeated sections carry the same theme, allowing the light repeat-variation
+    # pass (re-humanized velocities, occasional ornaments) to alter some events.
+    def overlap(a, b):
+        return len(a & b) / max(1, len(a))
+
+    assert overlap(section_part("Verse", "melody"), section_part("Verse 2", "melody")) >= 0.6
+    assert overlap(section_part("Chorus", "melody"), section_part("Chorus 2", "melody")) >= 0.6
     assert section_part("Verse", "drums") != section_part("Verse 2", "drums")

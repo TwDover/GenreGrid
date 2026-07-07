@@ -36,9 +36,14 @@
           class="sr-tl-block"
           :class="[`seg-${sec.section_type}`, { 'sr-tl-busy': sectionRegenLoading === i }]"
           :style="{ flex: sec.bars }"
-          :title="`${sec.name} · ${sec.bars} bars — click to play from here`"
+          :title="`${sec.name} · ${sec.bars} bars${sec.quality != null ? ` · quality ${(sec.quality * 100).toFixed(0)}%` : ''} — click to play from here`"
           @click="seekToSection(sec)"
         >
+          <span
+            v-if="sec.quality != null"
+            class="sr-tl-dot"
+            :class="sec.quality >= 0.82 ? 'q-good' : sec.quality >= 0.7 ? 'q-ok' : 'q-weak'"
+          />
           <span class="sr-tl-name">{{ sec.name }}</span>
           <button
             v-if="sec.section_type !== 'ending'"
@@ -176,7 +181,15 @@ async function onRegenSection(index: number) {
 
 async function seekToSection(sec: { start_bar: number }) {
   if (!props.result) return
-  const seconds = sec.start_bar * 4 * 60 / (props.result.bpm || 120)
+  // Piecewise beat→seconds mirroring the backend tempo map: choruses run 1.2%
+  // faster than the base tempo, so a flat conversion drifts on long songs.
+  const bpm = props.result.bpm || 120
+  let seconds = 0
+  for (const s of props.result.sections) {
+    if (s.start_bar >= sec.start_bar) break
+    const isChorus = s.section_type === 'chorus' || s.section_type === 'post_chorus'
+    seconds += s.bars * 4 * 60 / (isChorus ? bpm * 1.012 : bpm)
+  }
   if (!isPlaying.value) await togglePlay()
   seek(seconds)
 }
@@ -275,6 +288,10 @@ function download() {
 .sr-tl-block:hover { filter: brightness(1.2); }
 .sr-tl-block.sr-tl-busy { filter: brightness(0.7); cursor: wait; }
 .sr-tl-name { font-size: 0.58rem; color: rgba(255,255,255,0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.sr-tl-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+.q-good { background: #4ade80; }
+.q-ok   { background: #facc15; }
+.q-weak { background: #f87171; }
 .sr-tl-regen {
   background: none; border: none; padding: 0; flex-shrink: 0;
   font-size: 0.6rem; line-height: 1; color: rgba(255,255,255,0.35); cursor: pointer;

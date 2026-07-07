@@ -51,6 +51,30 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _vary_repeat(events: list[NoteEvent], part: str) -> list[NoteEvent]:
+    """Light variation applied when a cached section theme repeats.
+
+    Keeps the theme recognizable (same pitches, same rhythm skeleton) while
+    removing the photocopy feel: velocities re-humanize, and ~18% of the
+    melody's long notes gain an upper-neighbor turn ornament. Caller seeds the
+    RNG so repeats are deterministic per section occurrence.
+    """
+    out: list[NoteEvent] = []
+    for e in events:
+        vel = max(1, min(127, e.velocity + random.randint(-6, 6)))
+        if part == "melody" and e.duration >= 1.0 and random.random() < 0.18:
+            d1, d2 = e.duration * 0.5, e.duration * 0.22
+            d3 = e.duration - d1 - d2
+            out.append(NoteEvent(e.pitch, e.start, d1 * 0.95, vel, e.channel))
+            out.append(NoteEvent(min(127, e.pitch + 2), e.start + d1, d2 * 0.9,
+                                 max(1, vel - 10), e.channel))
+            out.append(NoteEvent(e.pitch, e.start + d1 + d2, d3 * 0.95,
+                                 max(1, vel - 4), e.channel))
+        else:
+            out.append(NoteEvent(e.pitch, e.start, e.duration, vel, e.channel))
+    return out
+
+
 def _final_chord_voicing(chord_events: list[NoteEvent]) -> list[int] | None:
     """Extract the last sounded chord voicing from a chord part's events.
 
@@ -547,7 +571,10 @@ def generate(req: GenerateRequest):
         _best_events = _best_cc = _best_pb = _best_progression = _best_quality_raw = _best_patterns = None
         _best_seed = base_seed
         for attempt in range(_MAX_QUALITY_ATTEMPTS):
-            attempt_seed = base_seed if attempt == 0 else random.randint(0, 2**31 - 1)
+            # Deterministic retry seeds: a given base seed always reproduces the
+            # same attempt sequence (global-RNG retries made seeded generations
+            # unreproducible whenever the quality gate triggered a retry).
+            attempt_seed = base_seed if attempt == 0 else _part_seed(base_seed, attempt, "retry")
             _evts, _cc, _pb, _prog, _qraw, _pats, _secs = _run_attempt(
                 req, style, attempt_seed, is_loop, groove_push, secondary_dominants, tritone_sub,
                 scoring_style=scoring_style,
@@ -706,7 +733,10 @@ def generate_stream(req: GenerateRequest):
         best_seed = base_seed
 
         for attempt in range(_MAX_QUALITY_ATTEMPTS):
-            attempt_seed = base_seed if attempt == 0 else random.randint(0, 2**31 - 1)
+            # Deterministic retry seeds: a given base seed always reproduces the
+            # same attempt sequence (global-RNG retries made seeded generations
+            # unreproducible whenever the quality gate triggered a retry).
+            attempt_seed = base_seed if attempt == 0 else _part_seed(base_seed, attempt, "retry")
             yield f"data: {_json_module.dumps({'type': 'progress', 'attempt': attempt + 1, 'total': _MAX_QUALITY_ATTEMPTS})}\n\n"
             try:
                 evts, cc, pb, prog, qraw, pats, secs = _run_attempt(
@@ -1000,7 +1030,8 @@ def download_export(gen_id: str, filename: str):
 def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
                             secondary_dominants, tritone_sub, groove_push,
                             regen_part=None, regen_salt=0, bridge_key_shift=0,
-                            fixed_section_seeds=None):
+                            fixed_section_seeds=None, final_chorus_lift=0,
+                            custom_template=None):
     """Run a song template's section loop → (song_events, section_results, total_bars, section_seeds).
 
     Shared by build_song and regenerate_song_part. regen_part/regen_salt re-roll one
@@ -1014,8 +1045,15 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     winning attempt seed chosen for each section by the original build_song call
     instead of re-deriving and re-searching, so non-regenerated parts come out
     byte-identical to what's already on disk.
+
+    `final_chorus_lift` — extra semitones added to the LAST chorus's key (the
+    classic gear-change); the cached chorus theme is transposed to match.
+    `custom_template` — list of section dicts overriding the named template.
     """
-    template = _SONG_TEMPLATES.get(req.template, _SONG_TEMPLATES["verse_chorus"])
+    if custom_template:
+        template = [dict(sd) for sd in custom_template]
+    else:
+        template = _SONG_TEMPLATES.get(req.template, _SONG_TEMPLATES["verse_chorus"])
     full_parts   = list(req.parts)
     no_arp       = [p for p in req.parts if p != "arpeggio"]
     foundation   = [p for p in req.parts if p in ("drums", "bass")]
@@ -1058,11 +1096,15 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     # continuity at seams) and the verse's opening motif (chorus develops it).
     prev_voicing: list[int] | None = None
     verse_motif: list[int] | None = None
+    # Intro hook tease: when the intro would carry a melody, hold it back and
+    # overlay a thinned copy of the chorus melody after the loop instead.
+    tease_intro: dict | None = None
+    chorus_theme_shift = 0   # key shift the cached chorus theme was generated in
 
     for sec_i, sec_def in enumerate(template):
         sec_type   = sec_def["section_type"]
         sec_bars   = sec_def.get("bars", 8)
-        sec_name   = sec_def.get("name", sec_type)
+        sec_name   = sec_def.get("name") or sec_type
         parts_mode = sec_def.get("parts_mode", "full")
         sec_parts  = list(parts_modes.get(parts_mode, full_parts) or full_parts)
 
@@ -1073,11 +1115,20 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
         if "counter_melody" in sec_parts and sec_i != last_chorus_i:
             sec_parts = [p for p in sec_parts if p != "counter_melody"]
 
+        # Intro tease: strip the intro's own melody — the chorus hook (thinned)
+        # takes its place once the chorus theme exists.
+        if sec_i == 0 and sec_type == "intro" and "melody" in sec_parts and last_chorus_i > 0:
+            sec_parts = [p for p in sec_parts if p != "melody"]
+            tease_intro = {"bars": sec_bars}
+
         key_shift = (
             chorus_key_shift if sec_def.get("chorus_key")
             else bridge_key_shift if sec_def.get("bridge_key")
             else 0
         )
+        # Gear change: the last chorus lifts above the earlier ones.
+        if sec_i == last_chorus_i:
+            key_shift += final_chorus_lift
         sec_key = _transpose_key(req.key, key_shift) if key_shift else req.key
 
         occ = type_occurrence.get(sec_type, 0)
@@ -1104,6 +1155,7 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
             # Replay: reuse the exact seed the original build_song call landed on
             # for this section — no re-search, so untouched parts stay identical.
             winning_seed = fixed_section_seeds[sec_i] if sec_i < len(fixed_section_seeds) else sec_seed
+            _qraw = None
             try:
                 evts, _cc, _pb, _prog, _qraw, _patterns, _secs = _run_attempt(
                     sec_req, style, winning_seed, True, groove_push, secondary_dominants, tritone_sub,
@@ -1139,6 +1191,8 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
             evts = best_evts or {}
 
         section_seeds.append(winning_seed)
+        sec_quality = best_total if (fixed_section_seeds is None and best_total >= 0) else (
+            _qraw.get("total") if fixed_section_seeds is not None and _qraw else None)
 
         # Cross-section motif reuse: the first section of each type sets the theme
         # (melody + harmony); later sections of that type reuse it, keeping fresh
@@ -1146,10 +1200,25 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
         # reused parts need no transposition.
         if sec_type not in type_theme:
             type_theme[sec_type] = {p: list(e) for p, e in evts.items() if p != "drums"}
+            if sec_type == "chorus":
+                chorus_theme_shift = key_shift   # key the cached chorus theme sounds in
         else:
             for p, cached in type_theme[sec_type].items():
                 if p in evts:
                     evts[p] = list(cached)
+            # Gear change: the cached chorus theme sounds in the earlier chorus
+            # key — transpose it up to this section's lifted key.
+            if sec_i == last_chorus_i and final_chorus_lift:
+                for p in type_theme[sec_type]:
+                    if evts.get(p):
+                        evts[p] = [NoteEvent(min(127, max(0, e.pitch + final_chorus_lift)),
+                                             e.start, e.duration, e.velocity, e.channel)
+                                   for e in evts[p]]
+            # Light variation so the repeat isn't a photocopy of the first pass.
+            random.seed(_part_seed(winning_seed, 0, "repeat_var"))
+            for p in type_theme[sec_type]:
+                if evts.get(p):
+                    evts[p] = _vary_repeat(evts[p], p)
             # The theme swap replaced this section's melody with the cached one, so
             # any counter-melody derived from the discarded fresh melody would be
             # harmonizing a line that no longer sounds — re-derive it from the
@@ -1174,6 +1243,7 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
         section_results.append({
             "name": sec_name, "section_type": sec_type,
             "bars": sec_bars, "start_bar": total_bars, "key": sec_key,
+            "quality": round(sec_quality, 3) if sec_quality is not None else None,
         })
         ramp_sections.append({
             "offset": beat_offset, "bars": sec_bars,
@@ -1188,6 +1258,27 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     # sections, so every Verse→Chorus/Chorus→Bridge transition was a hard jump.
     if len(ramp_sections) > 1:
         _apply_section_ramp(song_events, ramp_sections)
+
+    # ── Intro hook tease ─────────────────────────────────────────────────────
+    # The intro previews the chorus melody: thinned to its structural notes,
+    # softer, and transposed back to the home key if the chorus modulates.
+    # Deterministic — derived entirely from the cached chorus theme.
+    if tease_intro and "melody" in song_events:
+        chorus_mel = type_theme.get("chorus", {}).get("melody") or []
+        if chorus_mel:
+            limit = tease_intro["bars"] * 4
+            in_window = [e for e in chorus_mel if e.start < limit - 0.05]
+            # Prefer the hook's structural notes; if the chorus opens busy (no
+            # long/strong-beat notes in the intro window), tease the full line
+            # instead so the intro never ends up silent.
+            thin = [e for e in in_window
+                    if (e.start % 1.0) < 0.13 or e.duration >= 0.75] or in_window
+            song_events["melody"].extend(
+                NoteEvent(min(127, max(0, e.pitch - chorus_theme_shift)), e.start,
+                          min(e.duration, limit - e.start),
+                          max(1, int(e.velocity * 0.72)), e.channel)
+                for e in thin
+            )
 
     # ── Ending bar ────────────────────────────────────────────────────────────
     # A real cadence instead of just stopping: the tonic chord, bass root, and a
@@ -1311,6 +1402,10 @@ def build_song(req: BuildSongRequest):
     # unless the style or request overrides it — unlike chorus_key_shift, which
     # defaults to no shift, bridges benefit from contrast out of the box.
     bridge_key_shift = req.bridge_key_shift if req.bridge_key_shift is not None else style.get("bridge_key_shift", 5)
+    # Gear change on the LAST chorus only — classic pop move, on by default (+1).
+    final_chorus_lift = req.final_chorus_lift if req.final_chorus_lift is not None else style.get("final_chorus_lift", 1)
+    custom_template = ([sd.model_dump() for sd in req.custom_template]
+                       if req.custom_template else None)
     style = {**style, "_humanize_scale": req.humanize}
 
     base_seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
@@ -1319,6 +1414,8 @@ def build_song(req: BuildSongRequest):
         req, style, bpm, base_seed, chorus_key_shift,
         secondary_dominants, tritone_sub, groove_push,
         bridge_key_shift=bridge_key_shift,
+        final_chorus_lift=final_chorus_lift,
+        custom_template=custom_template,
     )
 
     # Persist the params needed to regenerate a single part later.
@@ -1329,6 +1426,7 @@ def build_song(req: BuildSongRequest):
         "humanize": req.humanize, "parts": list(req.parts), "template": req.template,
         "use_priors": req.use_priors, "chorus_key_shift": chorus_key_shift,
         "bridge_key_shift": bridge_key_shift, "base_seed": base_seed,
+        "final_chorus_lift": final_chorus_lift, "custom_template": custom_template,
         "section_seeds": section_seeds,
     }))
 
@@ -1405,6 +1503,8 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
         regen_part=req.part, regen_salt=salt,
         bridge_key_shift=meta.get("bridge_key_shift", 0),
         fixed_section_seeds=meta.get("section_seeds"),
+        final_chorus_lift=meta.get("final_chorus_lift", 0),
+        custom_template=meta.get("custom_template"),
     )
 
     evts = song_events.get(req.part) or []
@@ -1451,14 +1551,15 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
     return FileInfo(part=req.part, filename=fname, url=f"/exports/{req.generation_id}/{fname}")
 
 
-def _template_section_results(template_name: str, key: str = "C") -> list[dict]:
+def _template_section_results(template_name: str, key: str = "C",
+                              custom: list[dict] | None = None) -> list[dict]:
     """Section layout (start_bar/bars/type) for a template, including the ending
     bar — enough to rebuild the tempo map without regenerating any music."""
-    template = _SONG_TEMPLATES.get(template_name, _SONG_TEMPLATES["verse_chorus"])
+    template = custom or _SONG_TEMPLATES.get(template_name, _SONG_TEMPLATES["verse_chorus"])
     out, sb = [], 0
     for sd in template:
         bars = sd.get("bars", 8)
-        out.append({"name": sd.get("name", sd["section_type"]), "section_type": sd["section_type"],
+        out.append({"name": sd.get("name") or sd["section_type"], "section_type": sd["section_type"],
                     "bars": bars, "start_bar": sb, "key": key})
         sb += bars
     out.append({"name": "End", "section_type": "ending", "bars": 1, "start_bar": sb, "key": key})
@@ -1476,7 +1577,8 @@ def undo_song_part(req: RegenerateSongPartRequest):
     meta = _json_module.loads(meta_path.read_text()) if meta_path.exists() else {}
     bpm = meta.get("bpm", 120)
     tempo_map = _song_tempo_map(
-        _template_section_results(meta.get("template", "verse_chorus"), meta.get("key", "C")),
+        _template_section_results(meta.get("template", "verse_chorus"), meta.get("key", "C"),
+                                  custom=meta.get("custom_template")),
         bpm, ending_bars=1)
 
     shutil.copy(prev, output_dir / f"{req.part}.mid")
@@ -1503,7 +1605,7 @@ def regenerate_song_section(req: RegenerateSongSectionRequest):
         raise HTTPException(status_code=404, detail="Song not found or too old to regenerate")
     meta = _json_module.loads(meta_path.read_text())
     section_seeds = list(meta.get("section_seeds") or [])
-    template = _SONG_TEMPLATES.get(meta.get("template", ""), _SONG_TEMPLATES["verse_chorus"])
+    template = meta.get("custom_template") or _SONG_TEMPLATES.get(meta.get("template", ""), _SONG_TEMPLATES["verse_chorus"])
     if not section_seeds:
         raise HTTPException(status_code=400, detail="This song predates section re-roll — rebuild it once to enable")
     if not (0 <= req.section_index < len(template)):
@@ -1535,6 +1637,8 @@ def regenerate_song_section(req: RegenerateSongSectionRequest):
         secondary_dominants, tritone_sub, groove_push,
         bridge_key_shift=meta.get("bridge_key_shift", 0),
         fixed_section_seeds=section_seeds,
+        final_chorus_lift=meta.get("final_chorus_lift", 0),
+        custom_template=meta.get("custom_template"),
     )
 
     # Back up all stems (one level of undo per part via /undo-song-part)

@@ -89,8 +89,13 @@ def _part_seed(main_seed: int, section_idx: int, part: str) -> int:
     Seeding each generator independently means adding or removing a part cannot
     affect the random state seen by any other part, making generation fully
     reproducible from the main seed.
+
+    Uses crc32, NOT the built-in hash(): string hashing is salted per process
+    (PYTHONHASHSEED), so hash()-derived seeds silently broke seed replay across
+    app restarts — the same seed produced different music after a relaunch.
     """
-    return abs(hash((main_seed, section_idx, part))) % (2 ** 31)
+    import zlib
+    return zlib.crc32(f"{main_seed}:{section_idx}:{part}".encode()) % (2 ** 31)
 
 
 def _transpose_key(key: str, semitones: int) -> str:
