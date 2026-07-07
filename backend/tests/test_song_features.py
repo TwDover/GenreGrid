@@ -160,3 +160,83 @@ def test_build_song_from_melody_end_to_end():
     # Regenerating a part replays the hook context without error
     fi = regenerate_song_part(RegenerateSongPartRequest(generation_id=r.generation_id, part="drums"))
     assert fi.part == "drums"
+
+
+# ── Note editing (/edit-part) ────────────────────────────────────────────────
+
+def _read_stem_notes(path):
+    """(pitch, start_beats, duration_beats, velocity) for every note in a stem,
+    sorted by (start, pitch)."""
+    mid = mido.MidiFile(str(path))
+    tpb = mid.ticks_per_beat
+    notes = []
+    for tr in mid.tracks:
+        t = 0
+        open_notes: dict[tuple[int, int], list] = {}
+        for msg in tr:
+            t += msg.time
+            if msg.type == "note_on" and msg.velocity > 0:
+                open_notes.setdefault((msg.channel, msg.note), []).append((t, msg.velocity))
+            elif msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0):
+                stack = open_notes.get((msg.channel, msg.note))
+                if stack:
+                    start, vel = stack.pop(0)
+                    notes.append((msg.note, start / tpb, (t - start) / tpb, vel))
+    notes.sort(key=lambda n: (n[1], n[0]))
+    return notes
+
+
+def test_edit_part_rewrites_stem_and_snapshots():
+    from app.models.schemas import EditPartRequest, EditedNote
+    from app.api.routes_song import edit_part
+
+    r = _song(seed=66)
+    d = EXPORTS_DIR / r.generation_id
+    before = _read_stem_notes(d / "melody.mid")
+    assert len(before) >= 3
+    song_v1 = (d / "song.mid").read_bytes()
+    versions_before = len(list_song_versions(r.generation_id))
+
+    # Delete the first note, transpose the (new) first remaining note up 2.
+    deleted = before[0]
+    kept = before[1:]
+    target = kept[0]
+    notes = [EditedNote(pitch=(p + 2 if i == 0 else p), start=s,
+                        duration=max(dur, 0.01), velocity=v)
+             for i, (p, s, dur, v) in enumerate(kept)]
+    fi = edit_part(EditPartRequest(generation_id=r.generation_id, part="melody", notes=notes))
+    assert fi.part == "melody" and fi.filename == "melody.mid"
+
+    def _has(notes_list, pitch, start, tol=0.01):
+        return any(p == pitch and abs(s - start) < tol for p, s, _, _ in notes_list)
+
+    after = _read_stem_notes(d / "melody.mid")
+    assert len(after) == len(before) - 1
+    assert not _has(after, deleted[0], deleted[1])   # deletion landed
+    assert _has(after, target[0] + 2, target[1])     # transposition landed
+    assert not _has(after, target[0], target[1])     # old pitch is gone
+
+    # song.mid was rebuilt from the edited stems
+    assert (d / "song.mid").read_bytes() != song_v1
+    song_tracks = {tr.name for tr in mido.MidiFile(str(d / "song.mid")).tracks}
+    assert "melody" in song_tracks
+
+    # The pre-edit state was snapshotted, so the edit is restorable
+    assert len(list_song_versions(r.generation_id)) == versions_before + 1
+
+
+def test_edit_part_404_on_missing_song_or_stem():
+    import pytest
+    from fastapi import HTTPException
+    from app.models.schemas import EditPartRequest, EditedNote
+    from app.api.routes_song import edit_part
+
+    note = [EditedNote(pitch=60, start=0.0, duration=1.0, velocity=90)]
+    with pytest.raises(HTTPException) as exc:
+        edit_part(EditPartRequest(generation_id="nosuchsong", part="melody", notes=note))
+    assert exc.value.status_code == 404
+
+    r = _song(seed=67, parts=["chords", "bass", "drums"])   # no melody stem
+    with pytest.raises(HTTPException) as exc:
+        edit_part(EditPartRequest(generation_id=r.generation_id, part="melody", notes=note))
+    assert exc.value.status_code == 404

@@ -68,8 +68,30 @@ const CHANNEL_PART: Record<number, PlayerPart> = {
 
 // Abort token — incremented on every new play; stale toggles bail out after each await
 let _playToken = 0
-// Duration of the currently loaded track — used by setLooping to apply loopEnd live
-let _currentDuration = 0
+// Duration of the currently loaded track — used by setLooping to apply loopEnd
+// live, and by NowPlayingBar / the song timeline for the time readout.
+const durationSeconds = ref(0)
+
+// Playback position, polled at ~7 Hz while the transport runs (cheap enough
+// for a playhead + time display without a per-frame loop).
+const positionSeconds = ref(0)
+let _positionTimer: ReturnType<typeof setInterval> | null = null
+
+function startPositionPolling() {
+  stopPositionPolling()
+  positionSeconds.value = 0
+  _positionTimer = setInterval(() => {
+    positionSeconds.value = Tone.getTransport().seconds
+  }, 150)
+}
+
+function stopPositionPolling() {
+  if (_positionTimer !== null) {
+    clearInterval(_positionTimer)
+    _positionTimer = null
+  }
+  positionSeconds.value = 0
+}
 
 // Master volume: 0–100 maps to dB via gainToDb, persisted across sessions
 const _savedVolume = typeof localStorage !== 'undefined'
@@ -99,7 +121,8 @@ function cleanup() {
   disposables.forEach(d => d.dispose())
   scheduledParts = []
   disposables = []
-  _currentDuration = 0
+  durationSeconds.value = 0
+  stopPositionPolling()
   currentlyPlaying.value = null
   nowPlayingLabel.value = null
 }
@@ -398,7 +421,7 @@ export function useMidiPlayer() {
         }
       }
 
-      _currentDuration = midi.duration
+      durationSeconds.value = midi.duration
       currentlyPlaying.value = url
 
       if (looping.value) {
@@ -410,6 +433,7 @@ export function useMidiPlayer() {
       }
 
       Tone.getTransport().start()
+      startPositionPolling()
 
       if (!looping.value) {
         Tone.getTransport().scheduleOnce(() => { cleanup() }, midi.duration + 1)
@@ -428,9 +452,9 @@ export function useMidiPlayer() {
 
   function setLooping(v: boolean) {
     looping.value = v
-    if (v && _currentDuration > 0) {
+    if (v && durationSeconds.value > 0) {
       Tone.getTransport().loopStart = 0
-      Tone.getTransport().loopEnd = _currentDuration
+      Tone.getTransport().loopEnd = durationSeconds.value
     }
     Tone.getTransport().loop = v
   }
@@ -753,6 +777,11 @@ export function useMidiPlayer() {
     // Jump the transport while a track is playing (timeline section clicks).
     if (currentlyPlaying.value === null) return
     Tone.getTransport().seconds = Math.max(0, seconds)
+    positionSeconds.value = Math.max(0, seconds)   // snap the playhead immediately
+  }
+
+  function isPlayingUrl(url: string): boolean {
+    return currentlyPlaying.value === url
   }
 
   function setVolume(v: number) {
@@ -776,5 +805,5 @@ export function useMidiPlayer() {
     ]).catch(() => { /* best-effort, ignore network errors */ })
   }
 
-  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek }
+  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl }
 }

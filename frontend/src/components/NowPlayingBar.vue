@@ -11,6 +11,7 @@
     <span class="np-icon">{{ isLoading ? '⟳' : '▶' }}</span>
     <span v-if="isRecording" class="np-rec">● REC</span>
     <span v-else class="np-label">{{ nowPlayingLabel ?? '…' }}</span>
+    <span v-if="currentlyPlaying && !isRecording" class="np-time">{{ timeDisplay }}</span>
     <template v-if="currentlyPlaying && !isRecording">
       <button
         v-for="ch in PLAYER_PARTS"
@@ -33,9 +34,16 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useMidiPlayer, PLAYER_PARTS, type PlayerPart } from '../composables/useMidiPlayer'
 
-const { currentlyPlaying, nowPlayingLabel, isLoading, stop, looping, setLooping, isRecording, channelMuted, toggleMute, soloPart } = useMidiPlayer()
+const { currentlyPlaying, nowPlayingLabel, isLoading, stop, looping, setLooping, isRecording, channelMuted, toggleMute, soloPart, positionSeconds, durationSeconds } = useMidiPlayer()
+
+const fmt = (s: number) => {
+  const t = Math.max(0, Math.floor(s))
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`
+}
+const timeDisplay = computed(() => `${fmt(positionSeconds.value)} / ${fmt(durationSeconds.value)}`)
 
 const partLabel = (ch: PlayerPart) => ch.replace('_', ' ')
 // Chip initials: two letters where one is ambiguous (Chords/Counter-melody)
@@ -90,6 +98,14 @@ const chipLabel = (ch: PlayerPart) => (
 
 @keyframes blink {
   50% { opacity: 0.4; }
+}
+
+.np-time {
+  font-size: 0.68rem;
+  font-family: monospace;
+  color: #4a7080;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .np-mute {

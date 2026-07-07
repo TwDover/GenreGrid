@@ -374,6 +374,83 @@ def _generate_808_pitch_bends(events: list[NoteEvent], channel: int) -> list[Pit
     return pb
 
 
+# ── Section-level automation ─────────────────────────────────────────────────
+# Pre-chorus builds: a rising CC74 filter sweep (with CC1 mod wheel at half
+# depth) and a CC11 crescendo into the chorus. Both ramp in _AUTOMATION_STEPS
+# discrete steps — coarse enough to keep the event count tiny, fine enough that
+# a synth's filter glides rather than jumps.
+_AUTOMATION_STEPS = 8
+_SWEEP_PARTS = ("chords", "pads")            # the sustained textures a sweep reads on
+_SWEEP_CC74_LO, _SWEEP_CC74_HI = 40, 110
+_CC74_NEUTRAL = 84                           # post-sweep reset — a neutral default cutoff
+_CRESC_PARTS = ("chords", "pads", "arpeggio")  # melody excluded: it has note-level CC11 swells
+_CRESC_CC11_LO, _CRESC_CC11_HI = 70, 118
+_CC11_NEUTRAL = 100
+
+
+def _ramp_times(start: float, span_beats: float) -> list[tuple[float, float]]:
+    """(time, fraction 0..1) pairs for a linear ramp across a section — first
+    point on the downbeat, last on the section's final beat."""
+    last = max(1.0, span_beats - 1.0)
+    return [(start + (i / (_AUTOMATION_STEPS - 1)) * last, i / (_AUTOMATION_STEPS - 1))
+            for i in range(_AUTOMATION_STEPS)]
+
+
+def generate_build_sweeps(section_results: list[dict], parts: list[str]) -> dict[str, list[ControlEvent]]:
+    """Rising CC74 (filter cutoff) sweep across every pre-chorus — the classic
+    electronic build — plus the same shape on CC1 (mod wheel) at half depth for
+    synths that map CC1 to intensity instead. Both reset to neutral at the next
+    section's downbeat so the chorus doesn't inherit a wide-open filter.
+    """
+    targets = [p for p in _SWEEP_PARTS if p in parts]
+    out: dict[str, list[ControlEvent]] = {}
+    if not targets:
+        return out
+    for i, sec in enumerate(section_results):
+        if sec.get("section_type") != "pre_chorus":
+            continue
+        start = float(sec["start_bar"] * 4)
+        span = sec["bars"] * 4.0
+        reset_beat = (float(section_results[i + 1]["start_bar"] * 4)
+                      if i + 1 < len(section_results) else start + span)
+        for part in targets:
+            ch = _PART_CHANNELS[part]
+            evs = out.setdefault(part, [])
+            for t, frac in _ramp_times(start, span):
+                v = round(_SWEEP_CC74_LO + frac * (_SWEEP_CC74_HI - _SWEEP_CC74_LO))
+                evs.append(ControlEvent(control=74, value=v, start=t, channel=ch))
+                evs.append(ControlEvent(control=1, value=v // 2, start=t, channel=ch))
+            evs.append(ControlEvent(control=74, value=_CC74_NEUTRAL, start=reset_beat, channel=ch))
+            evs.append(ControlEvent(control=1, value=_CC74_NEUTRAL // 2, start=reset_beat, channel=ch))
+    return out
+
+
+def generate_section_crescendo(section_results: list[dict], parts: list[str]) -> dict[str, list[ControlEvent]]:
+    """CC11 (expression) crescendo across every pre-chorus that resolves into a
+    chorus, resetting at the chorus downbeat. Melody is deliberately excluded —
+    _generate_melody_expression_cc already writes note-level CC11 swells there,
+    and a section ramp on the same controller would fight them.
+    """
+    targets = [p for p in _CRESC_PARTS if p in parts]
+    out: dict[str, list[ControlEvent]] = {}
+    if not targets:
+        return out
+    for sec, nxt in zip(section_results, section_results[1:]):
+        if sec.get("section_type") != "pre_chorus" or nxt.get("section_type") != "chorus":
+            continue
+        start = float(sec["start_bar"] * 4)
+        span = sec["bars"] * 4.0
+        chorus_beat = float(nxt["start_bar"] * 4)
+        for part in targets:
+            ch = _PART_CHANNELS[part]
+            evs = out.setdefault(part, [])
+            for t, frac in _ramp_times(start, span):
+                v = round(_CRESC_CC11_LO + frac * (_CRESC_CC11_HI - _CRESC_CC11_LO))
+                evs.append(ControlEvent(control=11, value=v, start=t, channel=ch))
+            evs.append(ControlEvent(control=11, value=_CC11_NEUTRAL, start=chorus_beat, channel=ch))
+    return out
+
+
 def _drop_quiet(events: list[NoteEvent]) -> list[NoteEvent]:
     return [e for e in events if e.velocity >= _VELOCITY_DROP]
 
