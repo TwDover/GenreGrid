@@ -26,4 +26,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startDrag: (filePath: string): void => {
     ipcRenderer.sendSync('start-drag', filePath)
   },
+
+  // Manual update check. Resolves to { status, version, latest?, message? }:
+  // 'downloading' (update found, downloading in background), 'uptodate',
+  // 'unsupported' (unsigned macOS), 'dev' (not packaged), or 'error'.
+  checkForUpdates: (): Promise<{ status: string; version: string; latest?: string; message?: string }> =>
+    ipcRenderer.invoke('check-for-updates'),
 })

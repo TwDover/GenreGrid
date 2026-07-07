@@ -135,6 +135,52 @@ async function createWindow(): Promise<void> {
 
 }
 
+// ── Auto-update ──────────────────────────────────────────────────────────────
+// Checks GitHub Releases (electron-builder publish config) for a newer version,
+// downloads it in the background, and offers a restart. Skipped on macOS: the
+// builds are unsigned and Squirrel.Mac refuses unsigned updates — Mac users
+// update via the Releases page. Failures are logged, never surfaced as errors.
+async function setupAutoUpdate(): Promise<void> {
+  if (!app.isPackaged || process.platform === 'darwin') return
+  try {
+    const { autoUpdater } = await import('electron-updater')
+    autoUpdater.autoDownload = true
+    autoUpdater.on('update-downloaded', (info) => {
+      const choice = dialog.showMessageBoxSync({
+        type: 'info',
+        buttons: ['Restart now', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+        message: `GenreGrid ${info.version} is ready`,
+        detail: 'The update has been downloaded. Restart to apply it — or keep working and it installs on next launch.',
+      })
+      if (choice === 0) autoUpdater.quitAndInstall()
+    })
+    await autoUpdater.checkForUpdates()
+  } catch (err) {
+    console.error('Auto-update check failed (non-fatal):', err)
+  }
+}
+
+// Manual "Check for updates" from the renderer. Returns a status the UI can
+// show inline; when an update exists, the download starts and the existing
+// update-downloaded dialog (registered in setupAutoUpdate) offers the restart.
+ipcMain.handle('check-for-updates', async () => {
+  const version = app.getVersion()
+  if (!app.isPackaged) return { status: 'dev', version }
+  if (process.platform === 'darwin') return { status: 'unsupported', version }
+  try {
+    const { autoUpdater } = await import('electron-updater')
+    const result = await autoUpdater.checkForUpdates()
+    const latest = result?.updateInfo?.version
+    if (latest && latest !== version) return { status: 'downloading', version, latest }
+    return { status: 'uptodate', version }
+  } catch (err: any) {
+    console.error('Manual update check failed:', err)
+    return { status: 'error', version, message: String(err?.message ?? err) }
+  }
+})
+
 app.whenReady().then(() => {
   // Serve bundled renderer files via app:// so absolute paths like /samples/... work
   protocol.handle('app', (request) => {
@@ -144,6 +190,7 @@ app.whenReady().then(() => {
   })
 
   createWindow()
+  setupAutoUpdate()
 })
 
 app.on('window-all-closed', () => {

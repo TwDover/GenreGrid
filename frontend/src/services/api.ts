@@ -114,6 +114,55 @@ export async function regenerateSongSection(req: { generation_id: string; sectio
   return res.json()
 }
 
+export async function buildSongFromMelody(
+  file: File,
+  params: {
+    style_id: string; template: string; parts: string[]
+    complexity: number; variation: number; humanize: number
+    use_priors?: boolean; chorus_key_shift?: number; final_chorus_lift?: number; seed?: number
+  },
+): Promise<BuildSongResponse> {
+  const fd = new FormData()
+  fd.append('file', file)
+  fd.append('style_id', params.style_id)
+  fd.append('template', params.template)
+  fd.append('parts', params.parts.join(','))
+  fd.append('complexity', String(params.complexity))
+  fd.append('variation', String(params.variation))
+  fd.append('humanize', String(params.humanize))
+  fd.append('use_priors', String(params.use_priors ?? false))
+  fd.append('chorus_key_shift', String(params.chorus_key_shift ?? 0))
+  fd.append('final_chorus_lift', String(params.final_chorus_lift ?? 1))
+  if (params.seed != null) fd.append('seed', String(params.seed))
+  const res = await fetch(`${BASE_URL}/build-song-from-melody`, { method: 'POST', body: fd })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Melody import failed')
+  }
+  return res.json()
+}
+
+export interface SongVersion { id: string; saved_at: string }
+
+export async function listSongVersions(generationId: string): Promise<SongVersion[]> {
+  const res = await fetch(`${BASE_URL}/song-versions/${generationId}`)
+  if (!res.ok) return []
+  return res.json()
+}
+
+export async function restoreSongVersion(req: { generation_id: string; version_id: string }): Promise<FileInfo[]> {
+  const res = await fetch(`${BASE_URL}/restore-song-version`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Restore failed')
+  }
+  return res.json()
+}
+
 export async function undoSongPart(req: { generation_id: string; part: string }): Promise<FileInfo> {
   const res = await fetch(`${BASE_URL}/undo-song-part`, {
     method: 'POST',

@@ -1,11 +1,10 @@
-# Line-ending policy for files where it actually matters — overrides
-# core.autocrlf guessing. (Deliberately no global "* text=auto" rule, to
-# avoid renormalizing the whole repo in one noisy commit.)
+# Line-ending policy: LF everywhere, in the repo AND the working copy.
+# This overrides core.autocrlf, which was converting files on checkout and
+# warning on every `git add` of a newly created LF file. All modern Windows
+# tooling (VS Code, Python, Node, Git Bash) handles LF natively.
+* text=auto eol=lf
 
-# Shell scripts MUST be LF: bash errors on CRLF ("\r: command not found").
-*.sh   text eol=lf
-
-# PowerShell is happiest with CRLF on Windows.
+# PowerShell scripts are the one exception — CRLF on Windows.
 *.ps1  text eol=crlf
 
 # Binary assets — never touch line endings.

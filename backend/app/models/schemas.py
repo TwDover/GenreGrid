@@ -109,6 +109,7 @@ class SongSectionDef(BaseModel):
     parts_mode: str = "full"  # full | no_arp | sparse | foundation | melodic | no_drums | chords_only
     chorus_key: bool = False
     bridge_key: bool = False
+    style_id: Optional[str] = None  # per-section style override (e.g. a lofi verse into a house chorus)
 
 
 class BuildSongRequest(BaseModel):
@@ -127,6 +128,8 @@ class BuildSongRequest(BaseModel):
     bridge_key_shift: Optional[int] = Field(default=None, ge=-12, le=12)  # semitone shift on bridge sections; None = use the style's default (5 = subdominant lift)
     final_chorus_lift: Optional[int] = Field(default=None, ge=-12, le=12)  # extra semitone lift on the LAST chorus only (gear change); None = style default (+1)
     custom_template: Optional[List[SongSectionDef]] = Field(default=None, max_length=20)  # overrides `template` when provided
+    blend_style_id: Optional[str] = None   # second style blended into the whole song
+    blend_amount: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
 class RegenerateSongPartRequest(BaseModel):
@@ -137,6 +140,11 @@ class RegenerateSongPartRequest(BaseModel):
 class RegenerateSongSectionRequest(BaseModel):
     generation_id: str
     section_index: int  # index into the song's template sections (the ending bar is not re-rollable)
+
+
+class RestoreSongVersionRequest(BaseModel):
+    generation_id: str
+    version_id: str  # millisecond-timestamp folder name from /song-versions
 
 
 class SongSectionResult(BaseModel):

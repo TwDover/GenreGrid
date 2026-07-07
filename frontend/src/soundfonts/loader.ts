@@ -65,6 +65,29 @@ export function getMelodicBus(): Tone.Gain<'decibels'> {
   return melodicBus
 }
 
+// ── Sidechain pump ───────────────────────────────────────────────────────────
+// Duck the melodic and bass buses briefly on each kick — the four-on-the-floor
+// "pump" that makes electronic mixes breathe. Called from the drum scheduler at
+// the kick's exact transport time; the buses recover before the next 8th note.
+export function duckOnKick(time: number, depthDb = -7, releaseS = 0.22): void {
+  const buses: Array<[Tone.Gain<'decibels'> | null, number]> = [
+    [melodicBus, MELODIC_BUS_DB],
+    [bassBus, BASS_BUS_DB],
+  ]
+  for (const [bus, baseDb] of buses) {
+    if (!bus) continue
+    bus.gain.cancelScheduledValues(time)
+    bus.gain.setValueAtTime(baseDb + depthDb, time)
+    bus.gain.linearRampToValueAtTime(baseDb, time + releaseS)
+  }
+}
+
+// Restore bus levels after playback stops so the pump can't leave a duck behind.
+export function resetBusLevels(): void {
+  if (melodicBus) { melodicBus.gain.cancelScheduledValues(0); melodicBus.gain.value = MELODIC_BUS_DB }
+  if (bassBus)    { bassBus.gain.cancelScheduledValues(0);    bassBus.gain.value = BASS_BUS_DB }
+}
+
 async function getSharedReverb(): Promise<Tone.Reverb> {
   if (reverb) return reverb
   const r = new Tone.Reverb({ decay: 1.6, wet: 0.22 })

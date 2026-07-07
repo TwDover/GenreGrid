@@ -23,6 +23,13 @@
           Load
           <input ref="loadInput" type="file" accept=".json" style="display:none" @change="loadSession" />
         </label>
+        <button
+          v-if="isElectron"
+          class="hdr-btn"
+          :disabled="updateChecking"
+          @click="checkForUpdates"
+          :title="updateMessage || 'Check for a newer version'"
+        >{{ updateLabel }}</button>
         <button class="hdr-btn hdr-help" @click="showShortcuts = !showShortcuts" title="Keyboard shortcuts">?</button>
       </div>
       <div class="volume-control">
@@ -143,6 +150,52 @@ const { volume, setVolume, prefetchSamplers, stop, currentlyPlaying } = useMidiP
 
 const showCredit = ref(false)
 const showShortcuts = ref(false)
+
+// ── Manual update check (desktop app only) ───────────────────────────────────
+const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI
+const updateChecking = ref(false)
+const updateLabel = ref('Updates')
+const updateMessage = ref('')
+
+async function checkForUpdates() {
+  if (updateChecking.value) return
+  updateChecking.value = true
+  updateLabel.value = 'Checking…'
+  updateMessage.value = ''
+  try {
+    const r = await (window as any).electronAPI.checkForUpdates()
+    switch (r.status) {
+      case 'downloading':
+        updateLabel.value = `↓ v${r.latest}`
+        updateMessage.value = `Downloading v${r.latest} — you'll be offered a restart when it's ready`
+        break
+      case 'uptodate':
+        updateLabel.value = 'Up to date ✓'
+        updateMessage.value = `You're on the latest version (v${r.version})`
+        break
+      case 'unsupported':
+        updateLabel.value = 'See Releases'
+        updateMessage.value = 'Auto-update is unavailable on macOS (unsigned build) — download new versions from the GitHub Releases page'
+        break
+      case 'dev':
+        updateLabel.value = 'Dev build'
+        updateMessage.value = 'Update checks only work in the packaged app'
+        break
+      default:
+        updateLabel.value = 'Check failed'
+        updateMessage.value = r.message || 'Could not reach the update server'
+    }
+  } catch {
+    updateLabel.value = 'Check failed'
+    updateMessage.value = 'Could not reach the update server'
+  } finally {
+    updateChecking.value = false
+    // Downloading state persists (the OS dialog takes over); others revert
+    if (!updateLabel.value.startsWith('↓')) {
+      setTimeout(() => { updateLabel.value = 'Updates' }, 6000)
+    }
+  }
+}
 const loadInput = ref<HTMLInputElement | null>(null)
 let _creditTimer: ReturnType<typeof setTimeout> | null = null
 
