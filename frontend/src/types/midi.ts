@@ -143,6 +143,7 @@ export interface BuildSongResponse {
   sections: SongSectionResult[]
   bpm: number
   key: string
+  mixer?: Record<string, number> | null   // per-part gain, 1.0 = generated balance
 }
 
 export interface LibraryEntry {

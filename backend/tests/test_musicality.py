@@ -19,7 +19,7 @@ from app.generators.drums import generate_drums
 from app.generators.chords import generate_chords, resolve_progression
 from app.services.style_loader import load_style
 from app.models.schemas import BuildSongRequest, SongSectionDef, RegenerateSongPartRequest
-from app.api.routes_generate import build_song, regenerate_song_part
+from app.api.routes_song import build_song, regenerate_song_part
 from app.core.arrangement import _song_tempo_map
 from app.core.config import EXPORTS_DIR
 
@@ -244,3 +244,41 @@ def test_pads_and_counter_melody_arrangement_rules():
     cm_starts = starts("counter_melody")
     assert not any(c1_lo <= s < c1_hi - 0.2 for s in cm_starts), "counter-melody in first chorus"
     assert any(fc_lo <= s < fc_hi for s in cm_starts), "counter-melody missing from final chorus"
+
+
+# ── Phrase architecture ───────────────────────────────────────────────────────
+
+def test_phrase_plan_grammar():
+    """Every form yields exactly the requested phrases, at most one climax,
+    and always closes its final phrase."""
+    from app.theory.phrase_plan import plan_phrases
+    random.seed(5)
+    for n in (1, 2, 3, 4, 6, 8):
+        plans = plan_phrases(n)
+        assert len(plans) == n
+        assert sum(p.climax for p in plans) <= 1
+        assert plans[-1].cadence_open is False
+
+
+def test_planned_climax_carries_the_section_peak():
+    """Across seeds, the section's highest note lands in the PLANNED climax
+    phrase far more often than the 25% chance would give."""
+    from app.generators.melody import generate_melody
+    from app.theory.phrase_plan import plan_phrases
+    style = {**load_style("cinematic"), "_humanize_scale": 0.5}
+    hits = total = 0
+    for seed in range(20):
+        random.seed(seed)
+        mel = generate_melody(style, "C", "minor", 16, 0.8, 0.4, ["i", "VI", "III", "VII"])
+        random.seed(seed)
+        plans = plan_phrases(4)   # same first-RNG draw generate_melody makes
+        climax_idx = next((i for i, p in enumerate(plans) if p.climax), None)
+        if climax_idx is None:
+            continue
+        total += 1
+        peaks = [max((e.pitch for e in mel if ph * 16 <= e.start < (ph + 1) * 16), default=0)
+                 for ph in range(4)]
+        if peaks.index(max(peaks)) == climax_idx:
+            hits += 1
+    assert total >= 10
+    assert hits / total >= 0.6, f"climax placement too weak: {hits}/{total}"

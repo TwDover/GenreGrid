@@ -82,8 +82,10 @@
           :regenLoading="regenLoading === file.part"
           :hasUndo="undoable.has(file.part)"
           :simple="true"
+          :gain="partGains[file.part] ?? 1.0"
           @regen="onRegen"
           @undo="onUndo(file.part)"
+          @gain="onGain"
         />
       </div>
 
@@ -109,7 +111,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import type { BuildSongResponse, FileInfo } from '../types/midi'
-import { downloadUrl, regenerateSongPart, regenerateSongSection, undoSongPart, listSongVersions, restoreSongVersion, type SongVersion } from '../services/api'
+import { downloadUrl, regenerateSongPart, regenerateSongSection, undoSongPart, listSongVersions, restoreSongVersion, setPartGain, type SongVersion } from '../services/api'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 import PartCard from './PartCard.vue'
 
@@ -167,6 +169,31 @@ async function onRegen(part: string) {
     regenError.value = e.message ?? 'Regeneration failed'
   } finally {
     regenLoading.value = null
+  }
+}
+
+// ── Mixer ────────────────────────────────────────────────────────────────────
+// Per-part gains (1.0 = generated balance), seeded from the song's persisted
+// mixer state and updated optimistically as sliders move.
+const partGains = reactive<Record<string, number>>({})
+watch(() => props.result, (r) => {
+  for (const k of Object.keys(partGains)) delete partGains[k]
+  if (r?.mixer) Object.assign(partGains, r.mixer)
+}, { immediate: true })
+
+async function onGain(part: string, gain: number) {
+  if (!props.result) return
+  const prev = partGains[part] ?? 1.0
+  partGains[part] = gain
+  regenError.value = null
+  try {
+    await setPartGain({ generation_id: props.result.generation_id, part, gain })
+    const v = Date.now()
+    versions[part] = v
+    versions.song = v
+  } catch (e: any) {
+    partGains[part] = prev
+    regenError.value = e.message ?? 'Volume change failed'
   }
 }
 

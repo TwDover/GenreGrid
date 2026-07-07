@@ -105,39 +105,80 @@ def detect_key(notes: list[NoteEvent]) -> tuple[str, str]:
     return best[0], best[1]
 
 
+# Functional-resolution bonuses per mode: (from, to) pairs that pull.
+_RESOLUTIONS_MINOR = {("v", "i"), ("VII", "i"), ("iv", "v"), ("VI", "VII"),
+                      ("VI", "iv"), ("III", "iv"), ("iv", "i")}
+_RESOLUTIONS_MAJOR = {("V", "I"), ("IV", "V"), ("ii", "V"), ("vi", "ii"),
+                      ("vi", "IV"), ("IV", "I"), ("V", "vi")}
+# A loop pulls back to its top when its last chord has dominant/pre-dominant pull.
+_LOOP_ENDINGS = {"minor": ("VII", "v", "iv"), "major": ("V", "IV")}
+
+
 def derive_progression(notes: list[NoteEvent], key: str, scale: str,
                        length: int = 4) -> list[str]:
     """Derive a supporting chord progression from the melody, one chord per bar.
 
-    Each bar picks the diatonic chord whose tones best cover the bar's melody
-    (duration-weighted, downbeats double). The first bar prefers the tonic so
-    the loop grounds itself; the result is trimmed/padded to `length` chords
-    and reused across the whole song by the builder.
+    Viterbi over the diatonic chord vocabulary: each bar's emission score is
+    how well the chord covers the bar's melody (duration-weighted, downbeats
+    double), and transitions reward functional motion (V→i, IV→V, …) while
+    gently discouraging repeats — so the result moves like a progression
+    instead of a sequence of per-bar best guesses. The first bar prefers the
+    tonic and the last prefers a chord that pulls back to the loop's top.
     """
-    candidates = _MINOR_CHORDS if scale != "major" else _MAJOR_CHORDS
+    mode = "major" if scale == "major" else "minor"
+    candidates = _MAJOR_CHORDS if mode == "major" else _MINOR_CHORDS
+    resolutions = _RESOLUTIONS_MAJOR if mode == "major" else _RESOLUTIONS_MINOR
     chord_pcs = {r: {p % 12 for p in roman_to_chord(r, key, scale, octave=4)} for r in candidates}
 
     total_bars = max(1, math.ceil(max((n.start + n.duration) for n in notes) / 4)) if notes else length
-    progression: list[str] = []
-    for bar in range(min(total_bars, length)):
+    n_bars = min(total_bars, length)
+
+    # Emission scores per bar
+    emissions: list[dict[str, float]] = []
+    for bar in range(n_bars):
         lo, hi = bar * 4, (bar + 1) * 4
         weights: dict[int, float] = {}
         for n in notes:
             if lo <= n.start < hi:
                 w = n.duration * (2.0 if (n.start % 1.0) < 0.13 else 1.0)
                 weights[n.pitch % 12] = weights.get(n.pitch % 12, 0.0) + w
-        if not weights:
-            progression.append(progression[-1] if progression else candidates[0])
-            continue
         total_w = sum(weights.values())
+        em: dict[str, float] = {}
+        for r in candidates:
+            cover = (sum(w for pc, w in weights.items() if pc in chord_pcs[r]) / total_w
+                     if total_w > 0 else 0.0)
+            pref = (len(candidates) - candidates.index(r)) * 0.01
+            em[r] = cover + pref + (0.10 if bar == 0 and r == candidates[0] else 0.0)
+        emissions.append(em)
 
-        def _score(roman: str) -> float:
-            cover = sum(w for pc, w in weights.items() if pc in chord_pcs[roman]) / total_w
-            pref = (len(candidates) - candidates.index(roman)) * 0.01   # mild tonic-function bias
-            tonic_bonus = 0.08 if bar == 0 and roman == candidates[0] else 0.0
-            return cover + pref + tonic_bonus
+    def _trans(a: str, b: str) -> float:
+        if a == b:
+            return -0.05          # motion beats repetition, but repeats stay legal
+        return 0.06 if (a, b) in resolutions else 0.0
 
-        progression.append(max(candidates, key=_score))
+    # Viterbi DP
+    prev_scores = dict(emissions[0])
+    backptr: list[dict[str, str]] = []
+    for bar in range(1, n_bars):
+        scores: dict[str, float] = {}
+        ptrs: dict[str, str] = {}
+        for b in candidates:
+            best_a = max(candidates, key=lambda a: prev_scores[a] + _trans(a, b))
+            scores[b] = prev_scores[best_a] + _trans(best_a, b) + emissions[bar][b]
+            ptrs[b] = best_a
+        backptr.append(ptrs)
+        prev_scores = scores
+
+    # Final-state bonus: last chord should pull back to the loop's start
+    for r in _LOOP_ENDINGS[mode]:
+        if r in prev_scores:
+            prev_scores[r] += 0.05
+
+    last = max(candidates, key=lambda r: prev_scores[r])
+    progression = [last]
+    for ptrs in reversed(backptr):
+        progression.append(ptrs[progression[-1]])
+    progression.reverse()
 
     base = list(progression) or [candidates[0]]
     while len(progression) < length:

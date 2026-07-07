@@ -142,6 +142,25 @@ export async function buildSongFromMelody(
   return res.json()
 }
 
+export async function setPartGain(req: { generation_id: string; part: string; gain: number }): Promise<FileInfo> {
+  const res = await fetch(`${BASE_URL}/set-part-gain`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Volume change failed')
+  }
+  return res.json()
+}
+
+export async function listSongs(): Promise<BuildSongResponse[]> {
+  const res = await fetch(`${BASE_URL}/songs`)
+  if (!res.ok) return []
+  return res.json()
+}
+
 export interface SongVersion { id: string; saved_at: string }
 
 export async function listSongVersions(generationId: string): Promise<SongVersion[]> {
