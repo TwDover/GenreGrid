@@ -12,7 +12,7 @@ import { ref } from 'vue'
 import * as Tone from 'tone'
 import { Midi } from '@tonejs/midi'
 import { downloadUrl } from '../services/api'
-import { getPianoSampler, getMasterCompressor, getBassBus, getMelodicBus } from '../soundfonts/loader'
+import { getPianoSampler, getMasterCompressor, getBassBus, getMelodicBus, duckOnKick, resetBusLevels } from '../soundfonts/loader'
 import { drumCharacterForStyle } from '../soundfonts/drums'
 import { makeSynthKit } from '../soundfonts/synthDrums'
 import { getBassSampler } from '../soundfonts/bass'
@@ -94,6 +94,7 @@ function cleanup() {
   Tone.getTransport().stop()
   Tone.getTransport().cancel()
   Tone.getTransport().loop = false
+  resetBusLevels()   // never leave a sidechain duck applied after stop
   scheduledParts.forEach(p => p.dispose())
   disposables.forEach(d => d.dispose())
   scheduledParts = []
@@ -349,10 +350,14 @@ export function useMidiPlayer() {
         const isPerc = track.instrument.percussion || channel === 9
 
         if (isPerc) {
+          // Electronic styles get a sidechain pump: each kick briefly ducks the
+          // melodic and bass buses so the mix breathes around the four-on-the-floor.
+          const pump = isSynth
           const notes = track.notes.map(n => ({ time: n.time, midi: n.midi, velocity: n.velocity }))
           const part = new Tone.Part<{ time: number; midi: number; velocity: number }>((time, note) => {
             if (channelMuted.value.drums) return
             drumKit.trigger(note.midi, note.velocity, time)
+            if (pump && note.midi === 36) duckOnKick(time)
           }, notes)
           part.start(0)
           scheduledParts.push(part)

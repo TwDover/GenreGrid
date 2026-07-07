@@ -129,23 +129,55 @@ def _events_to_track(
     return track
 
 
+# mido rejects theoretical major keys (D#, G#, A#) — use their flat equivalents.
+_MAJOR_KEY_FIX = {"D#": "Eb", "G#": "Ab", "A#": "Bb"}
+_MINOR_FAMILY = ("minor", "dorian", "phrygian", "harmonic_minor",
+                 "pentatonic_minor", "blues", "locrian")
+
+
+def mido_key_signature(key: str, scale: str) -> str | None:
+    """Map a GenreGrid key+scale to a mido key_signature string, or None if the
+    combination has no MIDI representation (exotic modes just omit the meta)."""
+    name = f"{key}m" if scale in _MINOR_FAMILY else _MAJOR_KEY_FIX.get(key, key)
+    try:
+        mido.MetaMessage("key_signature", key=name)
+        return name
+    except Exception:
+        return None
+
+
 def _build_tempo_track(
     bpm: int,
     ticks_per_beat: int,
     tempo_events: "list[tuple[float, float]] | None" = None,
+    markers: "list[tuple[float, str]] | None" = None,
+    key_signature: str | None = None,
 ) -> mido.MidiTrack:
     """Tempo/meta track. `tempo_events` — optional (beat, bpm) tempo map; when
     given it replaces the single set_tempo so songs can push choruses slightly
-    and ritardando into the ending. An event at beat 0 overrides `bpm`."""
+    and ritardando into the ending. An event at beat 0 overrides `bpm`.
+    `markers` — optional (beat, label) section markers so DAW timelines show
+    Intro/Verse/Chorus. `key_signature` — optional mido key name (e.g. "Am")."""
     track = mido.MidiTrack()
     track.append(mido.MetaMessage("time_signature", numerator=4, denominator=4, clocks_per_click=24, notated_32nd_notes_per_beat=8, time=0))
     points = sorted(tempo_events or [], key=lambda p: p[0])
     if not points or points[0][0] > 0:
         points = [(0.0, float(bpm))] + points
-    prev_tick = 0
+
+    msgs: list[tuple[int, mido.MetaMessage]] = []
+    if key_signature:
+        msgs.append((0, mido.MetaMessage("key_signature", key=key_signature, time=0)))
     for beat, ev_bpm in points:
         tick = max(0, int(beat * ticks_per_beat))
-        track.append(mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(ev_bpm), time=tick - prev_tick))
+        msgs.append((tick, mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(ev_bpm), time=0)))
+    for beat, label in (markers or []):
+        tick = max(0, int(beat * ticks_per_beat))
+        msgs.append((tick, mido.MetaMessage("marker", text=str(label)[:60], time=0)))
+
+    msgs.sort(key=lambda m: m[0])
+    prev_tick = 0
+    for tick, msg in msgs:
+        track.append(msg.copy(time=tick - prev_tick))
         prev_tick = tick
     track.append(mido.MetaMessage("end_of_track", time=0))
     return track
@@ -243,7 +275,9 @@ def concatenate_midi_files(paths: list[Path], out_ticks: int = TICKS_PER_BEAT) -
 
 def rebuild_combined_from_parts(output_dir: Path, bpm: int, ticks_per_beat: int = TICKS_PER_BEAT,
                                 combined_name: str = "combined.mid",
-                                tempo_events: "list[tuple[float, float]] | None" = None) -> None:
+                                tempo_events: "list[tuple[float, float]] | None" = None,
+                                markers: "list[tuple[float, str]] | None" = None,
+                                key_signature: str | None = None) -> None:
     """Rebuild the combined .mid by merging all per-part .mid files in output_dir.
 
     Called after regenerating a single part so the combined stays in sync without
@@ -255,7 +289,7 @@ def rebuild_combined_from_parts(output_dir: Path, bpm: int, ticks_per_beat: int 
         return
 
     combined = mido.MidiFile(type=1, ticks_per_beat=ticks_per_beat)
-    combined.tracks.append(_build_tempo_track(bpm, ticks_per_beat, tempo_events))
+    combined.tracks.append(_build_tempo_track(bpm, ticks_per_beat, tempo_events, markers, key_signature))
 
     for part_file in part_files:
         part_mid = mido.MidiFile(str(part_file))
@@ -277,9 +311,11 @@ def write_combined_midi(
     cc_parts: "dict[str, List[ControlEvent]] | None" = None,
     pb_parts: "dict[str, List[PitchBendEvent]] | None" = None,
     tempo_events: "list[tuple[float, float]] | None" = None,
+    markers: "list[tuple[float, str]] | None" = None,
+    key_signature: str | None = None,
 ) -> None:
     mid = mido.MidiFile(type=1, ticks_per_beat=ticks_per_beat)
-    mid.tracks.append(_build_tempo_track(bpm, ticks_per_beat, tempo_events))
+    mid.tracks.append(_build_tempo_track(bpm, ticks_per_beat, tempo_events, markers, key_signature))
 
     for part_name, events in parts.items():
         track = _events_to_track(

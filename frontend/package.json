@@ -22,10 +22,11 @@
     "test:watch": "vitest",
     "preview": "vite preview",
     "dev:electron": "vite --config vite.electron.config.ts",
-    "build:electron": "vue-tsc --noEmit && vite build --config vite.electron.config.ts && electron-builder"
+    "build:electron": "vue-tsc --noEmit && vite build --config vite.electron.config.ts && electron-builder --publish never"
   },
   "dependencies": {
     "@tonejs/midi": "^2.0.28",
+    "electron-updater": "^6.8.9",
     "tone": "^15.1.22",
     "vue": "^3.4.0"
   },
@@ -44,7 +45,11 @@
   "build": {
     "appId": "com.genregrid.app",
     "productName": "GenreGrid",
-    "publish": null,
+    "publish": {
+      "provider": "github",
+      "owner": "TwDover",
+      "repo": "GenreGrid"
+    },
     "directories": {
       "output": "release"
     },
