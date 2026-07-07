@@ -237,6 +237,7 @@ def generate_bass(
     progression: list | None = None,
     kick_times: list[float] | None = None,
     melody_rests: list | None = None,   # NEW: list of (start_beat, end_beat) tuples
+    harmony_complexity: float | None = None,   # shared chords-per-bar driver (see generate_chords)
 ) -> List[NoteEvent]:
     if progression is None:
         templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
@@ -266,7 +267,8 @@ def generate_bass(
 
     beats_per_bar = 4
     # Match the chord generator's chord density: 2 chords/bar at high complexity
-    chords_per_bar = 2 if complexity > 0.6 else 1
+    _harmony_cplx = complexity if harmony_complexity is None else harmony_complexity
+    chords_per_bar = 2 if _harmony_cplx > 0.6 else 1
     beats_per_chord = beats_per_bar / chords_per_bar
     step_size = 0.5          # 8th note grid
     subdivisions = int(beats_per_chord / step_size)
