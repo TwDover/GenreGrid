@@ -16,7 +16,7 @@ import mido
 from app.core.config import EXPORTS_DIR
 from app.models.schemas import (BuildSongRequest, SongSectionDef,
                                 RegenerateSongPartRequest, RestoreSongVersionRequest)
-from app.api.routes_generate import (build_song, regenerate_song_part,
+from app.api.routes_song import (build_song, regenerate_song_part,
                                      list_song_versions, restore_song_version,
                                      build_song_from_melody)
 from app.services.midi_writer import NoteEvent, write_midi

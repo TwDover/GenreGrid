@@ -27,6 +27,17 @@
           {{ locked ? '🔒' : '🔓' }}
         </button>
       </template>
+      <input
+        v-if="gain !== undefined"
+        type="range"
+        class="gain-slider"
+        min="0.2"
+        max="1.6"
+        step="0.05"
+        :value="gain"
+        :title="`Volume ${Math.round((gain ?? 1) * 100)}% — release to apply`"
+        @change="$emit('gain', file.part, +($event.target as HTMLInputElement).value)"
+      />
       <div
         class="drag-handle"
         :class="{ 'drag-ready': tempFilePath !== null }"
@@ -77,12 +88,14 @@ const props = defineProps<{
   keyRoot?: string
   scale?: string
   simple?: boolean
+  gain?: number   // mixer gain (1.0 = generated balance); undefined hides the slider
 }>()
 
 defineEmits<{
   (e: 'regen', part: string): void
   (e: 'toggle-lock', part: string): void
   (e: 'undo'): void
+  (e: 'gain', part: string, gain: number): void
 }>()
 
 const saving = ref(false)
@@ -281,6 +294,13 @@ async function saveTo() {
 }
 .save-btn:hover:not(:disabled) { background: #122f40; }
 .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.gain-slider {
+  width: 64px;
+  flex-shrink: 0;
+  accent-color: #00c8ff;
+  cursor: pointer;
+}
 
 .track-roll {
   flex: 1;

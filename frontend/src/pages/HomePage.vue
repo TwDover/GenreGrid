@@ -142,7 +142,7 @@ import LibraryPanel from '../components/LibraryPanel.vue'
 import NowPlayingBar from '../components/NowPlayingBar.vue'
 import SongForm from '../components/SongForm.vue'
 import SongResult from '../components/SongResult.vue'
-import { fetchStyles, generate, batchGenerate } from '../services/api'
+import { fetchStyles, generate, batchGenerate, listSongs } from '../services/api'
 import type { StyleInfo, GenerateRequest, GenerateResponse, FileInfo, LibraryEntry, BuildSongResponse } from '../types/midi'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 
@@ -252,6 +252,33 @@ if (songHistory.value.length) {
   songResult.value = songHistory.value[0].result
   songLabel.value = songHistory.value[0].label
 }
+
+// Reconcile the local song list with what's actually on disk: drop entries whose
+// exports were cleaned up, and pick up songs this browser/profile hasn't seen
+// (built elsewhere, or after clearing storage). Server truth wins on existence;
+// local labels win on naming.
+async function syncSongsFromServer() {
+  try {
+    const server = await listSongs()
+    const serverIds = new Set(server.map(s => s.generation_id))
+    const localIds = new Set(songHistory.value.map(i => i.result.generation_id))
+    let merged = songHistory.value.filter(i => serverIds.has(i.result.generation_id))
+    for (const s of [...server].reverse()) {
+      if (!localIds.has(s.generation_id)) {
+        merged = [{ result: s, label: `${s.template.replace('_', '–')} · ${s.style}` }, ...merged]
+      }
+    }
+    songHistory.value = merged.slice(0, 20)
+    if (!songResult.value && songHistory.value.length) {
+      songResult.value = songHistory.value[0].result
+      songLabel.value = songHistory.value[0].label
+    } else if (songResult.value && !serverIds.has(songResult.value.generation_id)) {
+      songResult.value = songHistory.value[0]?.result ?? null
+      songLabel.value = songHistory.value[0]?.label ?? ''
+    }
+  } catch { /* backend unreachable — keep the local list */ }
+}
+onMounted(syncSongsFromServer)
 
 function onSongBuilt(result: BuildSongResponse, label: string) {
   songResult.value = result
