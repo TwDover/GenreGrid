@@ -69,12 +69,13 @@ const CHANNEL_PART: Record<number, PlayerPart> = {
 // Abort token — incremented on every new play; stale toggles bail out after each await
 let _playToken = 0
 // Duration of the currently loaded track — used by setLooping to apply loopEnd
-// live, and by NowPlayingBar / the song timeline for the time readout.
+// live, and by TransportBar / the song timeline for the time readout.
 const durationSeconds = ref(0)
 
 // Playback position, polled at ~7 Hz while the transport runs (cheap enough
 // for a playhead + time display without a per-frame loop).
 const positionSeconds = ref(0)
+const isPaused = ref(false)
 let _positionTimer: ReturnType<typeof setInterval> | null = null
 
 function startPositionPolling() {
@@ -113,6 +114,7 @@ let scheduledParts: Tone.Part[] = []
 let disposables: Tone.ToneAudioNode[] = []
 
 function cleanup() {
+  isPaused.value = false
   Tone.getTransport().stop()
   Tone.getTransport().cancel()
   Tone.getTransport().loop = false
@@ -780,6 +782,18 @@ export function useMidiPlayer() {
     positionSeconds.value = Math.max(0, seconds)   // snap the playhead immediately
   }
 
+  function togglePause() {
+    // Pause/resume the transport in place (scheduled parts pick up where they left off)
+    if (currentlyPlaying.value === null) return
+    if (isPaused.value) {
+      Tone.getTransport().start()
+      isPaused.value = false
+    } else {
+      Tone.getTransport().pause()
+      isPaused.value = true
+    }
+  }
+
   function isPlayingUrl(url: string): boolean {
     return currentlyPlaying.value === url
   }
@@ -805,5 +819,5 @@ export function useMidiPlayer() {
     ]).catch(() => { /* best-effort, ignore network errors */ })
   }
 
-  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl }
+  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause }
 }
