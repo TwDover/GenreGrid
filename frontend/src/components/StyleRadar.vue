@@ -22,7 +22,7 @@
       :key="ring"
       :points="hexPoints(ring)"
       fill="none"
-      stroke="#0d2535"
+      style="stroke: var(--surface)"
       stroke-width="1"
     />
     <!-- Axes -->
@@ -31,14 +31,13 @@
       :key="`axis-${i}`"
       x1="60" y1="60"
       :x2="cx(i, 1.0)" :y2="cy(i, 1.0)"
-      stroke="#0d2535"
+      style="stroke: var(--surface)"
       stroke-width="1"
     />
     <!-- Data polygon -->
     <polygon
       :points="dataPoints"
-      fill="#00c8ff22"
-      stroke="#00c8ff"
+      style="fill: color-mix(in srgb, var(--accent) 13%, transparent); stroke: var(--accent)"
       stroke-width="1.5"
     />
     <!-- Dots (draggable when editable) -->
@@ -47,7 +46,7 @@
       :key="`dot-${i}`"
       :cx="cx(i, m.value)" :cy="cy(i, m.value)"
       :r="editable ? 4 : 2.5"
-      fill="#00c8ff"
+      style="fill: var(--accent)"
       :style="editable ? 'cursor: grab' : ''"
       @pointerdown.stop.prevent="editable && onPointerDown($event, i)"
     />
@@ -59,7 +58,7 @@
       text-anchor="middle"
       dominant-baseline="middle"
       font-size="7"
-      :fill="draggingIdx === i ? '#00c8ff' : '#4a7080'"
+      :style="{ fill: draggingIdx === i ? 'var(--accent)' : 'var(--text-dim)' }"
     >{{ m.label }}</text>
   </svg>
 </template>

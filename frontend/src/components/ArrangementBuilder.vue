@@ -191,8 +191,8 @@ defineExpose({ addGeneration })
 
 <style scoped>
 .arrange-panel {
-  background: #060f14;
-  border: 1px solid #0d2535;
+  background: var(--panel);
+  border: 1px solid var(--surface);
   border-radius: 10px;
   padding: 0.75rem 1rem;
   display: flex;
@@ -210,13 +210,13 @@ defineExpose({ addGeneration })
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #4a7080;
+  color: var(--text-dim);
   font-weight: 600;
 }
 
 .arrange-hint {
   font-size: 0.68rem;
-  color: #2a4550;
+  color: var(--text-faint);
 }
 
 /* Timeline */
@@ -226,7 +226,7 @@ defineExpose({ addGeneration })
   border-radius: 5px;
   overflow: hidden;
   gap: 1px;
-  background: #020608;
+  background: var(--bg-deepest);
 }
 
 .timeline-block {
@@ -234,7 +234,7 @@ defineExpose({ addGeneration })
   align-items: center;
   justify-content: space-between;
   padding: 0 0.35rem;
-  background: #0d2535;
+  background: var(--surface);
   overflow: hidden;
   min-width: 0;
   transition: background 0.15s;
@@ -242,13 +242,13 @@ defineExpose({ addGeneration })
 }
 
 .timeline-block.tl-playing {
-  background: #003450;
-  border-top: 2px solid #00c8ff;
+  background: var(--accent-surface-strong);
+  border-top: 2px solid var(--accent);
 }
 
 .tl-label {
   font-size: 0.58rem;
-  color: #4a7080;
+  color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -258,7 +258,7 @@ defineExpose({ addGeneration })
 .tl-bars {
   font-size: 0.55rem;
   font-family: monospace;
-  color: #2a4550;
+  color: var(--text-faint);
   flex-shrink: 0;
 }
 
@@ -274,20 +274,20 @@ defineExpose({ addGeneration })
   align-items: center;
   gap: 0.6rem;
   padding: 0.35rem 0.6rem;
-  background: #040a0e;
-  border: 1px solid #0d2535;
+  background: var(--panel-deep);
+  border: 1px solid var(--surface);
   border-radius: 6px;
   transition: border-color 0.15s;
 }
 
 .arrange-section.sec-playing {
-  border-color: #00c8ff44;
+  border-color: color-mix(in srgb, var(--accent) 27%, transparent);
 }
 
 .sec-order {
   font-size: 0.65rem;
   font-family: monospace;
-  color: #2a4550;
+  color: var(--text-faint);
   width: 14px;
   flex-shrink: 0;
   text-align: center;
@@ -296,13 +296,13 @@ defineExpose({ addGeneration })
 .sec-style {
   font-size: 0.78rem;
   font-weight: 600;
-  color: #e0e0e8;
+  color: var(--text);
   min-width: 80px;
 }
 
 .sec-meta {
   font-size: 0.68rem;
-  color: #4a7080;
+  color: var(--text-dim);
   flex: 1;
   font-family: monospace;
 }
@@ -317,10 +317,10 @@ defineExpose({ addGeneration })
 .rep-btn {
   width: 18px;
   height: 18px;
-  background: #0d2535;
-  border: 1px solid #122f40;
+  background: var(--surface);
+  border: 1px solid var(--surface-hover);
   border-radius: 3px;
-  color: #4a7080;
+  color: var(--text-dim);
   font-size: 0.75rem;
   cursor: pointer;
   display: flex;
@@ -329,13 +329,13 @@ defineExpose({ addGeneration })
   padding: 0;
   line-height: 1;
 }
-.rep-btn:hover:not(:disabled) { color: #00c8ff; border-color: #00c8ff55; }
+.rep-btn:hover:not(:disabled) { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 33%, transparent); }
 .rep-btn:disabled { opacity: 0.3; cursor: default; }
 
 .rep-count {
   font-size: 0.68rem;
   font-family: monospace;
-  color: #00c8ff;
+  color: var(--accent);
   width: 20px;
   text-align: center;
 }
@@ -349,10 +349,10 @@ defineExpose({ addGeneration })
 .sec-btn {
   width: 22px;
   height: 22px;
-  background: #0d2535;
-  border: 1px solid #122f40;
+  background: var(--surface);
+  border: 1px solid var(--surface-hover);
   border-radius: 4px;
-  color: #4a7080;
+  color: var(--text-dim);
   font-size: 0.65rem;
   cursor: pointer;
   display: flex;
@@ -361,13 +361,13 @@ defineExpose({ addGeneration })
   padding: 0;
   transition: background 0.15s, color 0.15s;
 }
-.sec-btn:hover:not(:disabled) { background: #122f40; color: #e0e0e8; }
+.sec-btn:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); }
 .sec-btn:disabled { opacity: 0.3; cursor: default; }
-.sec-btn.remove:hover:not(:disabled) { color: #f87171; }
+.sec-btn.remove:hover:not(:disabled) { color: var(--error); }
 
 .arrange-empty {
   font-size: 0.72rem;
-  color: #2a4550;
+  color: var(--text-faint);
   text-align: center;
   padding: 0.5rem 0;
 }
@@ -380,42 +380,42 @@ defineExpose({ addGeneration })
 
 .arrange-total {
   font-size: 0.72rem;
-  color: #4a7080;
+  color: var(--text-dim);
   flex: 1;
 }
 
 .arrange-play-btn {
   font-size: 0.75rem;
   padding: 0.3rem 0.75rem;
-  background: #001e35;
-  border: 1px solid #00c8ff44;
+  background: var(--accent-surface);
+  border: 1px solid color-mix(in srgb, var(--accent) 27%, transparent);
   border-radius: 5px;
-  color: #00c8ff;
+  color: var(--accent);
   cursor: pointer;
   transition: background 0.15s;
 }
-.arrange-play-btn:hover:not(:disabled) { background: #003450; }
-.arrange-play-btn.playing { background: #003450; border-color: #00c8ff; }
+.arrange-play-btn:hover:not(:disabled) { background: var(--accent-surface-strong); }
+.arrange-play-btn.playing { background: var(--accent-surface-strong); border-color: var(--accent); }
 .arrange-play-btn:disabled { opacity: 0.6; cursor: default; }
 
 .arrange-dl-btn {
   font-size: 0.75rem;
   padding: 0.3rem 0.65rem;
-  background: #040a0e;
-  border: 1px solid #0d2535;
+  background: var(--panel-deep);
+  border: 1px solid var(--surface);
   border-radius: 5px;
-  color: #4a7080;
+  color: var(--text-dim);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
-.arrange-dl-btn:hover:not(:disabled) { background: #0d2535; color: #e0e0e8; }
+.arrange-dl-btn:hover:not(:disabled) { background: var(--surface); color: var(--text); }
 .arrange-dl-btn:disabled { opacity: 0.6; cursor: default; }
 
 .arrange-error {
   font-size: 0.72rem;
-  color: #f87171;
+  color: var(--error);
   padding: 0.25rem 0.5rem;
-  background: #2a1010;
+  background: var(--error-surface);
   border-radius: 4px;
 }
 </style>

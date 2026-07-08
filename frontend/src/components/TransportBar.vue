@@ -105,8 +105,8 @@ function onSeek(e: Event) {
   align-items: center;
   gap: 0.75rem;
   padding: 0.4rem 1rem;
-  background: #001523;
-  border-bottom: 1px solid #00c8ff33;
+  background: var(--accent-surface);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
   min-width: 0;
 }
 
@@ -115,10 +115,10 @@ function onSeek(e: Event) {
 .tb-btn {
   width: 30px;
   height: 30px;
-  background: #0d2535;
-  border: 1px solid #122f40;
+  background: var(--surface);
+  border: 1px solid var(--surface-hover);
   border-radius: 6px;
-  color: #00c8ff;
+  color: var(--accent);
   font-size: 0.8rem;
   cursor: pointer;
   display: flex;
@@ -127,15 +127,15 @@ function onSeek(e: Event) {
   line-height: 1;
   transition: background 0.15s, border-color 0.15s;
 }
-.tb-btn:hover:not(:disabled) { background: #122f40; }
+.tb-btn:hover:not(:disabled) { background: var(--surface-hover); }
 .tb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.tb-btn.active { border-color: #00c8ff; background: #003450; }
-.tb-play { background: #003450; }
+.tb-btn.active { border-color: var(--accent); background: var(--accent-surface-strong); }
+.tb-play { background: var(--accent-surface-strong); }
 
 .tb-label {
   font-size: 0.75rem;
   font-family: monospace;
-  color: #7ae8ff;
+  color: var(--accent-bright);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -146,7 +146,7 @@ function onSeek(e: Event) {
 
 .tb-rec {
   font-size: 0.75rem;
-  color: #f87171;
+  color: var(--error);
   font-family: monospace;
   flex-shrink: 0;
   animation: tb-blink 1s step-start infinite;
@@ -163,7 +163,7 @@ function onSeek(e: Event) {
 .tb-seek-slider {
   flex: 1;
   min-width: 0;
-  accent-color: #00c8ff;
+  accent-color: var(--accent);
   cursor: pointer;
   height: 4px;
 }
@@ -173,17 +173,17 @@ function onSeek(e: Event) {
   font-size: 0.68rem;
   font-family: monospace;
   font-variant-numeric: tabular-nums;
-  color: #4a7080;
+  color: var(--text-dim);
   flex-shrink: 0;
 }
 
 .tb-parts { display: flex; gap: 0.25rem; flex-shrink: 0; }
 
 .tb-mute {
-  background: #0d2535;
-  border: 1px solid #122f40;
+  background: var(--surface);
+  border: 1px solid var(--surface-hover);
   border-radius: 4px;
-  color: #4a7080;
+  color: var(--text-dim);
   font-size: 0.6rem;
   font-weight: 700;
   cursor: pointer;
@@ -196,17 +196,17 @@ function onSeek(e: Event) {
   line-height: 1;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
-.tb-mute:hover { color: #e0e0e8; }
+.tb-mute:hover { color: var(--text); }
 .tb-mute.muted {
-  background: #001520;
-  border-color: #00c8ff55;
-  color: #2a4550;
+  background: var(--surface-muted);
+  border-color: color-mix(in srgb, var(--accent) 33%, transparent);
+  color: var(--text-faint);
   text-decoration: line-through;
 }
 
 .tb-volume { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
 .tb-vol-icon { font-size: 0.75rem; }
-.tb-vol-slider { width: 90px; accent-color: #00c8ff; cursor: pointer; }
+.tb-vol-slider { width: 90px; accent-color: var(--accent); cursor: pointer; }
 
 @media (max-width: 900px) {
   .tb-label { display: none; }
