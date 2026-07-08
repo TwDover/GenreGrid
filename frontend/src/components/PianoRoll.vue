@@ -19,6 +19,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useTheme, themeColor } from '../composables/useTheme'
 import * as Tone from 'tone'
 import type { ParsedNote } from '../composables/useMidiPlayer'
 import { scaleNotes } from '../utils/chordResolver'
@@ -76,11 +77,25 @@ function noteRect(note: ParsedNote, w: number, h: number, minP: number, pitchRan
   return { x, y, w: noteW, h: Math.max(2, (h / pitchRange) * 0.85) }
 }
 
+const { theme } = useTheme()
+
+function _rgba(token: string, alpha: number, fallback: string): string {
+  const hexv = themeColor(token, fallback)
+  const m = /^#([0-9a-f]{6})$/i.exec(hexv)
+  if (!m) return hexv
+  const n = parseInt(m[1], 16)
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`
+}
+
 function draw(playheadTime = 0) {
   const el = canvasEl.value
   if (!el) return
   const ctx = el.getContext('2d')
   if (!ctx) return
+
+  // Canvas has no var() — resolve theme tokens once per frame
+  const cBg = themeColor('--bg-deepest', '#020608')
+  const cAccent = themeColor('--accent', '#00c8ff')
 
   const w = el.width
   const h = el.height
@@ -88,7 +103,7 @@ function draw(playheadTime = 0) {
   const { min: minP, max: maxP } = getPitchRange()
   const pitchRange = maxP - minP || 1
 
-  ctx.fillStyle = '#020608'
+  ctx.fillStyle = cBg
   ctx.fillRect(0, 0, w, h)
 
   const noteH = Math.max(2, (h / pitchRange) * 0.85)
@@ -99,12 +114,12 @@ function draw(playheadTime = 0) {
 
     // Scale row highlight
     if (inScale.size > 0 && inScale.has(p % 12)) {
-      ctx.fillStyle = '#00c8ff0a'
+      ctx.fillStyle = _rgba('--accent', 0.05, '#00c8ff')
       ctx.fillRect(0, y, w, noteH + 1)
     }
 
     // Pitch grid line
-    ctx.strokeStyle = '#051015'
+    ctx.strokeStyle = _rgba('--text-dim', 0.16, '#4a7080')
     ctx.lineWidth = 1
     ctx.beginPath()
     ctx.moveTo(0, y + noteH)
@@ -116,8 +131,8 @@ function draw(playheadTime = 0) {
     const alpha = 0.45 + note.velocity * 0.55
     const r = noteRect(note, w, h, minP, pitchRange, dur)
     ctx.fillStyle = note.isPercussion
-      ? `rgba(251, 191, 36, ${alpha})`
-      : `rgba(0, 200, 255, ${alpha})`
+      ? _rgba('--gold', alpha, '#fbbf24')
+      : _rgba('--accent', alpha, '#00c8ff')
     ctx.fillRect(r.x, r.y, r.w, r.h)
   }
 
@@ -126,7 +141,7 @@ function draw(playheadTime = 0) {
     const sel = displayNotes.value[selectedIdx.value]
     if (sel) {
       const r = noteRect(sel, w, h, minP, pitchRange, dur)
-      ctx.strokeStyle = '#00c8ff'
+      ctx.strokeStyle = cAccent
       ctx.lineWidth = 2
       ctx.strokeRect(r.x - 1.5, r.y - 1.5, r.w + 3, r.h + 3)
     }
@@ -135,9 +150,9 @@ function draw(playheadTime = 0) {
   if (props.playing || playheadTime > 0) {
     const px = Math.min(w - 1, (playheadTime / dur) * w)
     const grad = ctx.createLinearGradient(px - 4, 0, px + 4, 0)
-    grad.addColorStop(0, 'rgba(255,255,255,0)')
-    grad.addColorStop(0.5, 'rgba(255,255,255,0.7)')
-    grad.addColorStop(1, 'rgba(255,255,255,0)')
+    grad.addColorStop(0, _rgba('--text', 0, '#e0e0e8'))
+    grad.addColorStop(0.5, _rgba('--text', 0.7, '#e0e0e8'))
+    grad.addColorStop(1, _rgba('--text', 0, '#e0e0e8'))
     ctx.fillStyle = grad
     ctx.fillRect(px - 4, 0, 8, h)
   }
@@ -254,6 +269,7 @@ watch(() => props.notes, (n) => {
 })
 
 watch(() => [props.notes, props.keyRoot, props.scale], () => draw(0))
+watch(theme, () => redraw())
 
 onMounted(() => {
   syncCanvasSize()
@@ -282,7 +298,7 @@ onUnmounted(() => {
 }
 
 .piano-roll.editable:focus {
-  outline: 1px solid #00c8ff55;
+  outline: 1px solid color-mix(in srgb, var(--accent) 33%, transparent);
   outline-offset: 1px;
 }
 </style>

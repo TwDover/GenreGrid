@@ -48,26 +48,26 @@ const { toasts, dismiss } = useToasts()
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   max-width: 320px;
-  background: #060f14;
-  border: 1px solid #0d2535;
-  border-left: 3px solid #00c8ff;
+  background: var(--panel);
+  border: 1px solid var(--surface);
+  border-left: 3px solid var(--accent);
   border-radius: 6px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
   cursor: pointer;
   pointer-events: auto;
 }
-.toast.error { border-left-color: #f87171; }
+.toast.error { border-left-color: var(--error); }
 
 .toast-icon {
   font-size: 0.7rem;
-  color: #00c8ff;
+  color: var(--accent);
   flex-shrink: 0;
 }
-.toast.error .toast-icon { color: #f87171; }
+.toast.error .toast-icon { color: var(--error); }
 
 .toast-msg {
   font-size: 0.75rem;
-  color: #c0c8d0;
+  color: var(--text-soft);
   line-height: 1.3;
 }
 

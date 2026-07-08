@@ -1,0 +1,169 @@
+/*
+ * GenreGrid — a style-based MIDI generator.
+ * Copyright (C) 2026 Tw Dover
+ *
+ * This program is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free Software
+ * Foundation, either version 3 of the License, or (at your option) any later
+ * version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
+ * <https://www.gnu.org/licenses/> for details.
+ */
+
+/* Theme tokens. The dark values are the app's original palette; light and
+ * retro re-map the same roles. Components use var(--token) exclusively —
+ * adding a theme means adding one block here, nothing else. The active theme
+ * is data-theme on <html>, applied by useTheme.ts (persisted per user). */
+
+:root,
+:root[data-theme="dark"] {
+  --bg: #000000;
+  --bg-deepest: #020608;
+  --panel: #060f14;
+  --panel-deep: #040a0e;
+  --panel-alt: #081620;
+  --surface: #0d2535;
+  --surface-hover: #122f40;
+  --surface-muted: #001520;
+  --accent: #00c8ff;
+  --accent-bright: #7ae8ff;
+  --accent-dim: #0080cc;
+  --accent-surface: #001e35;
+  --accent-surface-strong: #003450;
+  --text: #e0e0e8;
+  --text-soft: #c0c8d0;
+  --text-dim: #4a7080;
+  --text-faint: #2a4550;
+  --error: #f87171;
+  --error-surface: #2a1010;
+  --gold: #fbbf24;
+  --gold-surface: #3a2e10;
+  --success: #34d399;
+  --success-surface: #064e3b;
+
+  /* Song-timeline section chips — one hue per section type, plus the text
+   * color drawn on top of them. These are intentionally distinct per theme
+   * (unlike most tokens above): a strip of chips needs its own small palette
+   * to read well against each background, not just a recolored accent. */
+  --seg-intro: #1a4060;
+  --seg-verse: #1a5040;
+  --seg-pre_chorus: #3a4a20;
+  --seg-chorus: #005580;
+  --seg-post_chorus: #204060;
+  --seg-bridge: #502060;
+  --seg-instrumental_solo: #603020;
+  --seg-outro: #102030;
+  --seg-ending: #0a1420;
+  --seg-text: #ffffff;
+  --seg-text-dim: rgba(255, 255, 255, 0.6);
+  --seg-text-faint: rgba(255, 255, 255, 0.35);
+}
+
+:root[data-theme="light"] {
+  --bg: #e8edf1;
+  --bg-deepest: #dde5ea;
+  --panel: #ffffff;
+  --panel-deep: #f2f6f8;
+  --panel-alt: #f7fafb;
+  --surface: #e3ebf0;
+  --surface-hover: #d3dfe6;
+  --surface-muted: #edf3f6;
+  --accent: #0077b6;
+  --accent-bright: #005f92;
+  --accent-dim: #4da3cc;
+  --accent-surface: #ddeef7;
+  --accent-surface-strong: #c2e2f2;
+  --text: #1a2530;
+  --text-soft: #33434f;
+  --text-dim: #5a7080;
+  --text-faint: #93a7b3;
+  --error: #d64545;
+  --error-surface: #fbe9e9;
+  --gold: #b8860b;
+  --gold-surface: #f7ecd0;
+  --success: #14915f;
+  --success-surface: #d9f2e6;
+
+  /* Pastel chips read as "light UI" instead of dark navy tiles floating on
+   * a white page; dark text sits on top instead of white. */
+  --seg-intro: #cfe0f0;
+  --seg-verse: #d3e8da;
+  --seg-pre_chorus: #eef0c8;
+  --seg-chorus: #bfe3f5;
+  --seg-post_chorus: #d3ddf0;
+  --seg-bridge: #e6d3f0;
+  --seg-instrumental_solo: #f0dcd0;
+  --seg-outro: #dde6ec;
+  --seg-ending: #eef2f5;
+  --seg-text: #1a2530;
+  --seg-text-dim: rgba(26, 37, 48, 0.6);
+  --seg-text-faint: rgba(26, 37, 48, 0.4);
+}
+
+/* Retro: green-phosphor CRT. Same roles, terminal palette, plus scanlines. */
+:root[data-theme="retro"] {
+  --bg: #050a05;
+  --bg-deepest: #030703;
+  --panel: #081208;
+  --panel-deep: #060d06;
+  --panel-alt: #0a160a;
+  --surface: #0f2412;
+  --surface-hover: #14301a;
+  --surface-muted: #071407;
+  --accent: #33ff66;
+  --accent-bright: #8affac;
+  --accent-dim: #22aa44;
+  --accent-surface: #0a2410;
+  --accent-surface-strong: #103618;
+  --text: #c9f5d3;
+  --text-soft: #a4dcb0;
+  --text-dim: #4e8f5e;
+  --text-faint: #2e5a3a;
+  --error: #ff6b5e;
+  --error-surface: #2a1008;
+  --gold: #ffd23f;
+  --gold-surface: #332a08;
+  --success: #7dffa0;
+  --success-surface: #0a2e1a;
+
+  /* No hue variety on a phosphor CRT — sections differentiate by brightness
+   * of the same green (plus one amber chip for the instrumental solo, the
+   * one section that's conceptually "warm" rather than structural). */
+  --seg-intro: #123a1c;
+  --seg-verse: #0f4a22;
+  --seg-pre_chorus: #1c4a1a;
+  --seg-chorus: #145a38;
+  --seg-post_chorus: #1a3a28;
+  --seg-bridge: #245a2e;
+  --seg-instrumental_solo: #3a2e12;
+  --seg-outro: #0e2a16;
+  --seg-ending: #081c0d;
+  --seg-text: #c9f5d3;
+  --seg-text-dim: rgba(201, 245, 211, 0.65);
+  --seg-text-faint: rgba(201, 245, 211, 0.4);
+}
+
+/* CRT dressing for retro: scanlines over everything + a phosphor glow on
+ * headings. pointer-events: none keeps the overlay purely cosmetic. */
+:root[data-theme="retro"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 20, 0, 0.16) 3px,
+    rgba(0, 20, 0, 0.16) 4px
+  );
+}
+
+:root[data-theme="retro"] h1 {
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* Light theme reads better without the neon-on-black glow effects */
+:root[data-theme="light"] body {
+  color-scheme: light;
+}

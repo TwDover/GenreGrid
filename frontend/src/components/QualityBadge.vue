@@ -82,19 +82,19 @@ function pct(v: number): number {
 }
 
 function barColor(v: number): string {
-  if (v >= 0.82) return '#34d399'   // green
-  if (v >= 0.68) return '#00c8ff'   // cyan
-  if (v >= 0.52) return '#fbbf24'   // amber
-  return '#f87171'                   // red
+  if (v >= 0.82) return 'var(--success)'   // green
+  if (v >= 0.68) return 'var(--accent)'   // cyan
+  if (v >= 0.52) return 'var(--gold)'   // amber
+  return 'var(--error)'                   // red
 }
 </script>
 
 <style scoped>
 .quality-panel {
   padding: 0.6rem 0.75rem;
-  background: #040a0e;
+  background: var(--panel-deep);
   border-radius: 6px;
-  border: 1px solid #0d2535;
+  border: 1px solid var(--surface);
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -110,7 +110,7 @@ function barColor(v: number): string {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #2a4550;
+  color: var(--text-faint);
 }
 
 .quality-badge {
@@ -121,15 +121,15 @@ function barColor(v: number): string {
   letter-spacing: 0.04em;
 }
 
-.label-excellent { background: #064e3b; color: #34d399; }
-.label-good      { background: #001e35; color: #00c8ff; }
-.label-fair      { background: #451a03; color: #fbbf24; }
-.label-weak      { background: #3b0f0f; color: #f87171; }
+.label-excellent { background: var(--success-surface); color: var(--success); }
+.label-good      { background: var(--accent-surface); color: var(--accent); }
+.label-fair      { background: var(--gold-surface); color: var(--gold); }
+.label-weak      { background: var(--error-surface); color: var(--error); }
 
 .quality-total {
   font-size: 0.82rem;
   font-family: monospace;
-  color: #00c8ff;
+  color: var(--accent);
   margin-left: auto;
 }
 
@@ -147,7 +147,7 @@ function barColor(v: number): string {
 
 .dim-name {
   font-size: 0.7rem;
-  color: #4a7080;
+  color: var(--text-dim);
   width: 52px;
   flex-shrink: 0;
 }
@@ -155,7 +155,7 @@ function barColor(v: number): string {
 .dim-bar-track {
   flex: 1;
   height: 4px;
-  background: #0d2535;
+  background: var(--surface);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -169,7 +169,7 @@ function barColor(v: number): string {
 .dim-value {
   font-size: 0.68rem;
   font-family: monospace;
-  color: #2a4550;
+  color: var(--text-faint);
   width: 24px;
   text-align: right;
 }
@@ -184,7 +184,7 @@ function barColor(v: number): string {
 
 .quality-flags li {
   font-size: 0.7rem;
-  color: #fbbf24;
+  color: var(--gold);
   list-style: disc;
 }
 
@@ -194,7 +194,7 @@ function barColor(v: number): string {
 .flag-tip {
   display: block;
   font-size: 0.65rem;
-  color: #2a4550;
+  color: var(--text-faint);
   margin-top: 0.1rem;
   font-style: italic;
 }
