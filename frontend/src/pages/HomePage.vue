@@ -16,7 +16,6 @@
           <span class="subtitle-credit" :class="{ visible: showCredit }">by TW Dover</span>
         </p>
       </div>
-      <NowPlayingBar />
       <div class="header-actions">
         <button class="hdr-btn" @click="saveSession" title="Save session (Ctrl+S)">Save</button>
         <label class="hdr-btn" title="Load session from file">
@@ -32,19 +31,10 @@
         >{{ updateLabel }}</button>
         <button class="hdr-btn hdr-help" @click="showShortcuts = !showShortcuts" title="Keyboard shortcuts">?</button>
       </div>
-      <div class="volume-control">
-        <span class="vol-icon">{{ volume === 0 ? '🔇' : volume < 40 ? '🔈' : '🔊' }}</span>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          :value="volume"
-          @input="setVolume(+($event.target as HTMLInputElement).value)"
-          class="vol-slider"
-          title="Master volume"
-        />
-      </div>
     </header>
+
+    <!-- Dedicated playback area: transport, seek, per-part mutes, volume -->
+    <TransportBar />
 
     <main class="app-main">
       <div class="mode-tabs">
@@ -141,7 +131,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import GenerateForm from '../components/GenerateForm.vue'
 import ExportPanel from '../components/ExportPanel.vue'
 import LibraryPanel from '../components/LibraryPanel.vue'
-import NowPlayingBar from '../components/NowPlayingBar.vue'
+import TransportBar from '../components/TransportBar.vue'
 import SongForm from '../components/SongForm.vue'
 import SongResult from '../components/SongResult.vue'
 import ToastHost from '../components/ToastHost.vue'
@@ -149,7 +139,7 @@ import { fetchStyles, generate, batchGenerate, listSongs } from '../services/api
 import type { StyleInfo, GenerateRequest, GenerateResponse, FileInfo, LibraryEntry, BuildSongResponse } from '../types/midi'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 
-const { volume, setVolume, prefetchSamplers, stop, currentlyPlaying } = useMidiPlayer()
+const { prefetchSamplers, stop, currentlyPlaying } = useMidiPlayer()
 
 const showCredit = ref(false)
 const showShortcuts = ref(false)
@@ -790,49 +780,6 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
 }
 
 .shortcuts-table tr { height: 2rem; }
-
-.volume-control {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-shrink: 0;
-}
-
-.vol-icon {
-  font-size: 1rem;
-  width: 1.4rem;
-  text-align: center;
-}
-
-.vol-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 90px;
-  height: 4px;
-  border-radius: 2px;
-  background: #122f40;
-  outline: none;
-  cursor: pointer;
-}
-
-.vol-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #00c8ff;
-  cursor: pointer;
-}
-
-.vol-slider::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #00c8ff;
-  cursor: pointer;
-  border: none;
-}
 
 .progress-row {
   display: flex;
