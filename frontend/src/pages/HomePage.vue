@@ -23,6 +23,11 @@
           <input ref="loadInput" type="file" accept=".json" style="display:none" @change="loadSession" />
         </label>
         <button
+          class="hdr-btn"
+          @click="cycleTheme"
+          :title="`Theme: ${THEME_META[theme].label} — click to cycle`"
+        >{{ THEME_META[theme].icon }}</button>
+        <button
           v-if="isElectron"
           class="hdr-btn"
           :disabled="updateChecking"
@@ -138,8 +143,10 @@ import ToastHost from '../components/ToastHost.vue'
 import { fetchStyles, generate, batchGenerate, listSongs } from '../services/api'
 import type { StyleInfo, GenerateRequest, GenerateResponse, FileInfo, LibraryEntry, BuildSongResponse } from '../types/midi'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
+import { useTheme } from '../composables/useTheme'
 
 const { prefetchSamplers, stop, currentlyPlaying } = useMidiPlayer()
+const { theme, cycleTheme, THEME_META } = useTheme()
 
 const showCredit = ref(false)
 const showShortcuts = ref(false)
@@ -548,24 +555,24 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
   font-size: 0.85rem;
   font-weight: 600;
   padding: 0.5rem 1.4rem;
-  background: #060f14;
-  border: 1px solid #0d2535;
+  background: var(--panel);
+  border: 1px solid var(--surface);
   border-radius: 8px;
-  color: #4a7080;
+  color: var(--text-dim);
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
-.mode-tab:hover { background: #081620; color: #c0c8d0; }
+.mode-tab:hover { background: var(--panel-alt); color: var(--text-soft); }
 .mode-tab.active {
-  background: #001e35;
-  border-color: #00c8ff;
-  color: #7ae8ff;
+  background: var(--accent-surface);
+  border-color: var(--accent);
+  color: var(--accent-bright);
 }
 
 .mode-desc {
   margin-left: 0.75rem;
   font-size: 0.72rem;
-  color: #2a4550;
+  color: var(--text-faint);
 }
 
 /* Two-column body */
@@ -598,23 +605,23 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #4a7080;
+  color: var(--text-dim);
 }
 .clear-btn {
   font-size: 0.68rem;
   padding: 0.15rem 0.55rem;
-  background: #040a0e;
-  border: 1px solid #0d2535;
+  background: var(--panel-deep);
+  border: 1px solid var(--surface);
   border-radius: 4px;
-  color: #4a7080;
+  color: var(--text-dim);
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
-.clear-btn:hover { background: #2a1010; color: #f87171; border-color: #f8717144; }
+.clear-btn:hover { background: var(--error-surface); color: var(--error); border-color: color-mix(in srgb, var(--error) 27%, transparent); }
 .sh-del {
   background: none;
   border: none;
-  color: #2a4550;
+  color: var(--text-faint);
   font-size: 0.8rem;
   cursor: pointer;
   padding: 0 0.15rem;
@@ -622,7 +629,7 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
   flex-shrink: 0;
   transition: color 0.15s;
 }
-.sh-del:hover { color: #f87171; }
+.sh-del:hover { color: var(--error); }
 .song-history-list {
   display: flex;
   flex-direction: column;
@@ -636,18 +643,18 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.45rem 0.7rem;
-  background: #060f14;
-  border: 1px solid #0d2535;
+  background: var(--panel);
+  border: 1px solid var(--surface);
   border-radius: 7px;
-  color: #c0c8d0;
+  color: var(--text-soft);
   cursor: pointer;
   text-align: left;
   transition: border-color 0.15s, background 0.15s;
 }
-.song-hist-row:hover { background: #081620; }
-.song-hist-row.active { border-color: #00c8ff; background: #001e35; }
+.song-hist-row:hover { background: var(--panel-alt); }
+.song-hist-row.active { border-color: var(--accent); background: var(--accent-surface); }
 .sh-label { font-size: 0.8rem; font-weight: 600; }
-.sh-meta { font-size: 0.68rem; font-family: monospace; color: #4a7080; flex-shrink: 0; }
+.sh-meta { font-size: 0.68rem; font-family: monospace; color: var(--text-dim); flex-shrink: 0; }
 
 .app-header {
   display: flex;
@@ -680,7 +687,7 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
 
 .subtitle-credit {
   opacity: 0;
-  color: #2a6070;
+  color: var(--accent-dim);
   font-style: italic;
 }
 .subtitle-credit.visible { opacity: 1; }
@@ -695,16 +702,16 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
 .hdr-btn {
   font-size: 0.72rem;
   padding: 0.25rem 0.6rem;
-  background: #060f14;
-  border: 1px solid #0d2535;
+  background: var(--panel);
+  border: 1px solid var(--surface);
   border-radius: 5px;
-  color: #4a7080;
+  color: var(--text-dim);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
   white-space: nowrap;
   user-select: none;
 }
-.hdr-btn:hover { background: #0d2535; color: #e0e0e8; }
+.hdr-btn:hover { background: var(--surface); color: var(--text); }
 
 .hdr-help {
   font-weight: 700;
@@ -724,8 +731,8 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
 }
 
 .shortcuts-modal {
-  background: #060f14;
-  border: 1px solid #0d2535;
+  background: var(--panel);
+  border: 1px solid var(--surface);
   border-radius: 12px;
   padding: 1.25rem 1.5rem;
   min-width: 280px;
@@ -741,21 +748,21 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
 .shortcuts-title {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #e0e0e8;
+  color: var(--text);
   letter-spacing: 0.04em;
 }
 
 .close-btn {
   background: none;
   border: none;
-  color: #4a7080;
+  color: var(--text-dim);
   font-size: 0.9rem;
   cursor: pointer;
   padding: 0.2rem 0.4rem;
   border-radius: 4px;
   transition: color 0.15s;
 }
-.close-btn:hover { color: #e0e0e8; }
+.close-btn:hover { color: var(--text); }
 
 .shortcuts-table {
   border-collapse: collapse;
@@ -765,9 +772,9 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
 .shortcut-key {
   font-family: monospace;
   font-size: 0.78rem;
-  color: #00c8ff;
-  background: #001520;
-  border: 1px solid #0d2535;
+  color: var(--accent);
+  background: var(--surface-muted);
+  border: 1px solid var(--surface);
   border-radius: 4px;
   padding: 0.2rem 0.5rem;
   white-space: nowrap;
@@ -775,7 +782,7 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
 
 .shortcut-desc {
   font-size: 0.8rem;
-  color: #7ae8ff;
+  color: var(--accent-bright);
   padding-left: 1rem;
 }
 
@@ -786,7 +793,7 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
   align-items: center;
   gap: 0.5rem;
   font-size: 0.75rem;
-  color: #00c8ff;
+  color: var(--accent);
 }
 
 @keyframes dot-blink {
@@ -806,18 +813,18 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
 .retry-btn {
   font-size: 0.75rem;
   padding: 0.2rem 0.6rem;
-  background: #0d2535;
-  border: 1px solid #122f40;
+  background: var(--surface);
+  border: 1px solid var(--surface-hover);
   border-radius: 4px;
-  color: #4a7080;
+  color: var(--text-dim);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
   white-space: nowrap;
 }
 
 .retry-btn:hover {
-  background: #122f40;
-  color: #e0e0e8;
+  background: var(--surface-hover);
+  color: var(--text);
 }
 
 .panel-tabs {
@@ -829,19 +836,19 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
 .panel-tab {
   font-size: 0.78rem;
   padding: 0.3rem 0.9rem;
-  background: #060f14;
-  border: 1px solid #0d2535;
+  background: var(--panel);
+  border: 1px solid var(--surface);
   border-radius: 6px;
-  color: #4a7080;
+  color: var(--text-dim);
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
-.panel-tab:hover { background: #081620; color: #e0e0e8; }
+.panel-tab:hover { background: var(--panel-alt); color: var(--text); }
 
 .panel-tab.active {
-  background: #001e35;
-  border-color: #00c8ff;
-  color: #7ae8ff;
+  background: var(--accent-surface);
+  border-color: var(--accent);
+  color: var(--accent-bright);
 }
 </style>

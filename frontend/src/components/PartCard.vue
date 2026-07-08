@@ -284,8 +284,8 @@ async function saveTo() {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  background: #060f14;
-  border: 1px solid #0d2535;
+  background: var(--panel);
+  border: 1px solid var(--surface);
   border-radius: 8px;
   padding: 0.5rem 0.75rem;
   min-width: 0;
@@ -293,18 +293,18 @@ async function saveTo() {
 }
 
 .part-track.playing {
-  border-color: #00c8ff;
+  border-color: var(--accent);
 }
 
 .part-track.expired {
-  border-color: #3a2020;
+  border-color: var(--error-surface);
   opacity: 0.75;
 }
 
 .expired-note {
   flex: 1;
   font-size: 0.72rem;
-  color: #b06060;
+  color: var(--error);
   font-style: italic;
 }
 
@@ -315,7 +315,7 @@ async function saveTo() {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #00c8ff;
+  color: var(--accent);
 }
 
 .track-controls {
@@ -329,10 +329,10 @@ async function saveTo() {
   width: 32px;
   height: 32px;
   flex-shrink: 0;
-  background: #0d2535;
-  border: 1px solid #122f40;
+  background: var(--surface);
+  border: 1px solid var(--surface-hover);
   border-radius: 6px;
-  color: #00c8ff;
+  color: var(--accent);
   font-size: 0.85rem;
   cursor: pointer;
   display: flex;
@@ -340,20 +340,20 @@ async function saveTo() {
   justify-content: center;
   transition: background 0.15s;
 }
-.icon-btn:hover:not(:disabled) { background: #122f40; }
+.icon-btn:hover:not(:disabled) { background: var(--surface-hover); }
 .icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.playing .icon-btn:first-child { background: #003450; border-color: #00c8ff; }
+.playing .icon-btn:first-child { background: var(--accent-surface-strong); border-color: var(--accent); }
 .lock-btn { font-size: 0.75rem; }
-.lock-btn.locked { background: #001e35; border-color: #00c8ff55; }
+.lock-btn.locked { background: var(--accent-surface); border-color: color-mix(in srgb, var(--accent) 33%, transparent); }
 
 .drag-handle {
   width: 32px;
   height: 32px;
   flex-shrink: 0;
-  background: #0d2535;
-  border: 1px solid #122f40;
+  background: var(--surface);
+  border: 1px solid var(--surface-hover);
   border-radius: 6px;
-  color: #00c8ff;
+  color: var(--accent);
   font-size: 1rem;
   cursor: grab;
   display: flex;
@@ -362,34 +362,34 @@ async function saveTo() {
   user-select: none;
   transition: background 0.15s;
 }
-.drag-handle:hover { background: #122f40; }
+.drag-handle:hover { background: var(--surface-hover); }
 .drag-handle:active { cursor: grabbing; }
 .drag-handle:not(.drag-ready) { opacity: 0.4; cursor: wait; }
 
 .save-btn {
   height: 32px;
-  background: #0d2535;
-  border: 1px solid #122f40;
+  background: var(--surface);
+  border: 1px solid var(--surface-hover);
   border-radius: 6px;
-  color: #00c8ff;
+  color: var(--accent);
   font-size: 0.75rem;
   cursor: pointer;
   padding: 0 0.6rem;
   white-space: nowrap;
   transition: background 0.15s;
 }
-.save-btn:hover:not(:disabled) { background: #122f40; }
+.save-btn:hover:not(:disabled) { background: var(--surface-hover); }
 .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .edit-save-btn {
-  border-color: #00c8ff88;
-  background: #003450;
+  border-color: color-mix(in srgb, var(--accent) 53%, transparent);
+  background: var(--accent-surface-strong);
 }
 
 .gain-slider {
   width: 64px;
   flex-shrink: 0;
-  accent-color: #00c8ff;
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -400,7 +400,7 @@ async function saveTo() {
 
 .roll-empty {
   height: 40px;
-  background: #040a0e;
+  background: var(--panel-deep);
   border-radius: 4px;
   opacity: 0.4;
 }

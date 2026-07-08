@@ -19,28 +19,28 @@ import HomePage from './pages/HomePage.vue'
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #000000;
-  color: #e0e0e8;
+  background: var(--bg);
+  color: var(--text);
   min-height: 100vh;
 }
 
 .app-header {
   padding: 2rem 2rem 1rem;
-  border-bottom: 1px solid #081822;
+  border-bottom: 1px solid var(--panel-alt);
 }
 
 .app-header h1 {
   font-size: 2rem;
   font-weight: 700;
   letter-spacing: -0.5px;
-  background: linear-gradient(135deg, #00c8ff, #00ff80);
+  background: linear-gradient(135deg, var(--accent), var(--success));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .subtitle {
   font-size: 0.85rem;
-  color: #3a5a68;
+  color: var(--text-faint);
   margin-top: 0.25rem;
 }
 
@@ -63,24 +63,30 @@ body {
 .generate-form { display: flex; flex-direction: column; gap: 1rem; }
 
 .field { display: flex; flex-direction: column; gap: 0.35rem; }
-.field label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: #4a7080; }
-.field .value { color: #00c8ff; margin-left: 0.5rem; }
+.field label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); }
+.field .value { color: var(--accent); margin-left: 0.5rem; }
 
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 
-select, input[type="number"] {
-  background: #060f14;
-  border: 1px solid #0d2535;
-  color: #e0e0e8;
+select, input[type="number"], input[type="text"], input:not([type]), textarea {
+  background: var(--panel);
+  border: 1px solid var(--surface);
+  color: var(--text);
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
   font-size: 0.9rem;
   width: 100%;
 }
 
+/* Browser UA placeholder color defaults to a near-black gray — pin it to the
+ * theme's dim text color so it's legible on dark AND light/retro. */
+select::placeholder, input::placeholder, textarea::placeholder {
+  color: var(--text-faint);
+}
+
 input[type="range"] {
   width: 100%;
-  accent-color: #00c8ff;
+  accent-color: var(--accent);
 }
 
 .part-toggles { display: flex; gap: 0.75rem; flex-wrap: wrap; }
@@ -91,14 +97,14 @@ input[type="range"] {
   font-size: 0.85rem;
   cursor: pointer;
   padding: 0.35rem 0.75rem;
-  border: 1px solid #0d2535;
+  border: 1px solid var(--surface);
   border-radius: 20px;
   transition: border-color 0.15s;
 }
-.toggle:has(input:checked) { border-color: #00c8ff; color: #00c8ff; }
+.toggle:has(input:checked) { border-color: var(--accent); color: var(--accent); }
 
 .generate-btn {
-  background: linear-gradient(135deg, #0080cc, #00aa55);
+  background: linear-gradient(135deg, var(--accent-dim), var(--success));
   color: white;
   border: none;
   padding: 0.75rem 1.5rem;
@@ -112,7 +118,7 @@ input[type="range"] {
 .generate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .generate-btn:not(:disabled):hover { opacity: 0.9; }
 
-.error-msg { color: #f87171; font-size: 0.85rem; margin-top: 0.5rem; }
+.error-msg { color: var(--error); font-size: 0.85rem; margin-top: 0.5rem; }
 
 /* Export panel */
 .export-panel { display: flex; flex-direction: column; gap: 1.25rem; }
@@ -121,11 +127,11 @@ input[type="range"] {
   display: flex;
   gap: 1.25rem;
   font-size: 0.85rem;
-  color: #4a7080;
+  color: var(--text-dim);
   padding: 0.75rem 1rem;
-  background: #060f14;
+  background: var(--panel);
   border-radius: 8px;
-  border: 1px solid #0d2535;
+  border: 1px solid var(--surface);
 }
 
 .gen-id { margin-left: auto; font-family: monospace; }
@@ -133,8 +139,8 @@ input[type="range"] {
 .part-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.75rem; }
 
 .part-card {
-  background: #060f14;
-  border: 1px solid #0d2535;
+  background: var(--panel);
+  border: 1px solid var(--surface);
   border-radius: 10px;
   padding: 1rem;
   display: flex;
@@ -144,21 +150,21 @@ input[type="range"] {
 
 .part-header { display: flex; flex-direction: column; gap: 0.2rem; }
 .part-name { font-weight: 600; text-transform: capitalize; }
-.part-file { font-size: 0.75rem; color: #3a5a68; font-family: monospace; }
+.part-file { font-size: 0.75rem; color: var(--text-faint); font-family: monospace; }
 
 .download-btn {
   display: block;
   text-align: center;
   padding: 0.45rem;
-  background: #0d2535;
-  color: #00c8ff;
+  background: var(--surface);
+  color: var(--accent);
   border-radius: 6px;
   text-decoration: none;
   font-size: 0.82rem;
   font-weight: 500;
   transition: background 0.15s;
 }
-.download-btn:hover { background: #122f40; }
+.download-btn:hover { background: var(--surface-hover); }
 
 @media (max-width: 700px) {
   .app-main {

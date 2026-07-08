@@ -10,6 +10,8 @@
  */
 import { createApp } from 'vue'
 import App from './App.vue'
+import './styles/themes.css'
+import './composables/useTheme'   // applies the persisted theme before first paint
 
 console.log(
   '%cGenreGrid%c\nStyle-based MIDI generator\n%cCreated by TW Dover',
