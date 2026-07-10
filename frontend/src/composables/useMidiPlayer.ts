@@ -238,6 +238,35 @@ function makeLofiSynth(output: Tone.ToneAudioNode = getMelodicBus()): Tone.PolyS
   return synth
 }
 
+// Tone.Offline() always renders "asynchronously": internally it steps through
+// the render in 128-sample blocks and, once per second of rendered audio,
+// awaits a 1ms setTimeout so the main thread isn't blocked for the whole
+// render. An earlier version of this function skipped those yields entirely
+// (render(false)) for maximum speed — but with no note actually routed
+// through Tone's Transport any more (see the trigger-ordering comment in
+// offlineRender below), each of those per-tick steps got dramatically
+// cheaper, so the yields cost much less relative to the work they used to
+// interrupt. Keeping them (render(true)) means the tab stays responsive
+// during a render — you can keep working, start another export, or play a
+// preview — for a render time difference that's now marginal.
+//
+// This also used to swap Tone's ambient context globally for the whole
+// render via Tone.setContext(), which corrupted any other Tone.js activity
+// (playback, another render) that started before the swap was undone —
+// exactly the kind of concurrent use the yields above are meant to allow.
+// Building the OfflineContext and handing it directly to the caller instead
+// avoids that: every node the caller creates must be given { context }
+// explicitly so it lives in the offline graph rather than the ambient one.
+async function renderOfflineFast(
+  callback: (context: Tone.OfflineContext) => Promise<void> | void,
+  duration: number,
+  channels = 2,
+): Promise<Tone.ToneAudioBuffer> {
+  const context = new Tone.OfflineContext(channels, duration, Tone.getContext().sampleRate)
+  await callback(context)
+  return await context.render(true)
+}
+
 export function useMidiPlayer() {
   async function toggle(url: string, styleId?: string, label?: string) {
     if (currentlyPlaying.value === url) {
@@ -529,6 +558,9 @@ export function useMidiPlayer() {
 
       const tail = isPad ? 2.5 : 1.2
       const totalDuration = durationSeconds + tail
+      if (!Number.isFinite(totalDuration) || totalDuration <= 0) {
+        throw new Error('Invalid render duration — the source MIDI may be empty or malformed')
+      }
 
       // Which parts this render includes: 'all', the legacy 'melodic' bucket,
       // or any single part name (per-part stem export).
@@ -536,24 +568,52 @@ export function useMidiPlayer() {
         channelFilter === 'all' || channelFilter === p ||
         (channelFilter === 'melodic' && p !== 'drums' && p !== 'bass')
 
-      const toneBuffer = await Tone.Offline(async () => {
-        const dest = Tone.getDestination()
-        dest.volume.value = 0
-        const comp = new Tone.Compressor({ threshold: -8, ratio: 3, knee: 10, attack: 0.003, release: 0.15 }).connect(dest)
+      // The Web Audio API gives no incremental progress for an OfflineAudioContext
+      // render, so a long song (several minutes of audio, synthesized+effected)
+      // would otherwise sit at a frozen percentage for its entire render time and
+      // look hung even when it's working. Nudge the bar forward on a timer, and
+      // give up with a clear error instead of hanging the UI forever if the
+      // render graph genuinely stalls (should not happen, but silent infinite
+      // waits are worse than a surfaced error).
+      let simulated = 0.08
+      const progressTimer = setInterval(() => {
+        simulated = Math.min(0.89, simulated + 0.01)
+        onProgress?.(simulated)
+      }, 400)
+      const timeoutMs = Math.max(45_000, totalDuration * 4000)
+      let timeoutHandle: ReturnType<typeof setTimeout> | null = null
+      const timeout = new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(
+          () => reject(new Error('WAV render timed out — try again, or export a shorter section')),
+          timeoutMs,
+        )
+      })
 
-        Tone.getTransport().bpm.value = bpm
+      const renderPromise = renderOfflineFast(async (context) => {
+        const dest = context.destination
+        dest.volume.value = 0
+        const comp = new Tone.Compressor({ context, threshold: -8, ratio: 3, knee: 10, attack: 0.003, release: 0.15 }).connect(dest)
+
+        // Only needed so Transport-relative delay-time notation ('8n', '4n', …)
+        // in the effects below resolves against the song's real tempo — no note
+        // is actually scheduled through the Transport (see below). This is the
+        // offline context's OWN transport, not the ambient one used by live
+        // playback — mutating that would have audibly retempo'd anything
+        // playing concurrently while this export ran.
+        context.transport.bpm.value = bpm
 
         // ── Drum kit ─────────────────────────────────────────────────────
         // Same synthesized engine as live playback, routed to the offline
         // compressor so the export matches what the user auditions.
         const drumKit = wantsPart('drums')
-          ? makeSynthKit(drumCharacterForStyle(styleId), comp)
+          ? makeSynthKit(drumCharacterForStyle(styleId), comp, context)
           : null
 
         // ── Bass synth ───────────────────────────────────────────────────
         let bassSynth: Tone.MonoSynth | null = null
         if (wantsPart('bass')) {
           bassSynth = new Tone.MonoSynth({
+            context,
             oscillator: { type: 'sawtooth' },
             filter: { Q: 2, type: 'lowpass', rolloff: -24 },
             envelope: { attack: 0.01, decay: 0.1, sustain: 0.9, release: 0.5 },
@@ -572,92 +632,128 @@ export function useMidiPlayer() {
           return 0
         }
         const mkVoice = (variant: 'chords' | 'lead' | 'arp' | 'pads' | 'strings', pan: number): Tone.PolySynth => {
-          const panner = new Tone.Panner(pan).connect(comp)
+          const panner = new Tone.Panner({ context, pan }).connect(comp)
           if (variant === 'arp') {
-            const delay = new Tone.FeedbackDelay({ delayTime: '8n.', feedback: 0.24, wet: 0.16 }).connect(panner)
-            const lp = new Tone.Filter({ frequency: 4200, type: 'lowpass' }).connect(delay)
-            return new Tone.PolySynth(Tone.Synth, {
-              oscillator: { type: 'triangle' },
-              envelope: { attack: 0.004, decay: 0.18, sustain: 0.0, release: 0.25 },
-              volume: -11,
+            const delay = new Tone.FeedbackDelay({ context, delayTime: '8n.', feedback: 0.24, wet: 0.16 }).connect(panner)
+            const lp = new Tone.Filter({ context, frequency: 4200, type: 'lowpass' }).connect(delay)
+            return new Tone.PolySynth({
+              context,
+              voice: Tone.Synth,
+              options: {
+                oscillator: { type: 'triangle' },
+                envelope: { attack: 0.004, decay: 0.18, sustain: 0.0, release: 0.25 },
+                volume: -11,
+              },
             }).connect(lp)
           }
           if (variant === 'pads') {
             // Pads part — same sustained wash as live playback's makePad
-            const delay = new Tone.FeedbackDelay({ delayTime: '4n', feedback: 0.4, wet: 0.3 }).connect(panner)
-            return new Tone.PolySynth(Tone.Synth, {
-              oscillator: { type: 'triangle' },
-              envelope: { attack: 0.8, decay: 0.3, sustain: 0.7, release: 2.0 },
-              volume: -10,
+            const delay = new Tone.FeedbackDelay({ context, delayTime: '4n', feedback: 0.4, wet: 0.3 }).connect(panner)
+            return new Tone.PolySynth({
+              context,
+              voice: Tone.Synth,
+              options: {
+                oscillator: { type: 'triangle' },
+                envelope: { attack: 0.8, decay: 0.3, sustain: 0.7, release: 2.0 },
+                volume: -10,
+              },
             }).connect(delay)
           }
           if (variant === 'strings') {
             // Counter-melody — matches makeStrings in live playback
-            const lp = new Tone.Filter({ frequency: 2400, type: 'lowpass' }).connect(panner)
-            const chorus = new Tone.Chorus({ frequency: 0.8, depth: 0.35, wet: 0.3 }).connect(lp)
+            const lp = new Tone.Filter({ context, frequency: 2400, type: 'lowpass' }).connect(panner)
+            const chorus = new Tone.Chorus({ context, frequency: 0.8, depth: 0.35, wet: 0.3 }).connect(lp)
             chorus.start()
-            return new Tone.PolySynth(Tone.Synth, {
-              oscillator: { type: 'fatsawtooth', count: 3, spread: 14 },
-              envelope: { attack: 0.12, decay: 0.3, sustain: 0.8, release: 1.2 },
-              volume: -14,
+            return new Tone.PolySynth({
+              context,
+              voice: Tone.Synth,
+              options: {
+                oscillator: { type: 'fatsawtooth', count: 3, spread: 14 },
+                envelope: { attack: 0.12, decay: 0.3, sustain: 0.8, release: 1.2 },
+                volume: -14,
+              },
             }).connect(chorus)
           }
           if (variant === 'lead' && (isPad || isSynth)) {
             // Dedicated articulate melody lead (matches makeMelodyLead in live play):
             // fast attack, tamed low-pass, only a whisper of chorus so it stays in tune.
             const soft = isPad
-            const delay = new Tone.FeedbackDelay({ delayTime: '8n.', feedback: 0.22, wet: soft ? 0.22 : 0.14 }).connect(panner)
-            const chorus = new Tone.Chorus({ frequency: 1.8, depth: 0.12, wet: 0.14 }).connect(delay)
+            const delay = new Tone.FeedbackDelay({ context, delayTime: '8n.', feedback: 0.22, wet: soft ? 0.22 : 0.14 }).connect(panner)
+            const chorus = new Tone.Chorus({ context, frequency: 1.8, depth: 0.12, wet: 0.14 }).connect(delay)
             chorus.start()
-            const lp = new Tone.Filter({ frequency: soft ? 3000 : 3800, type: 'lowpass', rolloff: -12, Q: 0.8 }).connect(chorus)
-            return new Tone.PolySynth(Tone.Synth, {
-              oscillator: soft ? { type: 'triangle' } : { type: 'sawtooth' },
-              envelope: soft
-                ? { attack: 0.03, decay: 0.2,  sustain: 0.75, release: 0.8 }
-                : { attack: 0.008, decay: 0.15, sustain: 0.65, release: 0.3 },
-              volume: soft ? -9 : -10,
+            const lp = new Tone.Filter({ context, frequency: soft ? 3000 : 3800, type: 'lowpass', rolloff: -12, Q: 0.8 }).connect(chorus)
+            return new Tone.PolySynth({
+              context,
+              voice: Tone.Synth,
+              options: {
+                oscillator: soft ? { type: 'triangle' } : { type: 'sawtooth' },
+                envelope: soft
+                  ? { attack: 0.03, decay: 0.2,  sustain: 0.75, release: 0.8 }
+                  : { attack: 0.008, decay: 0.15, sustain: 0.65, release: 0.3 },
+                volume: soft ? -9 : -10,
+              },
             }).connect(lp)
           }
           if (isPad) {
-            const delay = new Tone.FeedbackDelay({ delayTime: '4n', feedback: 0.38, wet: 0.28 }).connect(panner)
-            return new Tone.PolySynth(Tone.Synth, {
-              oscillator: { type: 'triangle' },
-              envelope: { attack: 0.8, decay: 0.3, sustain: 0.7, release: 2.0 },
-              volume: -7,
+            const delay = new Tone.FeedbackDelay({ context, delayTime: '4n', feedback: 0.38, wet: 0.28 }).connect(panner)
+            return new Tone.PolySynth({
+              context,
+              voice: Tone.Synth,
+              options: {
+                oscillator: { type: 'triangle' },
+                envelope: { attack: 0.8, decay: 0.3, sustain: 0.7, release: 2.0 },
+                volume: -7,
+              },
             }).connect(delay)
           }
           if (isLofi) {
-            const lp = new Tone.Filter({ frequency: 5200, type: 'lowpass' }).connect(panner)
-            return new Tone.PolySynth(Tone.Synth, {
-              oscillator: { type: 'triangle' },
-              envelope: { attack: 0.04, decay: 0.2, sustain: 0.6, release: 1.2 },
-              volume: -4,
+            const lp = new Tone.Filter({ context, frequency: 5200, type: 'lowpass' }).connect(panner)
+            return new Tone.PolySynth({
+              context,
+              voice: Tone.Synth,
+              options: {
+                oscillator: { type: 'triangle' },
+                envelope: { attack: 0.04, decay: 0.2, sustain: 0.6, release: 1.2 },
+                volume: -4,
+              },
             }).connect(lp)
           }
           if (isSynth) {
             if (variant === 'chords') {
-              const lp = new Tone.Filter({ frequency: 2600, type: 'lowpass' }).connect(panner)
-              const chorus = new Tone.Chorus({ frequency: 1.4, depth: 0.5, wet: 0.35 }).connect(lp)
+              const lp = new Tone.Filter({ context, frequency: 2600, type: 'lowpass' }).connect(panner)
+              const chorus = new Tone.Chorus({ context, frequency: 1.4, depth: 0.5, wet: 0.35 }).connect(lp)
               chorus.start()
-              return new Tone.PolySynth(Tone.Synth, {
-                oscillator: { type: 'fatsawtooth', count: 3, spread: 22 },
-                envelope: { attack: 0.06, decay: 0.25, sustain: 0.65, release: 0.6 },
-                volume: -12,
+              return new Tone.PolySynth({
+                context,
+                voice: Tone.Synth,
+                options: {
+                  oscillator: { type: 'fatsawtooth', count: 3, spread: 22 },
+                  envelope: { attack: 0.06, decay: 0.25, sustain: 0.65, release: 0.6 },
+                  volume: -12,
+                },
               }).connect(chorus)
             }
-            const delay = new Tone.PingPongDelay({ delayTime: '8n', feedback: 0.18, wet: 0.1 }).connect(panner)
-            const chorus = new Tone.Chorus({ frequency: 3, depth: 0.4, wet: 0.22 }).connect(delay)
+            const delay = new Tone.PingPongDelay({ context, delayTime: '8n', feedback: 0.18, wet: 0.1 }).connect(panner)
+            const chorus = new Tone.Chorus({ context, frequency: 3, depth: 0.4, wet: 0.22 }).connect(delay)
             chorus.start()
-            return new Tone.PolySynth(Tone.Synth, {
-              oscillator: { type: 'sawtooth' },
-              envelope: { attack: 0.01, decay: 0.12, sustain: 0.8, release: 0.4 },
-              volume: -9,
+            return new Tone.PolySynth({
+              context,
+              voice: Tone.Synth,
+              options: {
+                oscillator: { type: 'sawtooth' },
+                envelope: { attack: 0.01, decay: 0.12, sustain: 0.8, release: 0.4 },
+                volume: -9,
+              },
             }).connect(chorus)
           }
-          return new Tone.PolySynth(Tone.Synth, {
-            oscillator: { type: 'triangle' },
-            envelope: { attack: 0.02, decay: 0.15, sustain: 0.7, release: 0.9 },
-            volume: -8,
+          return new Tone.PolySynth({
+            context,
+            voice: Tone.Synth,
+            options: {
+              oscillator: { type: 'triangle' },
+              envelope: { attack: 0.02, decay: 0.15, sustain: 0.7, release: 0.9 },
+              volume: -8,
+            },
           }).connect(panner)
         }
 
@@ -677,6 +773,30 @@ export function useMidiPlayer() {
         if (wantsPart('counter_melody') && hasTrackOn(5)) stringsSynth = mkVoice('strings', panForChannel(5))
 
         // ── Schedule MIDI events ─────────────────────────────────────────
+        // Triggered directly at each note's absolute time (seconds from render
+        // start — exactly what the parsed MIDI already gives us) instead of via
+        // Tone.getTransport().schedule(). The Transport's tick-driven scheduler
+        // is designed for live, tempo-relative playback; routing every note
+        // through it here forced the offline render to walk its full timeline
+        // for each of the render's ~128-sample ticks, which is the dominant
+        // cost for a multi-minute song. Triggering the synths directly uses
+        // native Web Audio parameter scheduling instead, which the offline
+        // render can bounce in one pass — this is also the pattern Tone.js's
+        // own docs use for offline rendering.
+        //
+        // Tone.js requires each voice's start times to arrive STRICTLY
+        // increasing (the Transport used to guarantee that for us by firing
+        // scheduled callbacks in time order regardless of scheduling order).
+        // Triggering directly means the JS *call* order is what Tone.js sees,
+        // and this loop processes one track fully before the next — so two
+        // tracks sharing a voice (e.g. the single bassSynth instance) could
+        // call it out of time order. Sorting fixes ordering but NOT exact ties
+        // (two notes computed to the same float time — plausible for drum
+        // rolls/simultaneous hits) since Tone.js rejects equal times too, so
+        // after sorting each fire time is nudged forward by a sub-millisecond
+        // epsilon whenever it would collide with (or trail) the previous one —
+        // inaudible, but guarantees strict monotonicity for every voice.
+        const triggers: { time: number; fn: (time: number) => void }[] = []
         for (const track of midi.tracks) {
           if (track.notes.length === 0) continue
           const channel = track.channel ?? 0
@@ -684,14 +804,13 @@ export function useMidiPlayer() {
 
           if (isPerc && drumKit) {
             for (const n of track.notes) {
-              const { midi: pitch, time, velocity } = n
-              Tone.getTransport().schedule(t => drumKit.trigger(pitch, velocity, t), time)
+              triggers.push({ time: n.time, fn: (time) => drumKit.trigger(n.midi, n.velocity, time) })
             }
           } else if (channel === 1 && bassSynth) {
+            const bass = bassSynth
             for (const n of track.notes) {
               const note = Tone.Frequency(n.midi, 'midi').toNote()
-              const { time, duration, velocity } = n
-              Tone.getTransport().schedule(t => bassSynth!.triggerAttackRelease(note, duration, t, velocity), time)
+              triggers.push({ time: n.time, fn: (time) => bass.triggerAttackRelease(note, n.duration, time, n.velocity) })
             }
           } else if (!isPerc && channel !== 1) {
             // channel 2 = melody (lead), 3 = arpeggio (pluck), 4 = pads,
@@ -705,15 +824,33 @@ export function useMidiPlayer() {
             if (synth) {
               for (const n of track.notes) {
                 const note = Tone.Frequency(n.midi, 'midi').toNote()
-                const { time, duration, velocity } = n
-                Tone.getTransport().schedule(t => synth.triggerAttackRelease(note, duration, t, velocity), time)
+                triggers.push({ time: n.time, fn: (time) => synth.triggerAttackRelease(note, n.duration, time, n.velocity) })
               }
             }
           }
         }
-
-        Tone.getTransport().start()
+        triggers.sort((a, b) => a.time - b.time)
+        const EPSILON = 0.0005   // 0.5 ms — well below audible/perceptible timing resolution
+        let lastTime = -Infinity
+        for (const t of triggers) {
+          const time = t.time > lastTime ? t.time : lastTime + EPSILON
+          lastTime = time
+          t.fn(time)
+        }
       }, totalDuration, 2)
+
+      // If the timeout wins the race, the render keeps running in the background
+      // (an OfflineAudioContext can't be cancelled) — swallow its eventual
+      // settlement so a late rejection doesn't surface as an unhandled promise.
+      renderPromise.catch(() => {})
+
+      let toneBuffer: Awaited<typeof renderPromise>
+      try {
+        toneBuffer = await Promise.race([renderPromise, timeout])
+      } finally {
+        clearInterval(progressTimer)
+        if (timeoutHandle !== null) clearTimeout(timeoutHandle)
+      }
 
       onProgress?.(0.92)
       const ab = toneBuffer.get()

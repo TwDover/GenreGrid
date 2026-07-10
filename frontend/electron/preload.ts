@@ -32,4 +32,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 'unsupported' (unsigned macOS), 'dev' (not packaged), or 'error'.
   checkForUpdates: (): Promise<{ status: string; version: string; latest?: string; message?: string }> =>
     ipcRenderer.invoke('check-for-updates'),
+
+  // Append one renderer-side error to logs/renderer-errors.log (next to
+  // backend.log) so it survives even if the app closes before anyone opens
+  // the in-app error log panel.
+  logRendererError: (entry: { timestamp: string; context: string; message: string; stack?: string }): Promise<void> =>
+    ipcRenderer.invoke('log-renderer-error', entry),
 })

@@ -198,6 +198,7 @@
 import { ref, computed, watch } from 'vue'
 import type { StyleInfo, BuildSongResponse } from '../types/midi'
 import { buildSong, buildSongFromMelody } from '../services/api'
+import { logError } from '../composables/useErrorLog'
 
 const props = defineProps<{ styles: StyleInfo[] }>()
 const emit = defineEmits<{
@@ -364,6 +365,7 @@ async function generate() {
     emit('built', result, templateLabel.value)
   } catch (e: any) {
     error.value = e.message ?? 'Song generation failed'
+    logError('Build song', e)
   } finally {
     loading.value = false
     emit('building', false)

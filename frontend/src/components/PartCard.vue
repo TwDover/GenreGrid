@@ -57,6 +57,16 @@
         <span v-else>{{ hasPicker ? 'Save to…' : '↓ .mid' }}</span>
       </button>
       <button
+        v-if="midiData"
+        class="save-btn"
+        :disabled="renderingWav"
+        @click="exportWav"
+        :title="wavError || 'Render and download as WAV — see the ⬇ header button for progress from anywhere'"
+      >
+        <span v-if="renderingWav">{{ Math.round(wavProgress * 100) }}%</span>
+        <span v-else>↓ .wav</span>
+      </button>
+      <button
         v-if="editable && editDirty"
         class="save-btn edit-save-btn"
         :disabled="savingEdits"
@@ -92,7 +102,11 @@ import { Midi } from '@tonejs/midi'
 import type { Header } from '@tonejs/midi'
 import type { FileInfo } from '../types/midi'
 import { downloadUrl, editPart } from '../services/api'
-import { useMidiPlayer, type ParsedNote } from '../composables/useMidiPlayer'
+import { useMidiPlayer, type ParsedNote, type PlayerPart } from '../composables/useMidiPlayer'
+import { useDownloadPrompt } from '../composables/useDownloadPrompt'
+import { useToasts } from '../composables/useToasts'
+import { useRenderQueue } from '../composables/useRenderQueue'
+import { logError } from '../composables/useErrorLog'
 import PianoRoll from './PianoRoll.vue'
 
 const props = defineProps<{
@@ -125,9 +139,16 @@ const isElectron = typeof window !== 'undefined' && !!(window as any).electronAP
 // File System Access API — available in Chrome/Edge, not in Firefox/Safari
 const hasPicker = typeof window !== 'undefined' && 'showSaveFilePicker' in window
 
-const { toggle, currentlyPlaying, isLoading, getMidiData, prefetchMidi } = useMidiPlayer()
+const { toggle, currentlyPlaying, isLoading, getMidiData, prefetchMidi, offlineRender } = useMidiPlayer()
+const { promptFilename } = useDownloadPrompt()
+const { toast } = useToasts()
+const { startJob, updateProgress, completeJob, failJob } = useRenderQueue()
 const playing = computed(() => currentlyPlaying.value === props.file.url)
 const midiData = computed(() => getMidiData(props.file.url))
+
+function baseName(filename: string): string {
+  return filename.replace(/\.[^.]+$/, '')
+}
 
 // ── Note editing (song stems) ────────────────────────────────────────────────
 const rollRef = ref<InstanceType<typeof PianoRoll> | null>(null)
@@ -179,6 +200,7 @@ async function saveEdits() {
   } catch (e: any) {
     // Keep the edits on screen; surface the failure via the button title.
     editError.value = e?.message ?? 'Save failed'
+    logError('Save note edits', e)
   } finally {
     savingEdits.value = false
   }
@@ -243,15 +265,18 @@ function onDragStart(e: DragEvent) {
 }
 
 async function saveTo() {
+  const name = await promptFilename(baseName(props.file.filename), 'mid', `Save ${props.file.part}`)
+  if (name === null) return   // cancelled
   saving.value = true
   try {
     const res = await fetch(downloadUrl(props.file.url))
     const buf = await res.arrayBuffer()
+    const filename = `${name}.mid`
 
     if (hasPicker) {
       // Let the user pick the exact save location (e.g. their DAW project folder)
       const handle = await (window as any).showSaveFilePicker({
-        suggestedName: props.file.filename,
+        suggestedName: filename,
         types: [{ description: 'MIDI File', accept: { 'audio/midi': ['.mid', '.midi'] } }],
       })
       const writable = await handle.createWritable()
@@ -263,7 +288,7 @@ async function saveTo() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = props.file.filename
+      a.download = filename
       a.click()
       URL.revokeObjectURL(url)
     }
@@ -272,9 +297,46 @@ async function saveTo() {
     setTimeout(() => { saved.value = false }, 2000)
   } catch (e: any) {
     // AbortError = user cancelled the picker — not an error
-    if (e?.name !== 'AbortError') console.error('Save failed', e)
+    if (e?.name !== 'AbortError') logError('Save part to disk', e)
   } finally {
     saving.value = false
+  }
+}
+
+// ── WAV export ────────────────────────────────────────────────────────────────
+const renderingWav = ref(false)
+const wavProgress = ref(0)
+const wavError = ref('')
+
+async function exportWav() {
+  if (renderingWav.value) return
+  const name = await promptFilename(baseName(props.file.filename), 'wav', `Export ${props.file.part} as WAV`)
+  if (name === null) return   // cancelled
+  renderingWav.value = true
+  wavProgress.value = 0
+  wavError.value = ''
+  // Tracked in the shared render queue too, so progress/completion stay visible
+  // even if this card is unmounted (e.g. switching mode tabs) before it finishes —
+  // the render itself keeps running either way, only the local UI would vanish.
+  const jobId = startJob(`${props.file.part} — ${baseName(props.file.filename)}`, `${name}.wav`)
+  try {
+    const duration = midiData.value?.duration ?? 4
+    // 'combined'/'song' stems render the full mix; any real part renders just itself.
+    const channel = (props.file.part === 'combined' || props.file.part === 'song')
+      ? 'all' : (props.file.part as PlayerPart)
+    const blob = await offlineRender(props.file.url, props.styleId, duration, channel, v => {
+      wavProgress.value = v
+      updateProgress(jobId, v)
+    })
+    completeJob(jobId, blob)
+    toast(`${props.file.part.replace('_', ' ')} exported as WAV`)
+  } catch (e: any) {
+    wavError.value = e?.message ?? 'WAV export failed'
+    failJob(jobId, wavError.value)
+    logError('WAV export', e)
+    toast(wavError.value, 'error')
+  } finally {
+    renderingWav.value = false
   }
 }
 </script>

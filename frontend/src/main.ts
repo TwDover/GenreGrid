@@ -12,6 +12,7 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import './styles/themes.css'
 import './composables/useTheme'   // applies the persisted theme before first paint
+import { installGlobalErrorHandlers, logError } from './composables/useErrorLog'
 
 console.log(
   '%cGenreGrid%c\nStyle-based MIDI generator\n%cCreated by TW Dover',
@@ -20,4 +21,12 @@ console.log(
   'color:#2a6070;font-size:11px',
 )
 
-createApp(App).mount('#app')
+// Catches anything that wasn't already wrapped in a try/catch — an
+// unanticipated bug, not just the ones we knew to handle.
+installGlobalErrorHandlers()
+
+const app = createApp(App)
+app.config.errorHandler = (err, _instance, info) => {
+  logError(`Vue error (${info})`, err)
+}
+app.mount('#app')

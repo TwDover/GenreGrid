@@ -86,19 +86,19 @@
             <button class="seed-action" @click.stop="share(response)" title="Copy shareable link">
               {{ shared === response.generation_id ? '✓ Copied' : 'Share' }}
             </button>
-            <a
+            <button
               class="seed-action"
-              :href="bundleUrl(response.generation_id)"
-              download
+              :disabled="zipLoading === `${response.generation_id}:bundle`"
+              @click.stop="handleZipDownload(response, 'bundle')"
               title="Download all parts as ZIP"
-            >Download All</a>
-            <a
+            >{{ zipLoading === `${response.generation_id}:bundle` ? '…' : 'Download All' }}</button>
+            <button
               v-if="response.summary.mode === 'arrangement'"
               class="seed-action"
-              :href="sectionsUrl(response.generation_id)"
-              download
+              :disabled="zipLoading === `${response.generation_id}:sections`"
+              @click.stop="handleZipDownload(response, 'sections')"
               title="Download per-section stems as ZIP"
-            >Sections ZIP</a>
+            >{{ zipLoading === `${response.generation_id}:sections` ? '…' : 'Sections ZIP' }}</button>
             <button
               v-if="response.files.some(f => f.part === 'combined')"
               class="seed-action"
@@ -112,15 +112,15 @@
               <template v-else>
                 <button
                   class="seed-action"
-                  :disabled="isRendering || isRecording"
+                  :disabled="isRecording"
                   @click.stop="handleOfflineExport(response, 'wav')"
-                  title="Offline render — full mix as WAV (fast)"
+                  title="Offline render — full mix as WAV (fast). Progress also shows in the ⬇ header button."
                 >WAV ⚡</button>
                 <button
                   class="seed-action"
-                  :disabled="isRendering || isRecording"
+                  :disabled="isRecording"
                   @click.stop="handleOfflineExport(response, 'stems')"
-                  title="Offline render — drums / bass / melodic as separate WAV files (fast)"
+                  title="Offline render — drums / bass / melodic as separate WAV files (fast). Progress also shows in the ⬇ header button."
                 >Stems ⚡</button>
               </template>
             </template>
@@ -182,6 +182,9 @@ import ArrangementBuilder from './ArrangementBuilder.vue'
 import type { GenerateResponse, FileInfo } from '../types/midi'
 import { regeneratePart, saveToLibrary, bundleUrl, sectionsUrl } from '../services/api'
 import { useMidiPlayer, type PlayerPart } from '../composables/useMidiPlayer'
+import { useDownloadPrompt } from '../composables/useDownloadPrompt'
+import { useRenderQueue } from '../composables/useRenderQueue'
+import { logError } from '../composables/useErrorLog'
 import { resolveProgression } from '../utils/chordResolver'
 
 const props = defineProps<{ history: GenerateResponse[]; loading?: boolean; starredIds?: Set<string> }>()
@@ -193,7 +196,10 @@ const emit = defineEmits<{
   (e: 'clear'): void
 }>()
 
-const { isRecording, offlineRender, isRendering } = useMidiPlayer()
+const { isRecording, offlineRender } = useMidiPlayer()
+const { promptFilename } = useDownloadPrompt()
+const { startJob, updateProgress, completeJob, failJob } = useRenderQueue()
+const zipLoading = ref<string | null>(null)
 const showArrange = ref(false)
 const arrangeRef = ref<InstanceType<typeof ArrangementBuilder> | null>(null)
 
@@ -347,6 +353,7 @@ async function handleRegen(response: GenerateResponse, part: string) {
     emit('part-regenned', response.generation_id, newFile)
   } catch (e: any) {
     regenError.value = e.message ?? 'Regeneration failed'
+    logError('Regenerate part', e)
   } finally {
     regenLoadingKey.value = null
   }
@@ -363,30 +370,41 @@ function handleUndo(response: GenerateResponse, part: string) {
 
 const exportStem = ref<string | null>(null)
 
-function triggerDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
 async function handleOfflineExport(response: GenerateResponse, mode: 'wav' | 'stems') {
   const combinedFile = response.files.find(f => f.part === 'combined')
   if (!combinedFile) return
+  const defaultName = `${response.style}_${response.generation_id.slice(0, 8)}`
+  const name = await promptFilename(
+    defaultName, 'wav', mode === 'wav' ? 'Export as WAV' : 'Export stems as WAV',
+  )
+  if (name === null) return   // cancelled
+
   exportingId.value = response.generation_id
   exportProgress.value = 0
   exportStem.value = null
-  const label = `${response.style}_${response.generation_id.slice(0, 8)}`
   const durationSeconds = response.summary.bars * (4 * 60 / response.summary.bpm)
+  const label = formatStyle(response.style)
+  // Each file gets its own render-queue entry (in addition to the local
+  // exportingId/exportProgress UI here) so progress and completion stay visible
+  // from the ⬇ header button even if this panel entry gets collapsed or this
+  // whole component unmounts before the render finishes.
   try {
     if (mode === 'wav') {
-      const blob = await offlineRender(combinedFile.url, response.style, durationSeconds, 'all', v => { exportProgress.value = v })
-      triggerDownload(blob, `${label}.wav`)
+      const jobId = startJob(`${label} — ${name}`, `${name}.wav`)
+      try {
+        const blob = await offlineRender(combinedFile.url, response.style, durationSeconds, 'all', v => {
+          exportProgress.value = v
+          updateProgress(jobId, v)
+        })
+        completeJob(jobId, blob)
+      } catch (e) {
+        failJob(jobId, e instanceof Error ? e.message : 'WAV export failed')
+        throw e
+      }
     } else {
       // One WAV per part actually present in this generation (true per-part
-      // stems, not the old drums/bass/melodic buckets).
+      // stems, not the old drums/bass/melodic buckets). The chosen name becomes
+      // a shared prefix — individual stem names still distinguish the files.
       const stems = response.files
         .map(f => f.part)
         .filter(p => p !== 'combined' && p !== 'song') as PlayerPart[]
@@ -394,18 +412,51 @@ async function handleOfflineExport(response: GenerateResponse, mode: 'wav' | 'st
         const stem = stems[i]
         exportStem.value = stem
         exportProgress.value = 0
-        const blob = await offlineRender(combinedFile.url, response.style, durationSeconds, stem, v => {
-          exportProgress.value = (i + v) / stems.length
-        })
-        triggerDownload(blob, `${label}_${stem}.wav`)
+        const jobId = startJob(`${stem} — ${name}`, `${name}_${stem}.wav`)
+        try {
+          const blob = await offlineRender(combinedFile.url, response.style, durationSeconds, stem, v => {
+            exportProgress.value = (i + v) / stems.length
+            updateProgress(jobId, v)
+          })
+          completeJob(jobId, blob)
+        } catch (e) {
+          failJob(jobId, e instanceof Error ? e.message : 'WAV export failed')
+          throw e
+        }
       }
     }
   } catch (e: any) {
     regenError.value = e.message ?? 'Export failed'
+    logError('WAV/stems export', e)
   } finally {
     exportingId.value = null
     exportProgress.value = 0
     exportStem.value = null
+  }
+}
+
+async function handleZipDownload(response: GenerateResponse, kind: 'bundle' | 'sections') {
+  const key = `${response.generation_id}:${kind}`
+  if (zipLoading.value === key) return
+  const defaultName = kind === 'bundle'
+    ? `${response.style}_${response.generation_id.slice(0, 8)}`
+    : `${response.style}_${response.generation_id.slice(0, 8)}_sections`
+  const name = await promptFilename(defaultName, 'zip', 'Download ZIP')
+  if (name === null) return   // cancelled
+
+  zipLoading.value = key
+  const jobId = startJob(`${formatStyle(response.style)} — ${name}`, `${name}.zip`)
+  try {
+    const res = await fetch(kind === 'bundle' ? bundleUrl(response.generation_id) : sectionsUrl(response.generation_id))
+    if (!res.ok) throw new Error('Download failed')
+    const blob = await res.blob()
+    completeJob(jobId, blob)
+  } catch (e: any) {
+    failJob(jobId, e.message ?? 'Download failed')
+    regenError.value = e.message ?? 'Download failed'
+    logError('ZIP download', e)
+  } finally {
+    zipLoading.value = null
   }
 }
 </script>
