@@ -83,137 +83,219 @@ export interface SynthKit {
   nodes: Tone.ToneAudioNode[]
 }
 
+// Every synth voice below schedules an internal auto-stop on its own oscillator/noise
+// source once its envelope's sustain is 0 (which all of ours are — MetalSynth forces
+// this internally regardless of what's passed in). Retriggering the *same* source
+// again before that internal bookkeeping catches up can violate Tone's requirement
+// that a source's successive start times never go backwards, throwing "the time must
+// be greater than or equal to the last scheduled time". Rather than reproducing Tone's
+// internal stop-scheduling math to compute a safe minimum gap (fragile, and does not
+// hold up under dense/fast patterns), each drum piece round-robins across a small pool
+// of instances so no single underlying source is ever retriggered as often as the
+// pattern itself calls trigger() for that piece.
+const POOL_SIZE = 4
+
+function makePool<T extends Tone.ToneAudioNode>(factory: () => T): () => T {
+  const instances = Array.from({ length: POOL_SIZE }, factory)
+  let i = 0
+  return () => {
+    const instance = instances[i]
+    i = (i + 1) % POOL_SIZE
+    return instance
+  }
+}
+
 /**
  * Build a synthesized drum kit. `out` defaults to the drum submix bus; the offline
  * renderer passes its own compressor so the kit lives in the offline audio graph.
+ * `context` should be passed explicitly by the offline renderer too — otherwise every
+ * node here falls back to Tone's ambient context, which is the live-playback context.
  */
 export function makeSynthKit(
   character: DrumCharacter = 'acoustic',
   out: Tone.ToneAudioNode = getDrumBus(),
+  context: Tone.BaseContext = Tone.getContext(),
 ): SynthKit {
   const p = PRESETS[character] ?? PRESETS.acoustic
   const nodes: Tone.ToneAudioNode[] = []
   const keep = <T extends Tone.ToneAudioNode>(n: T): T => { nodes.push(n); return n }
 
   // Kit-wide tone shaping: optional warmth LPF + gentle saturation into the bus.
-  const master = keep(new Tone.Filter({ frequency: p.masterLPF, type: 'lowpass', rolloff: -12 })).connect(out)
+  const master = keep(new Tone.Filter({ context, frequency: p.masterLPF, type: 'lowpass', rolloff: -12 })).connect(out)
   const kitOut: Tone.ToneAudioNode = p.drive > 0
-    ? (() => { const d = keep(new Tone.Distortion({ distortion: p.drive, wet: 0.35 })); d.connect(master); return d })()
+    ? (() => { const d = keep(new Tone.Distortion({ context, distortion: p.drive, wet: 0.35 })); d.connect(master); return d })()
     : master
 
   // ── Kick: pitch-swept body + sub layer + beater click ─────────────────────
-  const kick = keep(new Tone.MembraneSynth({
+  const nextKick = makePool(() => keep(new Tone.MembraneSynth({
+    context,
     pitchDecay: p.kickPitchDecay,
     octaves: p.kickOctaves,
     oscillator: { type: 'sine' },
     envelope: { attack: 0.001, decay: p.kickDecay, sustain: 0, release: 0.04 },
     volume: -1,
-  })).connect(kitOut)
+  })).connect(kitOut))
   // Dedicated sub-sine — this is the "boom". Runs under the membrane at the
   // fundamental with a slow rounded decay; per-preset level controls how deep.
-  const kickSub = keep(new Tone.Synth({
+  const nextKickSub = makePool(() => keep(new Tone.Synth({
+    context,
     oscillator: { type: 'sine' },
     envelope: { attack: 0.004, decay: p.subDecay, sustain: 0, release: 0.08 },
     volume: p.subLevel,
-  })).connect(kitOut)
+  })).connect(kitOut))
   // Beater click for attack definition (kept low so the low end dominates)
-  const kickClickFilter = keep(new Tone.Filter({ frequency: 1600, type: 'highpass' })).connect(kitOut)
-  const kickClick = keep(new Tone.NoiseSynth({
+  const kickClickFilter = keep(new Tone.Filter({ context, frequency: 1600, type: 'highpass' })).connect(kitOut)
+  const nextKickClick = makePool(() => keep(new Tone.NoiseSynth({
+    context,
     noise: { type: 'white' },
-    envelope: { attack: 0.001, decay: 0.02, sustain: 0 },
+    envelope: { attack: 0.001, decay: 0.02, sustain: 0, release: 0.03 },
     volume: -22,
-  })).connect(kickClickFilter)
+  })).connect(kickClickFilter))
 
   // ── Snare: tonal crack + noise body ───────────────────────────────────────
-  const snareNoiseBP = keep(new Tone.Filter({ frequency: 1800, type: 'bandpass', Q: 0.7 })).connect(kitOut)
-  const snareNoise = keep(new Tone.NoiseSynth({
+  const snareNoiseBP = keep(new Tone.Filter({ context, frequency: 1800, type: 'bandpass', Q: 0.7 })).connect(kitOut)
+  const nextSnareNoise = makePool(() => keep(new Tone.NoiseSynth({
+    context,
     noise: { type: 'white' },
     envelope: { attack: 0.001, decay: p.snareNoiseDecay, sustain: 0, release: 0.03 },
     volume: -8,
-  })).connect(snareNoiseBP)
-  const snareTone = keep(new Tone.Synth({
+  })).connect(snareNoiseBP))
+  const nextSnareTone = makePool(() => keep(new Tone.Synth({
+    context,
     oscillator: { type: 'triangle' },
     envelope: { attack: 0.001, decay: 0.12, sustain: 0, release: 0.02 },
     volume: -12 + Math.round(p.snareToneMix * 8),
-  })).connect(kitOut)
+  })).connect(kitOut))
 
   // ── Clap: two fast noise bursts ───────────────────────────────────────────
-  const clapBP = keep(new Tone.Filter({ frequency: 1200, type: 'bandpass', Q: 1.2 })).connect(kitOut)
-  const clap = keep(new Tone.NoiseSynth({
+  const clapBP = keep(new Tone.Filter({ context, frequency: 1200, type: 'bandpass', Q: 1.2 })).connect(kitOut)
+  const nextClap = makePool(() => keep(new Tone.NoiseSynth({
+    context,
     noise: { type: 'pink' },
-    envelope: { attack: 0.001, decay: 0.14, sustain: 0 },
+    envelope: { attack: 0.001, decay: 0.14, sustain: 0, release: 0.04 },
     volume: -9,
-  })).connect(clapBP)
+  })).connect(clapBP))
 
   // ── Hats & cymbals: MetalSynth voices with real decay ─────────────────────
-  const hatHP = keep(new Tone.Filter({ frequency: 7000, type: 'highpass' })).connect(kitOut)
-  const closedHat = keep(new Tone.MetalSynth({
-    envelope: { attack: 0.001, decay: p.hatDecay, sustain: 0, release: 0.01 },
-    harmonicity: p.hatHarmonicity, modulationIndex: p.hatModIndex, resonance: 4000, octaves: 1.5,
-    volume: -16,
-  }))
-  closedHat.frequency.value = p.hatFreq
-  closedHat.connect(hatHP)
+  const hatHP = keep(new Tone.Filter({ context, frequency: 7000, type: 'highpass' })).connect(kitOut)
+  const nextClosedHat = makePool(() => {
+    const h = keep(new Tone.MetalSynth({
+      context,
+      envelope: { attack: 0.001, decay: p.hatDecay, sustain: 0, release: 0.01 },
+      harmonicity: p.hatHarmonicity, modulationIndex: p.hatModIndex, resonance: 4000, octaves: 1.5,
+      volume: -16,
+    }))
+    h.frequency.value = p.hatFreq
+    h.connect(hatHP)
+    return h
+  })
 
-  const openHat = keep(new Tone.MetalSynth({
-    envelope: { attack: 0.001, decay: p.hatDecay * 7, sustain: 0.02, release: 0.2 },
-    harmonicity: p.hatHarmonicity * 0.7, modulationIndex: p.hatModIndex * 0.6, resonance: 3500, octaves: 1.8,
-    volume: -18,
-  }))
-  openHat.frequency.value = p.hatFreq * 0.85
-  openHat.connect(hatHP)
+  const nextOpenHat = makePool(() => {
+    const h = keep(new Tone.MetalSynth({
+      context,
+      envelope: { attack: 0.001, decay: p.hatDecay * 7, sustain: 0.02, release: 0.2 },
+      harmonicity: p.hatHarmonicity * 0.7, modulationIndex: p.hatModIndex * 0.6, resonance: 3500, octaves: 1.8,
+      volume: -18,
+    }))
+    h.frequency.value = p.hatFreq * 0.85
+    h.connect(hatHP)
+    return h
+  })
 
-  const cymbalHP = keep(new Tone.Filter({ frequency: 4000, type: 'highpass' })).connect(kitOut)
-  const crash = keep(new Tone.MetalSynth({
-    envelope: { attack: 0.001, decay: p.cymbalDecay, sustain: 0, release: 0.6 },
-    harmonicity: 4.5, modulationIndex: 40, resonance: 5000, octaves: 2.2,
-    volume: -22,
-  }))
-  crash.frequency.value = 300
-  crash.connect(cymbalHP)
+  const cymbalHP = keep(new Tone.Filter({ context, frequency: 4000, type: 'highpass' })).connect(kitOut)
+  const nextCrash = makePool(() => {
+    const c = keep(new Tone.MetalSynth({
+      context,
+      envelope: { attack: 0.001, decay: p.cymbalDecay, sustain: 0, release: 0.6 },
+      harmonicity: 4.5, modulationIndex: 40, resonance: 5000, octaves: 2.2,
+      volume: -22,
+    }))
+    c.frequency.value = 300
+    c.connect(cymbalHP)
+    return c
+  })
 
-  const ride = keep(new Tone.MetalSynth({
-    envelope: { attack: 0.001, decay: p.rideDecay, sustain: 0.04, release: 0.3 },
-    harmonicity: 3.4, modulationIndex: 16, resonance: 6000, octaves: 1.6,
-    volume: -20,
-  }))
-  ride.frequency.value = 520
-  ride.connect(cymbalHP)
+  const nextRide = makePool(() => {
+    const r = keep(new Tone.MetalSynth({
+      context,
+      envelope: { attack: 0.001, decay: p.rideDecay, sustain: 0.04, release: 0.3 },
+      harmonicity: 3.4, modulationIndex: 16, resonance: 6000, octaves: 1.6,
+      volume: -20,
+    }))
+    r.frequency.value = 520
+    r.connect(cymbalHP)
+    return r
+  })
 
   // ── Toms: one pitched membrane voice ──────────────────────────────────────
-  const tom = keep(new Tone.MembraneSynth({
+  const nextTom = makePool(() => keep(new Tone.MembraneSynth({
+    context,
     pitchDecay: 0.08, octaves: 3,
     oscillator: { type: 'sine' },
     envelope: { attack: 0.001, decay: 0.4, sustain: 0, release: 0.05 },
     volume: -8,
-  })).connect(kitOut)
+  })).connect(kitOut))
 
   const clamp = (v: number) => Math.max(0.02, Math.min(1, v))
+
+  // Defensive backstop, mathematically sized rather than a fixed epsilon. Every voice
+  // above has a sustain:0 envelope, and Tone's *EnvelopeAttack (Synth/MembraneSynth/
+  // NoiseSynth/MetalSynth — see node_modules/tone/build/esm/instrument/*.js) always
+  // schedules an internal auto-stop at `time + attack + decay` whenever sustain is 0.
+  // A separate stop from triggerRelease's `duration` can land earlier and win instead,
+  // but never later — so `attack + decay` is a proven upper bound on how soon a given
+  // instance actually goes quiet. Retriggering the same pooled instance before that
+  // point is what throws; clamping to at least that gap guarantees it never can,
+  // regardless of pattern density. Pooling above keeps this from having to engage for
+  // anything but the busiest patterns on long-decay voices (ride/crash).
+  const busyUntil = new WeakMap<object, number>()
+  const TIME_EPSILON = 1e-4
+  const scheduleVoice = (voice: object, time: number, minGap: number): number => {
+    const earliestSafe = busyUntil.get(voice) ?? -Infinity
+    const t = time >= earliestSafe ? time : earliestSafe + TIME_EPSILON
+    busyUntil.set(voice, t + minGap)
+    return t
+  }
+
+  const KICK_GAP = 0.001 + p.kickDecay
+  const KICK_SUB_GAP = 0.004 + p.subDecay
+  const KICK_CLICK_GAP = 0.001 + 0.02
+  const SNARE_NOISE_GAP = 0.001 + p.snareNoiseDecay
+  const SNARE_TONE_GAP = 0.001 + 0.12
+  const CLAP_GAP = 0.001 + 0.14
+  const CLOSED_HAT_GAP = 0.001 + p.hatDecay
+  const OPEN_HAT_GAP = 0.001 + p.hatDecay * 7
+  const CRASH_GAP = 0.001 + p.cymbalDecay
+  const RIDE_GAP = 0.001 + p.rideDecay
+  const TOM_GAP = 0.001 + 0.4
 
   const trigger = (pitch: number, velocity: number, time: number): void => {
     const v = clamp(velocity)
     if (KICK.has(pitch)) {
-      kick.triggerAttackRelease(p.kickNote, p.kickDecay, time, v)
-      kickSub.triggerAttackRelease(p.subNote, p.subDecay, time, v)
-      kickClick.triggerAttackRelease(0.02, time, v)
+      const kick = nextKick(); kick.triggerAttackRelease(p.kickNote, p.kickDecay, scheduleVoice(kick, time, KICK_GAP), v)
+      const kickSub = nextKickSub(); kickSub.triggerAttackRelease(p.subNote, p.subDecay, scheduleVoice(kickSub, time, KICK_SUB_GAP), v)
+      const kickClick = nextKickClick(); kickClick.triggerAttackRelease(0.02, scheduleVoice(kickClick, time, KICK_CLICK_GAP), v)
     } else if (SNARE.has(pitch)) {
-      snareNoise.triggerAttackRelease(p.snareNoiseDecay, time, v)
-      snareTone.triggerAttackRelease(p.snareToneFreq, 0.1, time, v * p.snareToneMix)
+      const snareNoise = nextSnareNoise(); snareNoise.triggerAttackRelease(p.snareNoiseDecay, scheduleVoice(snareNoise, time, SNARE_NOISE_GAP), v)
+      const snareTone = nextSnareTone(); snareTone.triggerAttackRelease(p.snareToneFreq, 0.1, scheduleVoice(snareTone, time, SNARE_TONE_GAP), v * p.snareToneMix)
     } else if (pitch === CLAP) {
-      clap.triggerAttackRelease(0.14, time, v)
-      clap.triggerAttackRelease(0.1, time + 0.012, v * 0.7)   // second slap
+      const clap1 = nextClap(); clap1.triggerAttackRelease(0.14, scheduleVoice(clap1, time, CLAP_GAP), v)
+      const clap2 = nextClap(); clap2.triggerAttackRelease(0.1, scheduleVoice(clap2, time + 0.012, CLAP_GAP), v * 0.7)   // second slap
     } else if (CLOSED_HAT.has(pitch)) {
-      closedHat.triggerAttackRelease(p.hatDecay, time, v * 0.9)
+      // MetalSynth has no dedicated triggerAttackRelease override, so it takes the
+      // generic Instrument signature (note, duration, time, velocity) — the note arg
+      // must be passed explicitly or every argument after it shifts by one slot.
+      const hat = nextClosedHat(); hat.triggerAttackRelease(p.hatFreq, p.hatDecay, scheduleVoice(hat, time, CLOSED_HAT_GAP), v * 0.9)
     } else if (pitch === OPEN_HAT) {
-      openHat.triggerAttackRelease(p.hatDecay * 7, time, v * 0.85)
+      const hat = nextOpenHat(); hat.triggerAttackRelease(p.hatFreq * 0.85, p.hatDecay * 7, scheduleVoice(hat, time, OPEN_HAT_GAP), v * 0.85)
     } else if (CRASH.has(pitch)) {
-      crash.triggerAttackRelease(p.cymbalDecay, time, v * 0.8)
+      const c = nextCrash(); c.triggerAttackRelease(300, p.cymbalDecay, scheduleVoice(c, time, CRASH_GAP), v * 0.8)
     } else if (RIDE.has(pitch)) {
-      ride.triggerAttackRelease(p.rideDecay, time, v * 0.85)
+      const r = nextRide(); r.triggerAttackRelease(520, p.rideDecay, scheduleVoice(r, time, RIDE_GAP), v * 0.85)
     } else if (TOM_NOTE[pitch]) {
-      tom.triggerAttackRelease(TOM_NOTE[pitch], 0.35, time, v)
+      const tom = nextTom(); tom.triggerAttackRelease(TOM_NOTE[pitch], 0.35, scheduleVoice(tom, time, TOM_GAP), v)
     } else {
-      closedHat.triggerAttackRelease(p.hatDecay, time, v * 0.7)   // unknown perc → tick
+      const hat = nextClosedHat(); hat.triggerAttackRelease(p.hatFreq, p.hatDecay, scheduleVoice(hat, time, CLOSED_HAT_GAP), v * 0.7)   // unknown perc → tick
     }
   }
 
