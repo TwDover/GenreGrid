@@ -25,8 +25,17 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { secure: true, standard: true, supportFetchAPI: true } },
 ])
 
+function getLogsDir(): string {
+  const dir = path.join(app.getPath('userData'), 'logs')
+  fs.mkdirSync(dir, { recursive: true })
+  return dir
+}
+
 let backendProcess: ChildProcess | null = null
 let backendPort = 8000  // default for dev (user runs backend manually)
+// Set right before we deliberately end the backend (app quitting, update
+// install) so its 'exit' handler can tell that apart from an actual crash.
+let backendShutdownExpected = false
 
 // ── Port utilities ──────────────────────────────────────────────────────────
 
@@ -78,8 +87,7 @@ async function startBackend(): Promise<void> {
   const dataDir = path.join(app.getPath('userData'), 'backend-data')
   fs.mkdirSync(dataDir, { recursive: true })
 
-  const logDir = path.join(app.getPath('userData'), 'logs')
-  fs.mkdirSync(logDir, { recursive: true })
+  const logDir = getLogsDir()
   const logFile = fs.openSync(path.join(logDir, 'backend.log'), 'w')
 
   backendProcess = spawn(exePath, [String(backendPort)], {
@@ -96,7 +104,10 @@ async function startBackend(): Promise<void> {
   let backendReady = false
   backendProcess.on('exit', (code) => {
     console.log('Backend exited with code', code)
-    if (backendReady) {
+    // Only a crash while the app is still meant to be running is worth
+    // interrupting the user for — closing the app (or restarting for an
+    // update) also ends the backend, and that's expected, not an error.
+    if (backendReady && !backendShutdownExpected) {
       dialog.showErrorBox(
         'Backend stopped',
         `The GenreGrid backend exited unexpectedly (code ${code}).\n\nGeneration will not work until you restart the app. Check logs at:\n${path.join(app.getPath('userData'), 'logs', 'backend.log')}`,
@@ -154,7 +165,10 @@ async function setupAutoUpdate(): Promise<void> {
         message: `GenreGrid ${info.version} is ready`,
         detail: 'The update has been downloaded. Restart to apply it — or keep working and it installs on next launch.',
       })
-      if (choice === 0) autoUpdater.quitAndInstall()
+      if (choice === 0) {
+        backendShutdownExpected = true
+        autoUpdater.quitAndInstall()
+      }
     })
     await autoUpdater.checkForUpdates()
   } catch (err) {
@@ -194,8 +208,16 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  backendShutdownExpected = true
   backendProcess?.kill()
   if (process.platform !== 'darwin') app.quit()
+})
+
+// Safety net for quit paths that don't go through window-all-closed first
+// (macOS Cmd+Q fires this before the window closes, OS session end, etc.) —
+// idempotent, so setting it here too is harmless if window-all-closed already did.
+app.on('before-quit', () => {
+  backendShutdownExpected = true
 })
 
 app.on('activate', () => {
@@ -216,6 +238,25 @@ ipcMain.handle('save-temp-file', async (_, { filename, data }: { filename: strin
   const filePath = path.join(dir, filename)
   await fs.promises.writeFile(filePath, Buffer.from(data))
   return filePath
+})
+
+// Append one renderer-side error to logs/renderer-errors.log, next to
+// backend.log — a durable record even if the app closes before anyone opens
+// the in-app error log panel. Appended (not truncated) across the whole
+// session, capped so a runaway error loop can't grow it unbounded.
+const RENDERER_LOG_MAX_BYTES = 2 * 1024 * 1024   // 2 MB
+ipcMain.handle('log-renderer-error', async (_, entry: { timestamp: string; context: string; message: string; stack?: string }) => {
+  try {
+    const logPath = path.join(getLogsDir(), 'renderer-errors.log')
+    try {
+      const { size } = await fs.promises.stat(logPath)
+      if (size > RENDERER_LOG_MAX_BYTES) await fs.promises.unlink(logPath)
+    } catch { /* file doesn't exist yet — fine */ }
+    const line = `[${entry.timestamp}] ${entry.context}: ${entry.message}${entry.stack ? `\n${entry.stack}` : ''}\n\n`
+    await fs.promises.appendFile(logPath, line, 'utf-8')
+  } catch (err) {
+    console.error('Failed to write renderer error log:', err)
+  }
 })
 
 // Build a 32×32 solid purple drag icon from raw RGBA pixels

@@ -45,7 +45,8 @@ Prefer to run from source or build it yourself? See [Running in the browser](#ru
 - **Data-driven patterns** — each style ships with idiomatic chord progressions and drum patterns, so a fresh clone generates good output with no setup. An optional mining pipeline can further tailor generation from MIDI corpora **you supply** (e.g. Groove MIDI, POP909, Lakh — used locally under their own licenses; see [Training on real corpora](#training-on-real-corpora-optional)), toggled per generation with a **Use my local MIDI corpus** switch
 - In-browser MIDI preview with a **dedicated transport bar**: play/pause, stop, loop, a draggable seek bar with elapsed/total time, per-part mute (shift-click to solo), and volume; the song timeline shows a live playhead and current-section highlight, and actions confirm with toast notifications
 - **Three themes** — dark (default), light, and a green-phosphor **retro CRT** mode with scanlines; one click in the header cycles them, and the choice persists
-- **WAV export** — offline-render the full mix or true per-part stems, matching the preview voices
+- **WAV export** — offline-render the full mix or true per-part stems, matching the preview voices; every part card and the whole song both offer a one-click **↓ .wav** alongside **↓ .mid**
+- **Name your export** — every download (MIDI or WAV, single part, full song, or ZIP bundle) opens a small rename dialog first, pre-filled with a sensible default, so the file lands with the name you want instead of an auto-generated one
 - Generation history — last 10 results stay accessible in the UI
 - **Drag to DAW** — in the desktop app, drag any part directly into your DAW using the drag handle on each part card
 - **Reproducible seeds** — the same seed always rebuilds the same song, byte for byte, across app restarts
@@ -246,6 +247,8 @@ The desktop app stores exports and the generation library in:
 - **Windows:** `%APPDATA%\genregrid-frontend\backend-data\`
 - **macOS:** `~/Library/Application Support/genregrid-frontend/backend-data/`
 - **Linux:** `~/.config/genregrid-frontend/backend-data/`
+
+Backend output and any renderer-side errors are logged next to that folder, in `logs/backend.log` and `logs/renderer-errors.log`. The renderer log is also viewable in-app: a **🐛 N** button appears in the header whenever something's been logged this session — click it to see each error's full stack trace, copy the whole log, or clear it. Uncaught errors (not just ones the UI explicitly handles) are captured too.
 
 ---
 

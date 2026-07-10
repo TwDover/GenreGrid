@@ -34,6 +34,19 @@
           @click="checkForUpdates"
           :title="updateMessage || 'Check for a newer version'"
         >{{ updateLabel }}</button>
+        <button
+          v-if="renderJobs.length"
+          class="hdr-btn"
+          :class="{ 'hdr-active': activeRenderCount > 0 }"
+          @click="openRenderQueue"
+          :title="activeRenderCount > 0 ? `${activeRenderCount} download${activeRenderCount === 1 ? '' : 's'} in progress` : 'Download history'"
+        >⬇ {{ activeRenderCount > 0 ? activeRenderCount : renderJobs.length }}</button>
+        <button
+          v-if="errorEntries.length"
+          class="hdr-btn hdr-error"
+          @click="openErrorLog"
+          :title="`${errorEntries.length} error${errorEntries.length === 1 ? '' : 's'} logged this session`"
+        >🐛 {{ errorEntries.length }}</button>
         <button class="hdr-btn hdr-help" @click="showShortcuts = !showShortcuts" title="Keyboard shortcuts">?</button>
       </div>
     </header>
@@ -128,6 +141,9 @@
     </div>
 
     <ToastHost />
+    <DownloadNamePrompt />
+    <ErrorLogPanel />
+    <RenderQueuePanel />
   </div>
 </template>
 
@@ -140,6 +156,11 @@ import TransportBar from '../components/TransportBar.vue'
 import SongForm from '../components/SongForm.vue'
 import SongResult from '../components/SongResult.vue'
 import ToastHost from '../components/ToastHost.vue'
+import DownloadNamePrompt from '../components/DownloadNamePrompt.vue'
+import ErrorLogPanel from '../components/ErrorLogPanel.vue'
+import RenderQueuePanel from '../components/RenderQueuePanel.vue'
+import { useErrorLog } from '../composables/useErrorLog'
+import { useRenderQueue } from '../composables/useRenderQueue'
 import { fetchStyles, generate, batchGenerate, listSongs } from '../services/api'
 import type { StyleInfo, GenerateRequest, GenerateResponse, FileInfo, LibraryEntry, BuildSongResponse } from '../types/midi'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
@@ -147,6 +168,9 @@ import { useTheme } from '../composables/useTheme'
 
 const { prefetchSamplers, stop, currentlyPlaying } = useMidiPlayer()
 const { theme, cycleTheme, THEME_META } = useTheme()
+const { entries: errorEntries, open: openErrorLog } = useErrorLog()
+const { jobs: renderJobs, open: openRenderQueue } = useRenderQueue()
+const activeRenderCount = computed(() => renderJobs.value.filter(j => j.status === 'rendering').length)
 
 const showCredit = ref(false)
 const showShortcuts = ref(false)
@@ -712,6 +736,19 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
   user-select: none;
 }
 .hdr-btn:hover { background: var(--surface); color: var(--text); }
+
+.hdr-error {
+  border-color: color-mix(in srgb, var(--error) 40%, transparent);
+  color: var(--error);
+}
+.hdr-error:hover { background: var(--error-surface); }
+
+.hdr-active {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent);
+  background: var(--accent-surface);
+}
+.hdr-active:hover { background: var(--accent-surface-strong); }
 
 .hdr-help {
   font-weight: 700;

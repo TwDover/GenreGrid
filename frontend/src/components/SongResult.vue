@@ -25,6 +25,10 @@
             {{ isPlaying ? '■ Stop' : '▶ Play song' }}
           </button>
           <button class="sr-dl-btn" @click="download">↓ .mid</button>
+          <button class="sr-dl-btn" :disabled="renderingWav" @click="exportSongWav" :title="wavError || 'Render and download the full song as WAV — see the ⬇ header button for progress from anywhere'">
+            <span v-if="renderingWav">{{ Math.round(wavProgress * 100) }}%</span>
+            <span v-else>↓ .wav</span>
+          </button>
           <div class="sr-history">
             <button class="sr-dl-btn" @click="toggleHistory" title="Restore an earlier version of this song">⟲ History</button>
             <div v-if="historyOpen" class="sr-history-menu">
@@ -116,13 +120,21 @@ import type { BuildSongResponse, FileInfo } from '../types/midi'
 import { downloadUrl, regenerateSongPart, regenerateSongSection, undoSongPart, listSongVersions, restoreSongVersion, setPartGain, type SongVersion } from '../services/api'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 import { useToasts } from '../composables/useToasts'
+import { logError } from '../composables/useErrorLog'
+import { useDownloadPrompt } from '../composables/useDownloadPrompt'
+import { useRenderQueue } from '../composables/useRenderQueue'
 import PartCard from './PartCard.vue'
 
 const props = defineProps<{ result: BuildSongResponse | null; label: string }>()
 
-const { toggle, stop: stopPlayer, currentlyPlaying, seek, positionSeconds } = useMidiPlayer()
+const { toggle, stop: stopPlayer, currentlyPlaying, seek, positionSeconds, offlineRender } = useMidiPlayer()
 const { toast } = useToasts()
+const { promptFilename } = useDownloadPrompt()
+const { startJob, updateProgress, completeJob, failJob } = useRenderQueue()
 let songBlobUrl: string | null = null
+const renderingWav = ref(false)
+const wavProgress = ref(0)
+const wavError = ref('')
 
 // Cache-bust versions per part (and the song) after a regeneration.
 const versions = reactive<Record<string, number>>({})
@@ -203,6 +215,7 @@ async function onRegen(part: string) {
     toast(`Re-rolled ${part.replace('_', ' ')}`)
   } catch (e: any) {
     regenError.value = e.message ?? 'Regeneration failed'
+    logError('Regenerate part', e)
     toast(regenError.value ?? 'Regeneration failed', 'error')
   } finally {
     regenLoading.value = null
@@ -232,6 +245,7 @@ async function onGain(part: string, gain: number) {
   } catch (e: any) {
     partGains[part] = prev
     regenError.value = e.message ?? 'Volume change failed'
+    logError('Set part gain', e)
     toast(regenError.value ?? 'Volume change failed', 'error')
   }
 }
@@ -267,6 +281,7 @@ async function onRestore(versionId: string) {
     toast('Version restored')
   } catch (e: any) {
     regenError.value = e.message ?? 'Restore failed'
+    logError('Restore song version', e)
     toast(regenError.value ?? 'Restore failed', 'error')
   } finally {
     restoreLoading.value = null
@@ -291,6 +306,7 @@ async function onRegenSection(index: number) {
     toast(`Re-rolled ${props.result.sections[index]?.name ?? 'section'}`)
   } catch (e: any) {
     regenError.value = e.message ?? 'Section regeneration failed'
+    logError('Regenerate song section', e)
     toast(regenError.value ?? 'Section regeneration failed', 'error')
   } finally {
     sectionRegenLoading.value = null
@@ -325,6 +341,7 @@ async function onAdd(part: string) {
     toast(`Added ${part.replace('_', ' ')}`)
   } catch (e: any) {
     regenError.value = e.message ?? `Could not add ${part}`
+    logError('Add song part', e)
     toast(regenError.value ?? `Could not add ${part}`, 'error')
   } finally {
     addLoading.value = null
@@ -342,6 +359,7 @@ async function onUndo(part: string) {
     undoable.delete(part)   // one level of undo
   } catch (e: any) {
     regenError.value = e.message ?? 'Undo failed'
+    logError('Undo song part', e)
   }
 }
 
@@ -357,12 +375,48 @@ async function togglePlay() {
   } catch { /* playback failure is non-fatal */ }
 }
 
-function download() {
-  if (!songFile.value) return
+async function download() {
+  if (!songFile.value || !props.result) return
+  const defaultName = `${props.result.style}_song_${props.result.generation_id.slice(0, 8)}`
+  const name = await promptFilename(defaultName, 'mid', 'Save song')
+  if (name === null) return   // cancelled
   const a = document.createElement('a')
   a.href = downloadUrl(songFile.value.url)
-  a.download = `song_${props.result?.generation_id ?? 'export'}.mid`
+  a.download = `${name}.mid`
   a.click()
+}
+
+async function exportSongWav() {
+  if (!songFile.value || !props.result || renderingWav.value) return
+  const defaultName = `${props.result.style}_song_${props.result.generation_id.slice(0, 8)}`
+  const name = await promptFilename(defaultName, 'wav', 'Export song as WAV')
+  if (name === null) return   // cancelled
+  renderingWav.value = true
+  wavProgress.value = 0
+  wavError.value = ''
+  // Tracked in the shared render queue too — switching to another mode tab
+  // unmounts this whole component, but the render keeps going regardless, and
+  // the queue is what stays visible to show it finished (or failed).
+  const jobId = startJob(`Song — ${defaultName}`, `${name}.wav`)
+  try {
+    // Nominal bar duration, padded: the chorus tempo push and closing
+    // ritardando make the real playback slightly longer than a flat bpm
+    // calculation, and offlineRender's buffer must cover the whole thing.
+    const duration = (props.result.total_bars * 4 * 60 / props.result.bpm) * 1.05 + 2
+    const blob = await offlineRender(songFile.value.url, props.result.style, duration, 'all', v => {
+      wavProgress.value = v
+      updateProgress(jobId, v)
+    })
+    completeJob(jobId, blob)
+    toast('Song exported as WAV')
+  } catch (e: any) {
+    wavError.value = e?.message ?? 'WAV export failed'
+    failJob(jobId, wavError.value)
+    logError('Song WAV export', e)
+    toast(wavError.value, 'error')
+  } finally {
+    renderingWav.value = false
+  }
 }
 </script>
 
