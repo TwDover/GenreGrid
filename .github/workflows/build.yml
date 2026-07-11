@@ -112,7 +112,11 @@ jobs:
 
   build-macos:
     # macos-latest is Apple Silicon (arm64), so this produces an arm64 build.
-    # For an Intel (x64) build too, add a second job on `macos-13`.
+    # No Intel (x64) job: GitHub's macos-13 (the last Intel runner image) fleet
+    # has been shrinking as Intel Mac hardware is phased out, and jobs there
+    # increasingly just sit queued with no runner ever assigned until GitHub
+    # auto-cancels them at the 24h mark — not something fixable from this repo.
+    # Intel Mac users can build from source instead (see README).
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -163,61 +167,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  build-macos-intel:
-    # macos-13 is the last Intel (x64) runner — produces the build for older,
-    # non-Apple-Silicon Macs. Identical to build-macos otherwise.
-    runs-on: macos-13
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Build backend (PyInstaller)
-        run: |
-          cd backend
-          python -m venv .venv
-          source .venv/bin/activate
-          pip install -q -r requirements.txt
-          pip install -q pyinstaller
-          pyinstaller genregrid.spec --distpath dist --workpath build/pyinstaller --noconfirm
-
-      - name: Install frontend dependencies
-        run: cd frontend && npm ci
-
-      - name: Type-check frontend
-        run: cd frontend && npx vue-tsc --noEmit
-
-      - name: Package Electron app
-        run: cd frontend && npm run build:electron
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
-
-      - name: Upload macOS (x64) artifacts
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/upload-artifact@v4
-        with:
-          name: GenreGrid-macos-x64
-          path: |
-            frontend/release/*.dmg
-            frontend/release/*.zip
-          if-no-files-found: warn
-          retention-days: 7
-
   # ── Publish a GitHub Release with all installers attached ────────────────────
   # Runs only for version tags (e.g. `git tag v0.1.0 && git push origin v0.1.0`),
   # after every platform build succeeds. Users download from the Releases page.
   release:
-    needs: [build-linux, build-windows, build-macos, build-macos-intel]
+    needs: [build-linux, build-windows, build-macos]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:

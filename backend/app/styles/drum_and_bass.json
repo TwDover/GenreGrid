@@ -9,8 +9,7 @@
     ["i", "iv", "i", "iv"],
     ["i", "VI", "i", "VI"],
     ["IV", "iv", "IV", "III"],
-    ["I", "vi", "I", "vi"],
-    ["I", "vi", "iii", "IV"],
+    ["i", "VI", "III", "iv"],
     ["i", "VI", "VII", "i"],
     ["i", "iv", "VII", "VI"],
     ["i", "VII", "VI", "VII"]

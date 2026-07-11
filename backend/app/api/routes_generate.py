@@ -320,13 +320,6 @@ def _run_attempt(
         s_resolved = resolve_progression(progression, req.scale, s_cplx, secondary_dominants, tritone_sub)
 
         s_dyn = section.get("dynamic", 1.0)
-        is_outro = (section_i == len(sections) - 1 and s_cplx < 0.5 and s_bars >= 2)
-        bass_prog = (["I"] * len(progression)) if is_outro else progression
-
-        # Per-part complexity / variation overrides from section profile (loop mode only)
-        eff_var      = _sec_var if is_loop else req.variation
-        mel_cplx     = min(1.0, s_cplx * _sec_profile.get("melody_complexity_scale",  1.0))
-        backing_cplx = min(1.0, s_cplx * _sec_profile.get("backing_complexity_scale", 1.0))
 
         # Section context for the drums: explicit in song-builder loop mode,
         # derived from the auto-arc's shape otherwise.
@@ -337,6 +330,26 @@ def _run_attempt(
             s_sec_type  = _auto_arc_section_type(sections, section_i)
             s_next_type = (_auto_arc_section_type(sections, section_i + 1)
                            if section_i + 1 < len(sections) else None)
+
+        # A section only gets the "final cadence" static-root bass treatment if
+        # it's genuinely the song's last section. In loop mode (song builder)
+        # every template section — verse, chorus, etc. — runs through its own
+        # single-section call here, so `sections` always has exactly one entry
+        # and section_i is always 0; checking "is this the last entry in
+        # `sections`" degenerates to "yes, always", mislabelling every
+        # low-complexity section (typically verses) as an outro and freezing
+        # their bass on the tonic for the whole section regardless of the
+        # chord progression moving underneath it. Loop mode instead checks the
+        # section's actual declared type.
+        is_last_section = (s_sec_type in ("outro", "ending") if is_loop
+                            else section_i == len(sections) - 1)
+        is_outro = (is_last_section and s_cplx < 0.5 and s_bars >= 2)
+        bass_prog = (["I"] * len(progression)) if is_outro else progression
+
+        # Per-part complexity / variation overrides from section profile (loop mode only)
+        eff_var      = _sec_var if is_loop else req.variation
+        mel_cplx     = min(1.0, s_cplx * _sec_profile.get("melody_complexity_scale",  1.0))
+        backing_cplx = min(1.0, s_cplx * _sec_profile.get("backing_complexity_scale", 1.0))
 
         # Harmonic rhythm: choruses/pre-choruses change chords faster. The boost
         # feeds one shared value into chords, bass, and melody so their grids agree.
