@@ -10,8 +10,9 @@ Grab the latest desktop app from the **[Releases page](https://github.com/TwDove
 |---|---|
 | **Windows** | `GenreGrid Setup x.x.x.exe` (installer) |
 | **macOS — Apple Silicon** (M1/M2/M3/M4) | `GenreGrid-x.x.x-arm64.dmg` |
-| **macOS — Intel** | `GenreGrid-x.x.x-x64.dmg` |
 | **Linux** | `GenreGrid-x.x.x.AppImage` (portable) or `.deb` |
+
+> **macOS — Intel:** not built by CI (GitHub's Intel Mac runners are being phased out and builds there can't be tested). Intel Mac users can still [run from source](#running-in-the-browser) or [build the desktop app](#desktop-app-electron) themselves.
 
 > **macOS:** the app is currently **unsigned**, so the first time you open it macOS will warn about an unidentified developer. **Right-click the app → Open → Open**, or run `xattr -cr /Applications/GenreGrid.app`. You only need to do this once.
 
@@ -229,7 +230,7 @@ sudo dpkg -i frontend/release/genregrid_x.x.x_amd64.deb
 
 ### Running on macOS
 
-Open the `.dmg` and drag **GenreGrid** to Applications, then launch it. The backend starts automatically. Choose the build matching your Mac: `-arm64` for Apple Silicon (M1/M2/M3/M4), `-x64` for Intel.
+Open the `.dmg` and drag **GenreGrid** to Applications, then launch it. The backend starts automatically. Released builds are Apple Silicon (`-arm64`) only — see the note above if you're on an Intel Mac.
 
 Because the app is **unsigned** (no Apple Developer certificate), Gatekeeper blocks it on first launch. Bypass it once:
 
@@ -269,7 +270,7 @@ git push origin v0.2.0
 
 > **Auto-update depends on the release assets.** Alongside the installers, CI uploads `latest.yml` (Windows) and `latest-linux.yml` — installed apps poll these to discover new versions. Don't delete them from a Release, or auto-update silently stops finding updates. The build scripts pass `--publish never` to electron-builder; the CI `release` job is the only thing that uploads to GitHub.
 
-The tag (`v*`) triggers four parallel build jobs — Linux, Windows, macOS arm64, macOS Intel — and, once they all pass, a `release` job that attaches every installer (`.exe`, `.dmg`, `.AppImage`, `.deb`, `.zip`) to a new Release with auto-generated notes. Users then download from the [Releases page](https://github.com/TwDover/GenreGrid/releases/latest). Pushes to `main` and pull requests still build and type-check every platform, but only **tags** produce a published release.
+The tag (`v*`) triggers three parallel build jobs — Linux, Windows, macOS arm64 — and, once they all pass, a `release` job that attaches every installer (`.exe`, `.dmg`, `.AppImage`, `.deb`, `.zip`) to a new Release with auto-generated notes. Users then download from the [Releases page](https://github.com/TwDover/GenreGrid/releases/latest). Pushes to `main` and pull requests still build and type-check every platform, but only **tags** produce a published release.
 
 > **Note:** macOS builds are **unsigned** (see [Running on macOS](#running-on-macos)). To ship notarized, warning-free Mac apps you'd need an Apple Developer account and would add the signing certificate + `APPLE_ID`/`APPLE_APP_SPECIFIC_PASSWORD` as GitHub Actions secrets. Optional — the unsigned builds work, users just accept the first-launch prompt.
 
