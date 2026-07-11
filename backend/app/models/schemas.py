@@ -23,6 +23,7 @@ class GenerateRequest(BaseModel):
     seed: Optional[int] = None
     section_type: Optional[str] = None  # intro | verse | pre_chorus | chorus | post_chorus | bridge | instrumental_solo | outro
     next_section_type: Optional[str] = None  # section that follows this one in a built song — sizes the drum fill/build at the boundary
+    song_parts: Optional[List[str]] = None  # the FULL song's part list when this request is one section of a built song — register decisions (keeping chords below the melody) must stay consistent even in sections that drop the melody
     humanize: float = Field(default=0.5, ge=0.0, le=1.0)  # 0 = quantized, 1 = loose
     custom_progression: Optional[List[str]] = None  # e.g. ["i", "VI", "III", "VII"]
     blend_style_id: Optional[str] = None   # second style to blend with
