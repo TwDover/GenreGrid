@@ -10,6 +10,12 @@ from app.core.constants import SCALE_INTERVALS, NOTE_NAMES
 from app.theory.notes import note_name_to_midi
 
 
+def scale_mode(scale: str) -> str:
+    """'minor' for scales built on a minor third, 'major' otherwise."""
+    intervals = set(SCALE_INTERVALS.get(scale, SCALE_INTERVALS["minor"]))
+    return "minor" if 3 in intervals and 4 not in intervals else "major"
+
+
 def build_scale(key: str, scale: str, octave_start: int = 3, num_octaves: int = 3) -> list[int]:
     """Return list of MIDI notes for the given key/scale across num_octaves."""
     intervals = SCALE_INTERVALS.get(scale)

@@ -10,7 +10,7 @@ import random
 from typing import List
 
 from app.services.midi_writer import NoteEvent
-from app.theory.scales import build_scale
+from app.theory.scales import build_scale, scale_mode
 from app.theory.chords import roman_to_chord
 from app.theory.notes import note_name_to_midi
 from app.services.variation import should_trigger
@@ -42,14 +42,21 @@ def _chord_tone_indices(roman: str, key: str, scale: str, scale_notes: list) -> 
     return [i for i, n in enumerate(scale_notes) if n % 12 in chord_pitches]
 
 
-def _secondary_dominant_color(roman: str, key: str, active_scale: list[int]) -> list[int]:
+def _secondary_dominant_color(roman: str, key: str, active_scale: list[int],
+                              scale: str = "major") -> list[int]:
     """Return active_scale extended with the raised 3rd of any secondary dominant chord.
 
-    Secondary dominants (II, III, VI — uppercase, non-diatonic) have a chromatically
-    raised 3rd that acts as a leading tone into the target chord. Adding that pitch
-    class gives the melody the option to use the characteristic color note.
+    In MAJOR keys, uppercase II, III, and VI are non-diatonic secondary dominants
+    (V/V, V/vi, V/ii) whose chromatically raised 3rd acts as a leading tone into
+    the target chord — adding that pitch class gives the melody the option to use
+    the characteristic color note. In MINOR keys the same numerals are the
+    ordinary diatonic III/VI/VII-family chords (i–VI–III–VII progressions live on
+    them), so treating them as secondary dominants injected wrong chromatic
+    notes (C# and G# in a C-minor melody) — minor-family scales return unchanged.
     For all other chord types, returns active_scale unchanged.
     """
+    if scale_mode(scale) != "major":
+        return active_scale
     s = roman.lstrip("b#")
     for suffix in ("mM7", "m7b5", "dim7", "maj7", "9sus4", "7sus4",
                    "sus2", "sus4", "add11", "add9", "aug", "dim", "m6", "m9", "6", "9", "7"):
@@ -310,7 +317,12 @@ def generate_melody(
         beat_in_chord = beat - chord_idx * beats_per_chord
 
         # Chord-scale pool: extend active_scale with secondary-dominant color notes
-        chord_pool = _secondary_dominant_color(current_roman, key, active_scale)
+        # (major keys only — see _secondary_dominant_color). The pool is used
+        # transiently for stepwise motion; current_note_idx always indexes
+        # active_scale, and _color_pitch carries a pool-only color tone for
+        # this iteration's sounded note when motion passes through one.
+        chord_pool = _secondary_dominant_color(current_roman, key, active_scale, scale)
+        _color_pitch: int | None = None
 
         # Phrase tail: hold on a long cadential note then rest
         if is_phrase_tail:
@@ -426,13 +438,26 @@ def generate_melody(
                 # force the next motion in the opposite direction
                 if abs(_last_interval) >= 3 and direction == (1 if _last_interval > 0 else -1):
                     direction = -direction
-                next_idx = max(0, min(len(chord_pool) - 1, current_note_idx + direction))
+                # Walk in chord-pool space so motion can pass THROUGH a
+                # secondary-dominant color tone, but re-anchor current_note_idx
+                # to active_scale afterwards: the two lists have different
+                # lengths when color extras exist, and reading a scale index
+                # straight out of the pool shifted every note above an inserted
+                # extra by one slot — chord-tone targeting would aim at Eb and
+                # sound D.
+                _cur_pitch = active_scale[min(current_note_idx, len(active_scale) - 1)]
+                _pool_idx = min(range(len(chord_pool)), key=lambda i: abs(chord_pool[i] - _cur_pitch))
+                next_idx = max(0, min(len(chord_pool) - 1, _pool_idx + direction))
                 # Avoid augmented 2nds (3 semitones between adjacent scale steps) —
                 # common in harmonic minor / phrygian. Skip the problematic step.
-                if (next_idx != current_note_idx and
-                        abs(chord_pool[next_idx] - chord_pool[current_note_idx]) == 3):
+                if (next_idx != _pool_idx and
+                        abs(chord_pool[next_idx] - chord_pool[_pool_idx]) == 3):
                     next_idx = max(0, min(len(chord_pool) - 1, next_idx + direction))
-                current_note_idx = next_idx
+                _stepped = chord_pool[next_idx]
+                current_note_idx = min(range(len(active_scale)),
+                                       key=lambda i: abs(active_scale[i] - _stepped))
+                if _stepped != active_scale[current_note_idx]:
+                    _color_pitch = _stepped   # sound the color tone this note only
                 _last_interval = direction
             elif should_trigger(leap_prob) and len(chord_pool) > 4:
                 # Leaps in question half go upward; in response half go downward
@@ -440,18 +465,19 @@ def generate_melody(
                     leap = random.choice([2, 3])
                 else:
                     leap = random.choice([-3, -2])
-                current_note_idx = max(0, min(len(chord_pool) - 1, current_note_idx + leap))
+                current_note_idx = max(0, min(len(active_scale) - 1, current_note_idx + leap))
                 _last_interval = leap
 
         # Reserve the top of the range for the climax phrase: everything else
         # gets a soft ceiling, so the section's high point lands where planned.
         if not plan.climax:
-            _ceiling = int((len(chord_pool) - 1) * 0.82)
+            _ceiling = int((len(active_scale) - 1) * 0.82)
             if current_note_idx > _ceiling:
                 current_note_idx = _ceiling
+                _color_pitch = None
 
-        chord_note_idx = min(current_note_idx, len(chord_pool) - 1)
-        pitch = chord_pool[chord_note_idx]
+        pitch = (_color_pitch if _color_pitch is not None
+                 else active_scale[min(current_note_idx, len(active_scale) - 1)])
 
         # Anti-repetition: no more than 2 consecutive identical pitches
         if pitch == _prev_pitch:
@@ -459,8 +485,7 @@ def generate_melody(
             if _rep_count >= 2:
                 step_dir = 1 if current_note_idx < len(active_scale) // 2 else -1
                 current_note_idx = max(0, min(len(active_scale) - 1, current_note_idx + step_dir))
-                chord_note_idx = min(current_note_idx, len(chord_pool) - 1)
-                pitch = chord_pool[chord_note_idx]
+                pitch = active_scale[min(current_note_idx, len(active_scale) - 1)]
                 _rep_count = 0
         else:
             _rep_count = 0
@@ -679,7 +704,10 @@ def generate_melody(
             final.extend(existing)
 
     # Post-process: enforce max-2-consecutive-same-pitch across full output
-    # (motif copies at block boundaries can create longer runs)
+    # (motif copies at block boundaries can create longer runs). The variation
+    # pitch moves to the NEIGHBOURING SCALE TONE — a raw ±1 semitone here
+    # planted out-of-key notes (a third consecutive Eb in C minor became an
+    # E natural grinding against the Eb in the chords).
     out: List[NoteEvent] = []
     _pp_prev: int | None = None
     _pp_count: int = 0
@@ -687,7 +715,13 @@ def generate_melody(
         if note.pitch == _pp_prev:
             _pp_count += 1
             if _pp_count >= 2:
-                new_p = note.pitch + (1 if note.pitch < note_range[1] else -1)
+                _sn_idx = min(range(len(scale_notes)), key=lambda i: abs(scale_notes[i] - note.pitch))
+                if note.pitch < note_range[1] and _sn_idx + 1 < len(scale_notes):
+                    new_p = scale_notes[_sn_idx + 1]
+                elif _sn_idx > 0:
+                    new_p = scale_notes[_sn_idx - 1]
+                else:
+                    new_p = note.pitch
                 out.append(NoteEvent(new_p, note.start, note.duration, note.velocity, note.channel))
                 _pp_prev = new_p
                 _pp_count = 0
