@@ -312,6 +312,20 @@ Use `--limit N` on `mine_corpus.py` to sample large genre folders. Re-running a 
 
 ---
 
+## Auditing musical quality
+
+`scripts/survey_songs.py` builds full songs across styles through the real song builder, then analyzes the resulting `song.mid` for **cross-part** problems the per-part quality scorer can't see: bass notes that disagree with the sounding chord, melody notes clashing a semitone against chord tones, a bass frozen in place while the harmony moves, register collisions, and arrangement holes. Songs are ranked worst-first with their seed and export path, so any flagged song can be auditioned and reproduced exactly.
+
+```bash
+python scripts/survey_songs.py                          # 2 songs × every style
+python scripts/survey_songs.py --styles cloud_rap rnb --count 4
+python scripts/survey_songs.py --json report.json       # machine-readable copy
+```
+
+Scores are for **relative** comparison — between styles, and between runs before/after a change — not an absolute pass/fail (some metrics have idiomatic noise floors, e.g. walking-bass styles legitimately play non-chord approach tones).
+
+---
+
 ## Adding a style
 
 Create a JSON file in `backend/app/styles/` — it will be picked up automatically. See an existing style like `lofi.json` for the full schema.

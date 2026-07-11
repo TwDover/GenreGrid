@@ -15,7 +15,7 @@
   ],
   "progression_templates": [
     ["i", "iv", "V", "i"],
-    ["i", "VI", "i", "I"],
+    ["i", "VI", "i", "V"],
     ["i", "iv", "i", "VI"],
     ["i", "VI", "V", "iv"],
     ["i", "iv", "i", "iv"],

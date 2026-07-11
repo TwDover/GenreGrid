@@ -25,6 +25,7 @@ from app.services.style_loader import load_style
 from app.services.midi_writer import NoteEvent, ControlEvent, PitchBendEvent, write_midi, write_combined_midi, rebuild_combined_from_parts, concatenate_midi_files, read_note_starts, mido_key_signature
 from app.generators.chords import generate_chords, resolve_progression
 from app.theory.chords import roman_to_chord
+from app.theory.scales import build_scale, scale_mode as _scale_mode
 from app.generators.bass import generate_bass
 from app.generators.melody import generate_melody
 from app.generators.drums import generate_drums
@@ -103,13 +104,19 @@ def _chord_tones_by_bar(chord_notes, bars: int) -> list | None:
 def _prevent_parallel_motion(
     melody_events: list[NoteEvent],
     bass_events: list[NoteEvent],
-    scale_notes: list[int] | None = None,
+    section_scales: list[tuple[float, float, set[int]]] | None = None,
 ) -> list[NoteEvent]:
     """Nudge melody notes that form parallel octaves or fifths with the bass.
 
-    Only fixes the worst offender (direct parallel motion into an octave or fifth)
-    by raising or lowering by 1 semitone. Preserves all timing and velocity.
-    Parallel motion into a unison (octave) is most objectionable; fifths are secondary.
+    Only fixes the worst offender (direct parallel motion into an octave or fifth).
+    Preserves all timing and velocity. Parallel motion into a unison (octave) is
+    most objectionable; fifths are secondary.
+
+    ``section_scales`` — (start_beat, end_beat, scale_pcs) per section, so the
+    replacement pitch is the nearest non-parallel SCALE tone for the key that
+    section actually sounds in. Without it the nudge is a raw +1/+2 semitones,
+    which planted flat-out out-of-key notes (D+2 in C minor = E natural) in the
+    melody — trading a subtle voice-leading blemish for an audible wrong note.
     """
     if not bass_events or not melody_events:
         return melody_events
@@ -127,7 +134,26 @@ def _prevent_parallel_motion(
                 break
         return result
 
+    def _scale_pcs_at(beat: float) -> set[int] | None:
+        if not section_scales:
+            return None
+        for s_start, s_end, pcs in section_scales:
+            if s_start <= beat < s_end:
+                return pcs
+        return section_scales[-1][2]
+
     _PARALLEL_INTERVALS = {0, 7}   # unison/octave (mod 12) and fifth
+
+    def _nudged(pitch: int, bass_pitch: int, beat: float) -> int:
+        pcs = _scale_pcs_at(beat)
+        # Climb to the nearest higher pitch that breaks the parallel interval
+        # AND stays in the section's scale (when known).
+        for cand in range(pitch + 1, pitch + 13):
+            if (cand - bass_pitch) % 12 in _PARALLEL_INTERVALS:
+                continue
+            if pcs is None or cand % 12 in pcs:
+                return max(48, min(96, cand))
+        return pitch
 
     fixed = []
     for i, mel in enumerate(melody_events):
@@ -150,11 +176,9 @@ def _prevent_parallel_motion(
             if prev_bass is not None:
                 prev_interval = (prev_mel.pitch - prev_bass) % 12
                 if prev_interval in _PARALLEL_INTERVALS:
-                    # Parallel motion confirmed — nudge melody ±1 semitone
-                    new_pitch = mel.pitch + (1 if interval == 7 else 2)
-                    new_pitch = max(48, min(96, new_pitch))
+                    # Parallel motion confirmed — nudge to a scale-safe pitch
                     fixed.append(NoteEvent(
-                        pitch=new_pitch, start=mel.start,
+                        pitch=_nudged(mel.pitch, b_pitch, mel.start), start=mel.start,
                         duration=mel.duration, velocity=mel.velocity, channel=mel.channel,
                     ))
                     continue
@@ -225,16 +249,55 @@ def _overlay_groove(style: dict, use_priors: bool) -> dict:
     return {**style, "drums": {**style.get("drums", {}), **fields}}
 
 
+# Chord-type suffixes a template token may carry (mirrors roman_to_chord's list;
+# longest first so e.g. 'ivsus2' strips to 'iv', not 'ivsus').
+_ROMAN_SUFFIXES = ("m7b5", "mM7", "dim7", "maj7", "9sus4", "7sus4", "sus2", "sus4",
+                   "add11", "add9", "aug", "dim", "m6", "m9", "6", "9")
+
+
+def _template_tonic_mode(template: list[str]) -> str | None:
+    """'minor' if the template's tonic chord is bare i, 'major' if bare I,
+    'mixed' if it somehow contains both (a data bug), None if it never states
+    an explicit tonic (e.g. a ii-V vamp) and so fits either mode."""
+    has_min = has_maj = False
+    for token in template:
+        s = token.lstrip("b#")
+        for suffix in _ROMAN_SUFFIXES:
+            if s.lower().endswith(suffix):
+                s = s[: -len(suffix)]
+                break
+        if s == "i":
+            has_min = True
+        elif s == "I":
+            has_maj = True
+    if has_min and has_maj:
+        return "mixed"
+    if has_min:
+        return "minor"
+    if has_maj:
+        return "major"
+    return None
+
+
 def _choose_progression(style: dict, use_priors: bool, seed: int, scale: str = "minor") -> list[str]:
     """Pick a progression: a mined corpus prior when available+enabled, else a template.
 
     The template RNG draw happens regardless so seeds stay stable with the legacy
     path; the prior only replaces the resulting progression when one exists. The
     prior is queried by mode so a major-key request gets a major progression.
+
+    Templates are filtered to those whose tonic quality matches the requested
+    scale's mode: a bare-'i' (minor tonic) template under a major-scale melody
+    puts the whole harmony in the parallel minor while the melody stays major —
+    every E-natural grinds against the chords' Eb (and vice versa for 'I'
+    templates under a minor scale). Style JSONs may legitimately carry both
+    major and minor templates; the request's scale decides which set applies.
     """
     templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
+    mode = _scale_mode(scale)
+    compatible = [t for t in templates if _template_tonic_mode(t) in (mode, None)]
     random.seed(seed)
-    progression = random.choice(templates)
+    progression = random.choice(compatible or templates)
     if use_priors:
         prior = load_prior(_prior_name(style))
         if prior:
@@ -450,8 +513,17 @@ def _run_attempt(
                 all_events[gp_part] = _apply_groove_push(all_events[gp_part], groove_push)
 
     if "melody" in all_events and "bass" in all_events:
+        # Per-section scale pcs (sections can sit in shifted keys — chorus lift)
+        # so the parallel-motion fix nudges to in-key pitches, never chromatic ones.
+        _mel_scale_name = style.get("melody_scale", req.scale)
+        _section_scales = [
+            (float(s["offset"]), float(s["offset"] + s["bars"] * 4),
+             {p % 12 for p in build_scale(s.get("key", req.key), _mel_scale_name,
+                                          octave_start=4, num_octaves=1)})
+            for s in sections
+        ]
         all_events["melody"] = _prevent_parallel_motion(
-            all_events["melody"], all_events["bass"]
+            all_events["melody"], all_events["bass"], _section_scales
         )
 
     cc_parts: dict[str, list[ControlEvent]] = {}
