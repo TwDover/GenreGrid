@@ -13,7 +13,6 @@ from app.services.midi_writer import NoteEvent
 from app.theory.chords import roman_to_chord
 from app.services.variation import should_trigger
 from app.services.humanize import timing_jitter
-from app.generators.chords import _voice_lead, _clamp_register
 
 
 def generate_pads(
@@ -27,10 +26,16 @@ def generate_pads(
 ) -> List[NoteEvent]:
     """Sustained atmospheric chord layer above the comp chords.
 
-    One held voicing per chord change, voiced open in a high register with soft
+    One held voicing per chord change, voiced in a high register with soft
     velocities — the "glue" that fills the space between comp chords and melody
-    in choruses/bridges without competing with either. Voice-led between chords
-    so the layer moves as little as possible (pads should feel stationary).
+    in choruses/bridges without competing with either.
+
+    Stationarity is the defining property of a pad, so each chord tone is
+    placed individually at the in-register pitch NEAREST the previous bar's
+    voicing. (The earlier pipeline voice-led a fresh octave-5 voicing and then
+    octave-shifted the WHOLE result to fit the register — which undid the
+    voice leading whenever the led voicing poked past a register bound, making
+    the pad layer leap an octave up and back between adjacent bars.)
     """
     events: List[NoteEvent] = []
     if progression is None:
@@ -52,24 +57,36 @@ def generate_pads(
     chords_per_bar = 2 if complexity > 0.6 else 1
     prog_len = len(progression)
 
+    center = (reg_low + reg_high) // 2
+
     prev_pitches: list[int] = []
     for bar in range(bars):
         chord_idx = bar * chords_per_bar
         roman = progression[chord_idx % prog_len]
 
-        pitches = roman_to_chord(roman, key, scale, octave=5)
+        chord = roman_to_chord(roman, key, scale, octave=5)
+        pcs = sorted({p % 12 for p in chord})
         if color_9th_prob > 0 and should_trigger(color_9th_prob):
-            pitches = pitches + [pitches[0] + 14]
+            pcs = sorted(set(pcs) | {(chord[0] + 14) % 12})
 
-        # Open the voicing: drop the middle voice down an octave for air
-        if len(pitches) >= 3:
-            s = sorted(pitches)
-            pitches = [s[0]] + [p + 12 for p in s[1:2]] + s[2:]
-
-        if prev_pitches:
-            pitches = _voice_lead(pitches, prev_pitches)
-        pitches = _clamp_register(sorted(set(pitches)), low=reg_low, high=reg_high)
-        prev_pitches = sorted(pitches)
+        # Place each chord tone at the register position nearest the previous
+        # bar's voicing (nearest the register center on the first bar). Every
+        # voice moves at most a tritone bar-to-bar, so the layer sits still
+        # while the harmony changes under it.
+        voiced: list[int] = []
+        for pc in pcs:
+            candidates = [p for p in range(reg_low, reg_high + 1) if p % 12 == pc]
+            if not candidates:
+                continue
+            if prev_pitches:
+                pick = min(candidates, key=lambda p: min(abs(p - q) for q in prev_pitches))
+            else:
+                pick = min(candidates, key=lambda p: abs(p - center))
+            voiced.append(pick)
+        pitches = sorted(set(voiced))
+        if not pitches:
+            continue
+        prev_pitches = pitches
 
         start = float(bar * beats_per_bar)
         # Slight overlap into the next bar for a legato wash

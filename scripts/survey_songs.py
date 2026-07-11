@@ -23,9 +23,10 @@ Checks per song:
   bass_out_of_chord   % of bass note-time whose pitch class is not in the
                       simultaneously sounding chord — high = bass and harmony
                       disagree (the frozen-bass bug showed up here).
-  melody_clash        clash-beats per 100 beats of song where a melody note
-                      sounds a semitone against a simultaneous chord/pad tone
-                      — the minor-3rd-vs-major-3rd class (template case bug).
+  melody_clash        weighted clash-beats per 100 beats of song where a
+                      non-chord melody note sits an ACTUAL m2 or m9 from a
+                      simultaneous chord/pad tone (wider mod-12 relatives like
+                      maj7/add9 color are consonant and not counted).
   melody_out_of_key   % of melody note-time outside BOTH the declared scale
                       and the sounding chord (chord tones are legit even when
                       chromatic, e.g. the raised 7th under a V chord).
@@ -131,19 +132,24 @@ def _bass_out_of_chord(bass: list, chord_bars: dict[int, set[int]]) -> float:
     return 100.0 * bad / total if total else 0.0
 
 
+# Actual-distance harshness weights. Only close encounters hurt: a minor 2nd
+# (1) is a cluster, a minor 9th (13) is the classic arranging "avoid" interval,
+# and an octave-displaced m9 (25) still carries some of that tension. The wider
+# mod-12 relatives — maj7 (11), compound maj7 (23) — are consonant color
+# (melody riding a 9th/maj7 above the voicing) and counting them buried the
+# real problems under lush-but-fine writing.
+_CLASH_WEIGHTS = {1: 1.0, 13: 1.0, 25: 0.4}
+
+
 def _melody_clashes(melody: list, harmony: list, song_beats: float,
                     chord_bars: dict[int, set[int]]) -> float:
-    """Semitone collisions (interval 1 or 11 mod 12) between the melody and a
-    simultaneously sounding chord/pad note, as clash-beats per 100 beats of
-    song — weighted by how long the two notes actually overlap.
+    """Harsh collisions between the melody and a simultaneously sounding
+    chord/pad note, as weighted clash-beats per 100 beats of song.
 
-    A melody note that is itself a chord tone is never a clash, even when
-    another chord voice sits a semitone away mod 12 — the melody landing on
-    the root of a maj7 chord (root vs maj-7th = 11) is normal, consonant
-    writing, and counting it drowned the metric in false positives. What's
-    left after this filter is the real thing: a NON-chord melody note grinding
-    against a sounding chord tone (e.g. the minor-3rd-vs-major-3rd false
-    relation the major/minor template bug produced)."""
+    A melody note that is itself a chord tone is never a clash — the melody
+    landing on the root of a maj7 chord is normal, consonant writing. What's
+    left is a NON-chord melody note at an actual m2/m9 from a sounding chord
+    tone (see _CLASH_WEIGHTS), weighted by how long the two actually overlap."""
     clash_beats = 0.0
     for m_start, m_pitch, m_dur in melody:
         if m_pitch % 12 in chord_bars.get(_bar_of(m_start), set()):
@@ -154,8 +160,7 @@ def _melody_clashes(melody: list, harmony: list, song_beats: float,
             ov = _overlap(m_start, m_dur, h_start, h_dur)
             if ov <= 0.05:
                 continue
-            if abs(m_pitch - h_pitch) % 12 in (1, 11):
-                clash_beats += ov
+            clash_beats += ov * _CLASH_WEIGHTS.get(abs(m_pitch - h_pitch), 0.0)
     return 100.0 * clash_beats / max(song_beats, 1.0)
 
 

@@ -76,3 +76,35 @@ def test_no_shipped_style_has_mixed_tonic_templates():
         for template in data.get("progression_templates", []):
             assert _template_tonic_mode(template) != "mixed", \
                 f"{data.get('id')}: mixed-tonic template {template}"
+
+
+def test_resolve_avoid_notes():
+    from app.api.routes_generate import _resolve_avoid_notes
+    from app.services.midi_writer import NoteEvent
+
+    c_minor_pcs = {0, 2, 3, 5, 7, 8, 10}
+    scales = [(0.0, 16.0, c_minor_pcs)]
+    harmony = [NoteEvent(pitch=63, start=0.0, duration=4.0, velocity=70, channel=0)]  # Eb4 held
+
+    # Sustained D4 a m2 under the sounding Eb4 (non-chord tone) → must move to
+    # an in-scale pitch that clears the m2/m9.
+    held = [NoteEvent(pitch=62, start=1.0, duration=1.0, velocity=80, channel=2)]
+    out = _resolve_avoid_notes(held, harmony, scales)
+    assert out[0].pitch != 62
+    assert out[0].pitch % 12 in c_minor_pcs
+    assert abs(out[0].pitch - 63) not in (1, 13)
+    assert (out[0].start, out[0].duration, out[0].velocity) == (1.0, 1.0, 80)
+
+    # A short passing D4 (16th) is normal melodic motion — untouched.
+    passing = [NoteEvent(pitch=62, start=1.0, duration=0.25, velocity=80, channel=2)]
+    assert _resolve_avoid_notes(passing, harmony, scales)[0].pitch == 62
+
+    # A melody note doubling a harmony pitch class is consonant — untouched
+    # even though another harmony tone is a semitone away.
+    harmony2 = harmony + [NoteEvent(pitch=62, start=0.0, duration=4.0, velocity=70, channel=0)]
+    doubling = [NoteEvent(pitch=74, start=1.0, duration=1.0, velocity=80, channel=2)]  # D5, doubles D4
+    assert _resolve_avoid_notes(doubling, harmony2, scales)[0].pitch == 74
+
+    # No harsh interval at all (D5 = compound maj7 above Eb4) — untouched.
+    wide = [NoteEvent(pitch=74, start=1.0, duration=1.0, velocity=80, channel=2)]
+    assert _resolve_avoid_notes(wide, harmony, scales)[0].pitch == 74

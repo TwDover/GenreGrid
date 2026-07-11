@@ -188,6 +188,83 @@ def _prevent_parallel_motion(
     return fixed
 
 
+def _resolve_avoid_notes(
+    melody_events: list[NoteEvent],
+    harmony_events: list[NoteEvent],
+    section_scales: list[tuple[float, float, set[int]]] | None = None,
+    min_duration: float = 0.45,
+) -> list[NoteEvent]:
+    """Nudge SUSTAINED melody notes off harsh clashes with the sounding harmony.
+
+    An "avoid note" here is a melody note that (a) is not doubling any pitch
+    class the harmony is sounding, and (b) sits at an ACTUAL distance of a
+    minor 2nd (1 semitone) or minor 9th (13) from a simultaneously sounding
+    chord/pad tone. Held for half a beat or more, that reads as a wrong note —
+    the melody generator can't see the voicings the chords/pads actually chose
+    (registers, extensions, strums), so this runs where the real events exist.
+    Short notes are exempt: passing dissonance on 16ths is normal melodic
+    motion. Wider mod-12 relatives (maj7, compound maj7) are consonant color
+    and never touched.
+
+    The replacement is the nearest in-scale pitch (per section, via
+    ``section_scales``) that clears every overlapping harmony note; if none
+    exists within a major 3rd, the note is left alone rather than mangled.
+    """
+    if not melody_events or not harmony_events:
+        return melody_events
+
+    harmony_sorted = sorted(harmony_events, key=lambda e: e.start)
+    _HARSH = (1, 13)
+
+    def _scale_pcs_at(beat: float) -> set[int] | None:
+        if not section_scales:
+            return None
+        for s_start, s_end, pcs in section_scales:
+            if s_start <= beat < s_end:
+                return pcs
+        return section_scales[-1][2]
+
+    def _sounding(mel: NoteEvent) -> list[int]:
+        out = []
+        m_end = mel.start + mel.duration
+        for h in harmony_sorted:
+            if h.start >= m_end:
+                break
+            overlap = min(m_end, h.start + h.duration) - max(mel.start, h.start)
+            if overlap > 0.1:
+                out.append(h.pitch)
+        return out
+
+    fixed: list[NoteEvent] = []
+    for mel in melody_events:
+        if mel.duration < min_duration:
+            fixed.append(mel)
+            continue
+        sounding = _sounding(mel)
+        if not sounding or mel.pitch % 12 in {h % 12 for h in sounding}:
+            fixed.append(mel)
+            continue
+        if not any(abs(mel.pitch - h) in _HARSH for h in sounding):
+            fixed.append(mel)
+            continue
+        pcs = _scale_pcs_at(mel.start)
+        new_pitch = mel.pitch
+        for delta in (-1, 1, -2, 2, -3, 3, -4, 4):
+            cand = mel.pitch + delta
+            if not (0 <= cand <= 127):
+                continue
+            if pcs is not None and cand % 12 not in pcs:
+                continue
+            if any(abs(cand - h) in _HARSH for h in sounding):
+                continue
+            new_pitch = cand
+            break
+        fixed.append(NoteEvent(pitch=new_pitch, start=mel.start, duration=mel.duration,
+                               velocity=mel.velocity, channel=mel.channel)
+                     if new_pitch != mel.pitch else mel)
+    return fixed
+
+
 _MAX_QUALITY_ATTEMPTS = 5
 _GREEN_THRESHOLD = 0.82
 _GENERATION_TIMEOUT_S = 30
@@ -436,7 +513,14 @@ def _run_attempt(
         # Always cap chord voicings below the melody's lowest note when melody is active.
         # Without this, default chord_register [48,72] lets chord tops reach into the
         # melody range [60,79], causing the two parts to fight for the same register.
-        melody_ceiling = mel_range[0] if has_melody else None
+        #
+        # The cap is decided by whether the SONG carries a melody, not this section:
+        # song-builder intros/outros/endings often drop the melody (hook tease,
+        # sparse part modes), and deciding per-section made their chords float a
+        # full octave above every melody-bearing section — a jarring register jump
+        # into the first verse and again at the ending.
+        _song_parts = getattr(req, "song_parts", None) or req.parts
+        melody_ceiling = mel_range[0] if (has_melody or "melody" in _song_parts) else None
 
         mel_rests: list = []
         mel_evts: list = []
@@ -512,9 +596,9 @@ def _run_attempt(
             if gp_part in all_events and all_events[gp_part]:
                 all_events[gp_part] = _apply_groove_push(all_events[gp_part], groove_push)
 
-    if "melody" in all_events and "bass" in all_events:
+    if all_events.get("melody"):
         # Per-section scale pcs (sections can sit in shifted keys — chorus lift)
-        # so the parallel-motion fix nudges to in-key pitches, never chromatic ones.
+        # so both melody clean-up passes nudge to in-key pitches, never chromatic ones.
         _mel_scale_name = style.get("melody_scale", req.scale)
         _section_scales = [
             (float(s["offset"]), float(s["offset"] + s["bars"] * 4),
@@ -522,9 +606,18 @@ def _run_attempt(
                                           octave_start=4, num_octaves=1)})
             for s in sections
         ]
-        all_events["melody"] = _prevent_parallel_motion(
-            all_events["melody"], all_events["bass"], _section_scales
-        )
+        if all_events.get("bass"):
+            all_events["melody"] = _prevent_parallel_motion(
+                all_events["melody"], all_events["bass"], _section_scales
+            )
+        # Avoid-note pass: sustained melody notes a real m2/m9 from the
+        # chords'/pads' ACTUAL voicing move to a safe scale tone (the melody
+        # generator can't see voicings; this runs on the finished events).
+        _harmony_evts = (all_events.get("chords") or []) + (all_events.get("pads") or [])
+        if _harmony_evts:
+            all_events["melody"] = _resolve_avoid_notes(
+                all_events["melody"], _harmony_evts, _section_scales
+            )
 
     cc_parts: dict[str, list[ControlEvent]] = {}
     for part in req.parts:

@@ -248,6 +248,7 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
             bars=sec_bars, complexity=req.complexity, variation=req.variation,
             parts=sec_parts, mode="loop", seed=sec_seed, section_type=sec_type,
             next_section_type=next_sec_type,
+            song_parts=list(req.parts),   # full song part list — keeps register decisions consistent in sections that drop parts
             humanize=req.humanize, custom_progression=None, blend_style_id=None,
             blend_amount=0.5, use_priors=req.use_priors,
         )
@@ -413,8 +414,17 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     tonic = roman_to_chord(tonic_roman, req.key, req.scale, octave=4)
     ring = 4.0
     if "chords" in song_events:
-        base = sorted(tonic)
-        for ni, p in enumerate(base):
+        # Voice the final chord in the register the song's comp actually ended
+        # in (prev_voicing = the outro's closing voicing). The hardcoded
+        # octave-4 tonic sat a full octave above the melody-capped comp, so the
+        # very last bar leapt upward out of the song's register.
+        chord_tonic = sorted(tonic)
+        if prev_voicing:
+            _target = sum(prev_voicing) / len(prev_voicing)
+            _mean = sum(chord_tonic) / len(chord_tonic)
+            _oct_shift = min((-24, -12, 0, 12, 24), key=lambda o: abs(_mean + o - _target))
+            chord_tonic = [max(0, min(127, p + _oct_shift)) for p in chord_tonic]
+        for ni, p in enumerate(chord_tonic):
             song_events["chords"].append(NoteEvent(
                 pitch=p, start=ending_start + ni * 0.012, duration=ring,
                 velocity=max(1, 84 - ni * 4), channel=0))
