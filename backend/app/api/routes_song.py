@@ -40,7 +40,7 @@ from app.core.arrangement import (
     _apply_section_ramp, _song_tempo_map,
 )
 from app.services.mixdown import (
-    _DEFAULT_PROGRAMS, _STYLE_PROGRAMS, _PART_CHANNELS,
+    _DEFAULT_PROGRAMS, _STYLE_PROGRAMS, _PART_CHANNELS, part_midi_meta,
     _generate_part_cc, _generate_melody_expression_cc,
     _generate_808_pitch_bends, _drop_quiet, _scale_velocity, _shift,
     generate_build_sweeps, generate_section_crescendo,
@@ -504,6 +504,7 @@ def _write_song_output(song_events: dict, output_dir, gen_id: str, bpm: int, sty
         song_pb["bass"] = _generate_808_pitch_bends(song_events["bass"], ch)
 
     tempo_map = _song_tempo_map(section_results, bpm, ending_bars=1)
+    _, track_names = part_midi_meta(style)
 
     files: list[FileInfo] = []
     _sid = style.get("id", "")
@@ -516,7 +517,7 @@ def _write_song_output(song_events: dict, output_dir, gen_id: str, bpm: int, sty
         fname = f"{part}.mid"
         write_midi(clean, output_dir / fname, bpm=bpm, program=programs.get(part),
                    cc_events=song_cc.get(part), pb_events=song_pb.get(part),
-                   tempo_events=tempo_map)
+                   tempo_events=tempo_map, track_name=track_names.get(part))
         files.append(FileInfo(part=part, filename=fname, url=f"/exports/{gen_id}/{fname}"))
 
     if len([p for p, e in song_events.items() if e]) > 1:
@@ -524,7 +525,8 @@ def _write_song_output(song_events: dict, output_dir, gen_id: str, bpm: int, sty
         write_combined_midi(clean_all, output_dir / "song.mid", bpm=bpm, programs=programs,
                             cc_parts=song_cc, pb_parts=song_pb, tempo_events=tempo_map,
                             markers=_section_markers(section_results, key),
-                            key_signature=mido_key_signature(key, scale))
+                            key_signature=mido_key_signature(key, scale),
+                            track_names=track_names)
         files.append(FileInfo(part="song", filename="song.mid", url=f"/exports/{gen_id}/song.mid"))
     return files
 
@@ -551,7 +553,7 @@ def _do_build_song(req: BuildSongRequest, user_progression: list[str] | None = N
     output_dir = EXPORTS_DIR / gen_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    programs = {**_DEFAULT_PROGRAMS, **_STYLE_PROGRAMS.get(req.style_id, {})}
+    programs, track_names = part_midi_meta(style)
     secondary_dominants = style.get("secondary_dominants", False)
     tritone_sub = style.get("tritone_substitution", False)
     groove_push = style.get("groove_push", 0.0)
@@ -655,7 +657,7 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
     groove_push = style.get("groove_push", 0.0)
     style = _blend_styles(style, meta.get("blend_style_id"), meta.get("blend_amount", 0.5))
     style = {**style, "_humanize_scale": meta["humanize"]}
-    programs = {**_DEFAULT_PROGRAMS, **_STYLE_PROGRAMS.get(meta["style_id"], {})}
+    programs, track_names = part_midi_meta(style)
 
     _snapshot_song(output_dir)   # version history: state before this mutation
 
@@ -715,12 +717,14 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
     if part_path.exists():
         shutil.copy(part_path, output_dir / f"{req.part}.prev")
     write_midi(scaled, part_path, bpm=bpm, program=programs.get(req.part),
-               cc_events=part_cc, pb_events=part_pb, tempo_events=tempo_map)
+               cc_events=part_cc, pb_events=part_pb, tempo_events=tempo_map,
+               track_name=track_names.get(req.part))
 
     # Rebuild song.mid from all stems on disk (new part + untouched others).
     rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid", tempo_events=tempo_map,
                                 markers=_section_markers(_sections, meta.get("key", "C")),
-                                key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")))
+                                key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")),
+                                track_names=track_names)
 
     # An added part becomes a first-class member of the song so later
     # regenerations and undos treat it like any originally-built stem.
@@ -850,10 +854,15 @@ def set_part_gain(req: SetPartGainRequest):
     bpm = meta.get("bpm", 120)
     layout = _template_section_results(meta.get("template", "verse_chorus"), meta.get("key", "C"),
                                        custom=meta.get("custom_template"))
+    try:
+        _, _track_names = part_midi_meta(load_style(meta.get("style_id", "")))
+    except Exception:
+        _track_names = {}
     rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid",
                                 tempo_events=_song_tempo_map(layout, bpm, ending_bars=1),
                                 markers=_section_markers(layout, meta.get("key", "C")),
-                                key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")))
+                                key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")),
+                                track_names=_track_names)
     return FileInfo(part=req.part, filename=f"{req.part}.mid",
                     url=f"/exports/{req.generation_id}/{req.part}.mid")
 
@@ -907,13 +916,15 @@ def edit_part(req: EditPartRequest):
                            generate_section_crescendo(layout, [req.part])):
             part_cc = part_cc + automation.get(req.part, [])
 
-    programs = {**_DEFAULT_PROGRAMS, **_STYLE_PROGRAMS.get(meta.get("style_id", ""), {})}
+    programs, track_names = part_midi_meta(style if style else {"id": meta.get("style_id", "")})
     write_midi(events, part_path, bpm=bpm, program=programs.get(req.part),
-               cc_events=part_cc, tempo_events=tempo_map)
+               cc_events=part_cc, tempo_events=tempo_map,
+               track_name=track_names.get(req.part))
 
     rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid", tempo_events=tempo_map,
                                 markers=_section_markers(layout, meta.get("key", "C")),
-                                key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")))
+                                key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")),
+                                track_names=track_names)
     return FileInfo(part=req.part, filename=f"{req.part}.mid",
                     url=f"/exports/{req.generation_id}/{req.part}.mid")
 
@@ -1044,9 +1055,14 @@ def undo_song_part(req: RegenerateSongPartRequest):
 
     shutil.copy(prev, output_dir / f"{req.part}.mid")
     prev.unlink()   # one level of undo only
+    try:
+        _, _track_names = part_midi_meta(load_style(meta.get("style_id", "")))
+    except Exception:
+        _track_names = {}
     rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid", tempo_events=tempo_map,
                                 markers=_section_markers(_layout, meta.get("key", "C")),
-                                key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")))
+                                key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")),
+                                track_names=_track_names)
     return FileInfo(part=req.part, filename=f"{req.part}.mid",
                     url=f"/exports/{req.generation_id}/{req.part}.mid")
 
@@ -1086,7 +1102,7 @@ def regenerate_song_section(req: RegenerateSongSectionRequest):
     groove_push = style.get("groove_push", 0.0)
     style = _blend_styles(style, meta.get("blend_style_id"), meta.get("blend_amount", 0.5))
     style = {**style, "_humanize_scale": meta["humanize"]}
-    programs = {**_DEFAULT_PROGRAMS, **_STYLE_PROGRAMS.get(meta["style_id"], {})}
+    programs, track_names = part_midi_meta(style)
 
     _snapshot_song(output_dir)   # version history: state before this mutation
 

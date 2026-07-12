@@ -1,31 +1,133 @@
 {
   "id": "synthwave",
   "name": "Synthwave",
-  "bpm_range": [100, 120],
+  "bpm_range": [
+    100,
+    120
+  ],
   "default_scale": "minor",
-  "preferred_keys": ["C", "D", "F", "G", "A"],
+  "instrumentation": {
+    "chords": "polysynth_pad",
+    "bass": "synth_bass",
+    "melody": "saw_lead",
+    "arpeggio": "square_lead",
+    "pads": "warm_pad",
+    "counter_melody": "string_ensemble"
+  },
+  "preferred_keys": [
+    "C",
+    "D",
+    "F",
+    "G",
+    "A"
+  ],
   "progression_templates": [
-    ["iv", "i", "III", "iv"],
-    ["i", "iv", "i", "iv"],
-    ["i", "VI", "i", "VI"],
-    ["IV", "iv", "IV", "III"],
-    ["i", "VI", "III", "iv"],
-    ["i", "VI", "III", "VII"],
-    ["i", "iv", "VI", "VII"],
-    ["VI", "VII", "i", "III"],
-    ["i", "bVII", "bVI", "bVII"],
-    ["i", "bVI", "bIII", "bVII"],
-    ["i", "III", "bVII", "IV"],
-    ["bVI", "bVII", "i", "i"],
-    ["i", "iv", "bIII", "bVII"]
+    [
+      "iv",
+      "i",
+      "III",
+      "iv"
+    ],
+    [
+      "i",
+      "iv",
+      "i",
+      "iv"
+    ],
+    [
+      "i",
+      "VI",
+      "i",
+      "VI"
+    ],
+    [
+      "IV",
+      "iv",
+      "IV",
+      "III"
+    ],
+    [
+      "i",
+      "VI",
+      "III",
+      "iv"
+    ],
+    [
+      "i",
+      "VI",
+      "III",
+      "VII"
+    ],
+    [
+      "i",
+      "iv",
+      "VI",
+      "VII"
+    ],
+    [
+      "VI",
+      "VII",
+      "i",
+      "III"
+    ],
+    [
+      "i",
+      "bVII",
+      "bVI",
+      "bVII"
+    ],
+    [
+      "i",
+      "bVI",
+      "bIII",
+      "bVII"
+    ],
+    [
+      "i",
+      "III",
+      "bVII",
+      "IV"
+    ],
+    [
+      "bVI",
+      "bVII",
+      "i",
+      "i"
+    ],
+    [
+      "i",
+      "iv",
+      "bIII",
+      "bVII"
+    ]
   ],
   "chord_extensions": {
     "allow_7th": 0.8,
     "allow_9th": 0.5
   },
-  "chord_register": [55, 84],
+  "chord_register": [
+    55,
+    84
+  ],
   "comp_style": "synth_gate",
-  "chord_rhythm": [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
+  "chord_rhythm": [
+    1,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0
+  ],
   "velocity_base": 84,
   "bass": {
     "pattern_density": 0.65,
@@ -37,7 +139,10 @@
     "stepwise_motion": 0.65,
     "leap_probability": 0.2,
     "rest_probability": 0.25,
-    "range": [62, 86]
+    "range": [
+      62,
+      86
+    ]
   },
   "arpeggio": {
     "pattern": "up_down",
@@ -46,13 +151,67 @@
     "allow_7th": true
   },
   "drums": {
-    "kick_pattern": [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    "kick_pattern": [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0
+    ],
     "hat_density": 1.0,
     "triplet_probability": 0.1,
-    "snare_standard_beats": [2, 4],
+    "snare_standard_beats": [
+      2,
+      4
+    ],
     "swing": 0.0,
-    "hat_pattern": [1.0, 0.507, 0.617, 0.431, 0.617, 0.516, 0.661, 0.453, 0.962, 0.525, 0.554, 0.426, 0.63, 0.466, 0.558, 0.39],
-    "hat_vel": [0.905, 0.656, 0.947, 0.79, 0.779, 0.674, 0.82, 0.923, 0.892, 0.67, 1.0, 0.809, 0.755, 0.749, 0.879, 0.855],
+    "hat_pattern": [
+      1.0,
+      0.507,
+      0.617,
+      0.431,
+      0.617,
+      0.516,
+      0.661,
+      0.453,
+      0.962,
+      0.525,
+      0.554,
+      0.426,
+      0.63,
+      0.466,
+      0.558,
+      0.39
+    ],
+    "hat_vel": [
+      0.905,
+      0.656,
+      0.947,
+      0.79,
+      0.779,
+      0.674,
+      0.82,
+      0.923,
+      0.892,
+      0.67,
+      1.0,
+      0.809,
+      0.755,
+      0.749,
+      0.879,
+      0.855
+    ],
     "use_ride": false
   },
   "prior": "electronic",

@@ -1,18 +1,61 @@
 {
   "id": "baile_funk",
   "name": "Baile Funk",
-  "bpm_range": [128, 138],
-  "default_scale": "minor",
-  "preferred_keys": ["C", "D", "F", "G", "A"],
-  "progression_templates": [
-    ["i", "VII", "VI", "VII"],
-    ["i", "iv", "VII", "i"],
-    ["i", "VI", "VII", "i"],
-    ["i", "bVII", "bVI", "bVII"]
+  "bpm_range": [
+    128,
+    138
   ],
-  "chord_extensions": { "allow_7th": 0.2, "allow_9th": 0.05 },
+  "default_scale": "minor",
+  "instrumentation": {
+    "chords": "wurlitzer_ep",
+    "bass": "electric_bass",
+    "melody": "square_lead",
+    "arpeggio": "square_lead",
+    "pads": "warm_pad",
+    "counter_melody": "string_ensemble"
+  },
+  "preferred_keys": [
+    "C",
+    "D",
+    "F",
+    "G",
+    "A"
+  ],
+  "progression_templates": [
+    [
+      "i",
+      "VII",
+      "VI",
+      "VII"
+    ],
+    [
+      "i",
+      "iv",
+      "VII",
+      "i"
+    ],
+    [
+      "i",
+      "VI",
+      "VII",
+      "i"
+    ],
+    [
+      "i",
+      "bVII",
+      "bVI",
+      "bVII"
+    ]
+  ],
+  "chord_extensions": {
+    "allow_7th": 0.2,
+    "allow_9th": 0.05
+  },
   "melody_scale": "pentatonic_minor",
-  "chord_register": [48, 64],
+  "chord_register": [
+    48,
+    64
+  ],
   "velocity_base": 92,
   "bass": {
     "pattern_density": 0.7,
@@ -24,7 +67,10 @@
     "stepwise_motion": 0.65,
     "leap_probability": 0.2,
     "rest_probability": 0.3,
-    "range": [60, 80]
+    "range": [
+      60,
+      80
+    ]
   },
   "arpeggio": {
     "pattern": "up",
@@ -32,12 +78,49 @@
     "include_octave": true,
     "allow_7th": false
   },
-  "chord_rhythm": [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
+  "chord_rhythm": [
+    1,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0
+  ],
   "drums": {
-    "kick_pattern": [1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,0],
+    "kick_pattern": [
+      1,
+      0,
+      0,
+      1,
+      0,
+      0,
+      1,
+      0,
+      0,
+      1,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0
+    ],
     "hat_density": 0.8,
     "triplet_probability": 0.05,
-    "snare_standard_beats": [2, 4],
+    "snare_standard_beats": [
+      2,
+      4
+    ],
     "swing": 0.0,
     "hat_roll_prob": 0.0,
     "use_clap": true,

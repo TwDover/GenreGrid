@@ -1,23 +1,91 @@
 {
   "id": "grime",
   "name": "Grime",
-  "bpm_range": [137, 142],
-  "default_scale": "minor",
-  "preferred_keys": ["C", "D", "F", "G", "A#"],
-  "progression_templates": [
-    ["iv", "i", "III", "iv"],
-    ["i", "iv", "i", "iv"],
-    ["i", "VI", "i", "VI"],
-    ["IV", "iv", "IV", "III"],
-    ["i", "VI", "III", "iv"],
-    ["i", "VII", "VI", "VII"],
-    ["i", "VI", "III", "VII"],
-    ["i", "iv", "VII", "VI"],
-    ["i", "bVII", "bVI", "bVII"]
+  "bpm_range": [
+    137,
+    142
   ],
-  "chord_extensions": { "allow_7th": 0.25, "allow_9th": 0.05 },
+  "default_scale": "minor",
+  "instrumentation": {
+    "chords": "choir_pad",
+    "bass": "sub_808",
+    "melody": "square_lead",
+    "arpeggio": "metallic_pad",
+    "pads": "warm_pad",
+    "counter_melody": "string_ensemble"
+  },
+  "preferred_keys": [
+    "C",
+    "D",
+    "F",
+    "G",
+    "A#"
+  ],
+  "progression_templates": [
+    [
+      "iv",
+      "i",
+      "III",
+      "iv"
+    ],
+    [
+      "i",
+      "iv",
+      "i",
+      "iv"
+    ],
+    [
+      "i",
+      "VI",
+      "i",
+      "VI"
+    ],
+    [
+      "IV",
+      "iv",
+      "IV",
+      "III"
+    ],
+    [
+      "i",
+      "VI",
+      "III",
+      "iv"
+    ],
+    [
+      "i",
+      "VII",
+      "VI",
+      "VII"
+    ],
+    [
+      "i",
+      "VI",
+      "III",
+      "VII"
+    ],
+    [
+      "i",
+      "iv",
+      "VII",
+      "VI"
+    ],
+    [
+      "i",
+      "bVII",
+      "bVI",
+      "bVII"
+    ]
+  ],
+  "chord_extensions": {
+    "allow_7th": 0.25,
+    "allow_9th": 0.05
+  },
   "melody_scale": "pentatonic_minor",
-  "chord_register": [48, 62],
+  "chord_register": [
+    48,
+    62
+  ],
   "velocity_base": 90,
   "bass": {
     "bass_style": "808",
@@ -31,18 +99,92 @@
     "stepwise_motion": 0.6,
     "leap_probability": 0.25,
     "rest_probability": 0.35,
-    "range": [58, 77]
+    "range": [
+      58,
+      77
+    ]
   },
-  "chord_rhythm": [1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0],
+  "chord_rhythm": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
   "drums": {
-    "kick_pattern": [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    "kick_pattern": [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0
+    ],
     "hat_density": 1.0,
     "triplet_probability": 0.1,
-    "snare_standard_beats": [2, 4],
+    "snare_standard_beats": [
+      2,
+      4
+    ],
     "swing": 0.0,
     "hat_roll_prob": 0.15,
-    "hat_pattern": [1.0, 0.507, 0.617, 0.431, 0.617, 0.516, 0.661, 0.453, 0.962, 0.525, 0.554, 0.426, 0.63, 0.466, 0.558, 0.39],
-    "hat_vel": [0.905, 0.656, 0.947, 0.79, 0.779, 0.674, 0.82, 0.923, 0.892, 0.67, 1.0, 0.809, 0.755, 0.749, 0.879, 0.855],
+    "hat_pattern": [
+      1.0,
+      0.507,
+      0.617,
+      0.431,
+      0.617,
+      0.516,
+      0.661,
+      0.453,
+      0.962,
+      0.525,
+      0.554,
+      0.426,
+      0.63,
+      0.466,
+      0.558,
+      0.39
+    ],
+    "hat_vel": [
+      0.905,
+      0.656,
+      0.947,
+      0.79,
+      0.779,
+      0.674,
+      0.82,
+      0.923,
+      0.892,
+      0.67,
+      1.0,
+      0.809,
+      0.755,
+      0.749,
+      0.879,
+      0.855
+    ],
     "use_ride": false
   },
   "prior": "electronic",

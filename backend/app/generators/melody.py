@@ -11,6 +11,7 @@ from typing import List
 
 from app.services.midi_writer import NoteEvent
 from app.theory.scales import build_scale, scale_mode
+from app.core.instruments import instrumentation_for, clamp_range
 from app.theory.chords import roman_to_chord
 from app.theory.notes import note_name_to_midi
 from app.services.variation import should_trigger
@@ -125,6 +126,60 @@ def _add_grace_note(
     ))
 
 
+def _enforce_playing_profile(events: List[NoteEvent], profile: dict | None) -> List[NoteEvent]:
+    """One player, one line: enforce the melody instrument's playing profile.
+
+    Monophonic instruments can't sound two notes at once, and wind players need
+    air — trim overlaps to a legato hand-off, and force a short breath whenever
+    the line has sounded continuously for longer than a real player could blow.
+    Motif-block copies and grace ornaments are the usual overlap sources; the
+    trim keeps their timing, only the sustains shorten. No-op without a profile
+    (styles that bind no melody instrument) or for polyphonic leads.
+    """
+    if not profile or not (profile.get("breath") or profile.get("monophonic_legato")):
+        return events
+    out = sorted(events, key=lambda n: n.start)
+    gap = 0.0625 if profile.get("breath") else 0.0
+    shaped: List[NoteEvent] = []
+    for i, n in enumerate(out):
+        end = n.start + n.duration
+        if i + 1 < len(out):
+            nxt = out[i + 1].start
+            limit = nxt - gap
+            if end > limit:
+                end = max(n.start + 0.05, limit)
+            # The gap is best-effort, but monophony is absolute: never past the
+            # next onset. Notes starting (near-)simultaneously with the next
+            # one can't sound at all — one player, one note.
+            if end > nxt:
+                end = nxt
+            if end <= n.start + 0.01:
+                continue
+        shaped.append(NoteEvent(n.pitch, n.start, end - n.start, n.velocity, n.channel))
+    out = shaped
+
+    if profile.get("breath"):
+        MAX_SPAN = 8.0   # beats of continuous sound before a forced breath
+        BREATH = 0.5     # beats of rest the breath opens up
+        breathed: List[NoteEvent] = []
+        span_start = None
+        last_end = None
+        for n in out:
+            if last_end is None or n.start - last_end >= 0.25:
+                span_start = n.start
+            end = n.start + n.duration
+            if span_start is not None and end - span_start > MAX_SPAN and n.duration > BREATH + 0.1:
+                new_dur = n.duration - BREATH
+                breathed.append(NoteEvent(n.pitch, n.start, new_dur, n.velocity, n.channel))
+                last_end = n.start + new_dur
+                span_start = None
+            else:
+                breathed.append(n)
+                last_end = end
+        out = breathed
+    return out
+
+
 def generate_melody(
     style: dict,
     key: str,
@@ -199,6 +254,11 @@ def generate_melody(
     stepwise = mel_cfg.get("stepwise_motion", 0.7)
     leap_prob = mel_cfg.get("leap_probability", 0.15)
     note_range = mel_cfg.get("range", [60, 79])
+    # Instrument playing profile: the style range is taste, the instrument
+    # range is physics — the melody must fit both.
+    _mel_profile = instrumentation_for(style).get("melody")
+    if _mel_profile:
+        note_range = clamp_range(note_range, _mel_profile["range"])
 
     scale_notes = [n for n in build_scale(key, mel_scale, octave_start=4, num_octaves=2)
                    if note_range[0] <= n <= note_range[1]]
@@ -208,6 +268,10 @@ def generate_melody(
     # Extended scale for climactic phrases: up one octave higher
     phrase_climax_prob = mel_cfg.get("phrase_climax_prob", 0.0)
     note_range_hi = [note_range[0], min(96, note_range[1] + 12)]
+    if _mel_profile:
+        # The climax octave-up extension was the main source of notes above a
+        # horn's physical top (a sax can't follow the melody up to C6).
+        note_range_hi = clamp_range(note_range_hi, _mel_profile["range"])
     scale_notes_hi = [n for n in build_scale(key, mel_scale, octave_start=4, num_octaves=3)
                       if note_range_hi[0] <= n <= note_range_hi[1]]
     if not scale_notes_hi:
@@ -609,7 +673,7 @@ def generate_melody(
     motif = [n for n in raw if n.start < block_beats]
 
     if not motif or bars <= 2:
-        return raw
+        return _enforce_playing_profile(raw, _mel_profile)
 
     # Keep first block; rebuild subsequent blocks
     final: List[NoteEvent] = list(motif)
@@ -730,4 +794,5 @@ def generate_melody(
             _pp_count = 0
         out.append(note)
         _pp_prev = note.pitch
-    return out
+
+    return _enforce_playing_profile(out, _mel_profile)

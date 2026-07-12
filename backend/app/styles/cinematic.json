@@ -6,6 +6,14 @@
         90
     ],
     "default_scale": "minor",
+    "instrumentation": {
+        "chords": "string_ensemble",
+        "bass": "contrabass",
+        "melody": "trumpet",
+        "arpeggio": "tremolo_strings",
+        "pads": "warm_pad",
+        "counter_melody": "string_ensemble"
+    },
     "preferred_keys": [
         "D",
         "E",

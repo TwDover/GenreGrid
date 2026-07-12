@@ -192,12 +192,17 @@ def write_midi(
     cc_events: "List[ControlEvent] | None" = None,
     pb_events: "List[PitchBendEvent] | None" = None,
     tempo_events: "list[tuple[float, float]] | None" = None,
+    track_name: str | None = None,
 ) -> None:
     mid = mido.MidiFile(type=1, ticks_per_beat=ticks_per_beat)
     mid.tracks.append(_build_tempo_track(bpm, ticks_per_beat, tempo_events))
     track = _events_to_track(events, ticks_per_beat, cc_events, pb_events)
     if program is not None and events:
         track.insert(0, mido.Message("program_change", channel=events[0].channel, program=program, time=0))
+    if track_name:
+        # Display label only (e.g. "Alto Sax (melody)") — tooling identifies
+        # parts by MIDI channel, never by track name.
+        track.name = track_name
     mid.tracks.append(track)
     mid.save(str(output_path))
 
@@ -277,12 +282,15 @@ def rebuild_combined_from_parts(output_dir: Path, bpm: int, ticks_per_beat: int 
                                 combined_name: str = "combined.mid",
                                 tempo_events: "list[tuple[float, float]] | None" = None,
                                 markers: "list[tuple[float, str]] | None" = None,
-                                key_signature: str | None = None) -> None:
+                                key_signature: str | None = None,
+                                track_names: "dict[str, str] | None" = None) -> None:
     """Rebuild the combined .mid by merging all per-part .mid files in output_dir.
 
     Called after regenerating a single part so the combined stays in sync without
     re-generating events for every part. `combined_name` is "combined.mid" for
     loop/arrangement generations and "song.mid" for full songs.
+    `track_names` maps part role (the file stem) → display label ("Alto Sax
+    (melody)"); unmapped parts keep their stem as the name.
     """
     part_files = sorted(f for f in output_dir.glob("*.mid") if f.name != combined_name)
     if not part_files:
@@ -296,7 +304,7 @@ def rebuild_combined_from_parts(output_dir: Path, bpm: int, ticks_per_beat: int 
         for track in part_mid.tracks:
             # Skip pure-meta tracks (tempo tracks); copy note-bearing tracks only
             if any(msg.type not in ("set_tempo", "end_of_track", "time_signature", "key_signature") for msg in track):
-                track.name = part_file.stem
+                track.name = (track_names or {}).get(part_file.stem, part_file.stem)
                 combined.tracks.append(track)
 
     combined.save(str(output_dir / combined_name))
@@ -313,6 +321,7 @@ def write_combined_midi(
     tempo_events: "list[tuple[float, float]] | None" = None,
     markers: "list[tuple[float, str]] | None" = None,
     key_signature: str | None = None,
+    track_names: "dict[str, str] | None" = None,
 ) -> None:
     mid = mido.MidiFile(type=1, ticks_per_beat=ticks_per_beat)
     mid.tracks.append(_build_tempo_track(bpm, ticks_per_beat, tempo_events, markers, key_signature))
@@ -325,7 +334,9 @@ def write_combined_midi(
         )
         if programs and part_name in programs and events:
             track.insert(0, mido.Message("program_change", channel=events[0].channel, program=programs[part_name], time=0))
-        track.name = part_name
+        # Track names are display labels ("Alto Sax (melody)") — tooling
+        # identifies parts by MIDI channel, never by name.
+        track.name = (track_names or {}).get(part_name, part_name)
         mid.tracks.append(track)
 
     mid.save(str(output_path))
