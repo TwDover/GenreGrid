@@ -216,10 +216,13 @@ def test_edit_part_rewrites_stem_and_snapshots():
     assert _has(after, target[0] + 2, target[1])     # transposition landed
     assert not _has(after, target[0], target[1])     # old pitch is gone
 
-    # song.mid was rebuilt from the edited stems
+    # song.mid was rebuilt from the edited stems. Identify the melody track by
+    # MIDI channel (2) — track NAMES are instrument display labels now
+    # ("Rhodes EP (melody)"), never a stable identifier.
     assert (d / "song.mid").read_bytes() != song_v1
-    song_tracks = {tr.name for tr in mido.MidiFile(str(d / "song.mid")).tracks}
-    assert "melody" in song_tracks
+    song_channels = {msg.channel for tr in mido.MidiFile(str(d / "song.mid")).tracks
+                     for msg in tr if msg.type == "note_on"}
+    assert 2 in song_channels
 
     # The pre-edit state was snapshotted, so the edit is restorable
     assert len(list_song_versions(r.generation_id)) == versions_before + 1

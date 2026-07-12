@@ -71,14 +71,21 @@ BEATS_PER_BAR = 4
 
 # ── MIDI parsing ──────────────────────────────────────────────────────────────
 
+# MIDI channel → part role. Channels are the stable contract (see mixdown's
+# _PART_CHANNELS + GM channel 10 for drums); track NAMES are display labels
+# (instrument names like "Alto Sax") and must not be used for identification.
+_CHANNEL_PARTS = {0: "chords", 1: "bass", 2: "melody", 3: "arpeggio",
+                  4: "pads", 5: "counter_melody", 9: "drums"}
+
+
 def _parse_tracks(path: Path) -> tuple[dict[str, list], int]:
-    """song.mid → {track_name: [(start_tick, pitch, velocity, dur_ticks)]}, tpb."""
+    """song.mid → {part_role: [(start_tick, pitch, velocity, dur_ticks)]}, tpb.
+
+    Parts are identified by MIDI channel, not track name."""
     mid = mido.MidiFile(str(path))
     out: dict[str, list] = {}
     for track in mid.tracks:
-        if not track.name:
-            continue
-        abs_time, active, notes = 0, {}, []
+        abs_time, active = 0, {}
         for msg in track:
             abs_time += msg.time
             if msg.type == "note_on" and msg.velocity > 0:
@@ -87,9 +94,11 @@ def _parse_tracks(path: Path) -> tuple[dict[str, list], int]:
                 key = (msg.channel, msg.note)
                 if key in active:
                     start, vel = active.pop(key)
-                    notes.append((start, msg.note, vel, abs_time - start))
+                    part = _CHANNEL_PARTS.get(msg.channel)
+                    if part is not None:
+                        out.setdefault(part, []).append((start, msg.note, vel, abs_time - start))
+    for notes in out.values():
         notes.sort()
-        out[track.name] = notes
     return out, mid.ticks_per_beat
 
 
@@ -233,9 +242,50 @@ def _dropout_bars(tracks: dict[str, list]) -> int:
     return len(drum_bars - pitched_bars)
 
 
+# ── instrument-profile checks (Phase 2 of the instrument-identity design) ─────
+
+def _range_violations(tracks: dict[str, list], part_ranges: dict[str, list]) -> float:
+    """% of pitched note-time outside the part's INSTRUMENT playable range —
+    a sax can't play below its horn, a guitar has no notes below E2."""
+    total = bad = 0.0
+    for part, notes in tracks.items():
+        rng = part_ranges.get(part)
+        if not rng:
+            continue
+        for _, pitch, dur in notes:
+            total += dur
+            if pitch < rng[0] or pitch > rng[1]:
+                bad += dur
+    return 100.0 * bad / total if total else 0.0
+
+
+def _polyphony_violations(tracks: dict[str, list], part_poly: dict[str, int]) -> float:
+    """% of sounding time a part exceeds its instrument's polyphony (e.g. a
+    monophonic sax holding two notes at once, a 6-string playing 8 voices)."""
+    viol = sounding = 0.0
+    for part, notes in tracks.items():
+        cap = part_poly.get(part)
+        if not cap:
+            continue
+        points: list[tuple[float, int]] = []
+        for start, _, dur in notes:
+            points.append((start, 1))
+            points.append((start + dur, -1))
+        points.sort()
+        depth, last_t = 0, None
+        for t, delta in points:
+            if last_t is not None and depth > 0:
+                sounding += t - last_t
+                if depth > cap:
+                    viol += t - last_t
+            depth += delta
+            last_t = t
+    return 100.0 * viol / sounding if sounding else 0.0
+
+
 # ── survey ────────────────────────────────────────────────────────────────────
 
-def analyze_song(song_path: Path, key: str, scale: str) -> dict:
+def analyze_song(song_path: Path, key: str, scale: str, style: dict | None = None) -> dict:
     raw_tracks, tpb = _parse_tracks(song_path)
     tracks = {name: _to_beats(notes, tpb) for name, notes in raw_tracks.items()}
 
@@ -251,6 +301,15 @@ def analyze_song(song_path: Path, key: str, scale: str) -> dict:
 
     song_beats = max((s + d for t in tracks.values() for s, _, d in t), default=0.0)
 
+    # Instrument profile checks: what does each part's INSTRUMENT allow?
+    part_ranges: dict[str, list] = {}
+    part_poly: dict[str, int] = {}
+    if style is not None:
+        from app.core.instruments import instrumentation_for
+        for part, inst in instrumentation_for(style).items():
+            part_ranges[part] = inst["range"]
+            part_poly[part] = inst["polyphony"]
+
     return {
         "bass_out_of_chord_pct": round(_bass_out_of_chord(bass, chord_bars), 1),
         "melody_clash_pct":  round(_melody_clashes(melody, harmony, song_beats, chord_bars), 2),
@@ -258,6 +317,8 @@ def analyze_song(song_path: Path, key: str, scale: str) -> dict:
         "frozen_bass_bars":      _frozen_bass(bass, chord_bars),
         "register_overlap_pct":  round(_register_overlap(chords, melody), 1),
         "dropout_bars":          _dropout_bars(tracks),
+        "range_viol_pct":        round(_range_violations(tracks, part_ranges), 2),
+        "poly_viol_pct":         round(_polyphony_violations(tracks, part_poly), 2),
     }
 
 
@@ -273,7 +334,9 @@ def _score(m: dict) -> float:
             + m["melody_out_of_key_pct"] * 0.8
             + m["frozen_bass_bars"] * 2.0
             + m["register_overlap_pct"] * 0.3
-            + m["dropout_bars"] * 1.5)
+            + m["dropout_bars"] * 1.5
+            + m.get("range_viol_pct", 0.0) * 1.0
+            + m.get("poly_viol_pct", 0.0) * 0.5)
 
 
 def main() -> None:
@@ -285,6 +348,10 @@ def main() -> None:
     ap.add_argument("--complexity", type=float, default=0.5)
     ap.add_argument("--variation", type=float, default=0.5)
     ap.add_argument("--json", metavar="PATH", default=None, help="also write the full report as JSON")
+    ap.add_argument("--prune-exports", type=int, metavar="N", default=None,
+                    help="after analysis, delete this run's export folders except the N worst-scoring "
+                         "songs (large sweeps would otherwise litter backend/exports; any pruned song "
+                         "can be rebuilt exactly from its style+seed)")
     args = ap.parse_args()
 
     style_ids = args.styles or [s["id"] for s in list_styles()]
@@ -315,7 +382,7 @@ def main() -> None:
                 results.append({"style": style_id, "seed": seed, "error": str(exc)})
                 continue
             song_path = EXPORTS_DIR / resp.generation_id / "song.mid"
-            metrics = analyze_song(song_path, key, scale)
+            metrics = analyze_song(song_path, key, scale, style=style)
             results.append({
                 "style": style_id, "seed": seed, "key": f"{key} {scale}",
                 "generation_id": resp.generation_id, "path": str(song_path),
@@ -327,12 +394,12 @@ def main() -> None:
     ok.sort(key=lambda r: -r["issue_score"])
 
     print("\n" + "=" * 100)
-    print(f"{'style':<18}{'seed':>6}  {'bassX%':>7}{'clash%':>9}{'offkey%':>9}{'frozen':>8}{'regovr%':>9}{'dropout':>9}{'SCORE':>8}  gen_id")
+    print(f"{'style':<18}{'seed':>6}  {'bassX%':>7}{'clash%':>9}{'offkey%':>9}{'frozen':>8}{'regovr%':>9}{'dropout':>9}{'rngV%':>7}{'polyV%':>8}{'SCORE':>8}  gen_id")
     print("-" * 100)
     for r in ok:
         print(f"{r['style']:<18}{r['seed']:>6}  {r['bass_out_of_chord_pct']:>7}{r['melody_clash_pct']:>9}"
               f"{r['melody_out_of_key_pct']:>9}{r['frozen_bass_bars']:>8}{r['register_overlap_pct']:>9}"
-              f"{r['dropout_bars']:>9}{r['issue_score']:>8}  {r['generation_id']}")
+              f"{r['dropout_bars']:>9}{r['range_viol_pct']:>7}{r['poly_viol_pct']:>8}{r['issue_score']:>8}  {r['generation_id']}")
 
     if ok:
         print("-" * 100)
@@ -345,6 +412,18 @@ def main() -> None:
         worst = ok[0]
         print(f"\nworst song: {worst['style']} seed={worst['seed']} -> {worst['path']}")
         print("(exports are kept — audition any flagged song and re-run its exact seed to reproduce)")
+
+    if args.prune_exports is not None and ok:
+        import shutil
+        keep = {r["generation_id"] for r in ok[:args.prune_exports]}
+        pruned = 0
+        for r in ok[args.prune_exports:]:
+            gen_dir = EXPORTS_DIR / r["generation_id"]
+            if gen_dir.is_dir():
+                shutil.rmtree(gen_dir, ignore_errors=True)
+                r["pruned"] = True
+                pruned += 1
+        print(f"pruned {pruned} export folder(s); kept the {len(keep)} worst for auditioning")
 
     if args.json:
         Path(args.json).write_text(json.dumps(results, indent=2))

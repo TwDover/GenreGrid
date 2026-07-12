@@ -1,27 +1,115 @@
 {
   "id": "afropop",
   "name": "Afropop",
-  "bpm_range": [100, 116],
-  "default_scale": "major",
-  "preferred_keys": ["C", "D", "F", "G", "A"],
-  "progression_templates": [
-    ["I", "vi", "I", "vi"],
-    ["I", "vi", "IV", "V"],
-    ["I", "vi", "IV", "I"],
-    ["I", "IV", "I", "IV"],
-    ["i", "VI", "i", "VI"],
-    ["i", "III", "i", "III"],
-    ["I", "V", "vi", "V"],
-    ["I", "ii", "V", "I"],
-    ["I", "IV", "V", "I"],
-    ["I", "vi", "ii", "V"],
-    ["I", "IV", "V", "IV"],
-    ["I", "IV", "I", "V"],
-    ["I", "II", "IV", "V"]
+  "bpm_range": [
+    100,
+    116
   ],
-  "chord_extensions": { "allow_7th": 0.5, "allow_9th": 0.2 },
+  "default_scale": "major",
+  "instrumentation": {
+    "chords": "clean_electric_guitar",
+    "bass": "electric_bass",
+    "melody": "marimba",
+    "arpeggio": "nylon_guitar",
+    "pads": "warm_pad",
+    "counter_melody": "string_ensemble"
+  },
+  "preferred_keys": [
+    "C",
+    "D",
+    "F",
+    "G",
+    "A"
+  ],
+  "progression_templates": [
+    [
+      "I",
+      "vi",
+      "I",
+      "vi"
+    ],
+    [
+      "I",
+      "vi",
+      "IV",
+      "V"
+    ],
+    [
+      "I",
+      "vi",
+      "IV",
+      "I"
+    ],
+    [
+      "I",
+      "IV",
+      "I",
+      "IV"
+    ],
+    [
+      "i",
+      "VI",
+      "i",
+      "VI"
+    ],
+    [
+      "i",
+      "III",
+      "i",
+      "III"
+    ],
+    [
+      "I",
+      "V",
+      "vi",
+      "V"
+    ],
+    [
+      "I",
+      "ii",
+      "V",
+      "I"
+    ],
+    [
+      "I",
+      "IV",
+      "V",
+      "I"
+    ],
+    [
+      "I",
+      "vi",
+      "ii",
+      "V"
+    ],
+    [
+      "I",
+      "IV",
+      "V",
+      "IV"
+    ],
+    [
+      "I",
+      "IV",
+      "I",
+      "V"
+    ],
+    [
+      "I",
+      "II",
+      "IV",
+      "V"
+    ]
+  ],
+  "chord_extensions": {
+    "allow_7th": 0.5,
+    "allow_9th": 0.2
+  },
   "melody_scale": "pentatonic_major",
-  "chord_register": [48, 68],
+  "chord_register": [
+    48,
+    68
+  ],
   "velocity_base": 86,
   "bass": {
     "pattern_density": 0.6,
@@ -33,15 +121,60 @@
     "stepwise_motion": 0.65,
     "leap_probability": 0.2,
     "rest_probability": 0.25,
-    "range": [60, 82]
+    "range": [
+      60,
+      82
+    ]
   },
-  "arpeggio": { "pattern": "up", "speed": 0.5, "include_octave": false, "allow_7th": false },
-  "chord_rhythm": [1,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0],
+  "arpeggio": {
+    "pattern": "up",
+    "speed": 0.5,
+    "include_octave": false,
+    "allow_7th": false
+  },
+  "chord_rhythm": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0
+  ],
   "drums": {
-    "kick_pattern": [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
+    "kick_pattern": [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0
+    ],
     "hat_density": 0.8,
     "triplet_probability": 0.15,
-    "snare_standard_beats": [2, 4],
+    "snare_standard_beats": [
+      2,
+      4
+    ],
     "swing": 0.15,
     "hat_roll_prob": 0.0,
     "use_clap": true,

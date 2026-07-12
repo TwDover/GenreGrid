@@ -13,6 +13,7 @@ from app.services.midi_writer import NoteEvent
 from app.theory.chords import roman_to_chord
 from app.services.variation import should_trigger
 from app.services.humanize import timing_jitter
+from app.core.instruments import instrumentation_for, clamp_range
 
 
 def generate_pads(
@@ -45,6 +46,9 @@ def generate_pads(
     pad_cfg = style.get("pads", {})
     # High register above the comp chords' default [48, 72] ceiling.
     reg_low, reg_high = pad_cfg.get("register", style.get("pad_register", [64, 86]))
+    _pad_profile = instrumentation_for(style).get("pads")
+    if _pad_profile:
+        reg_low, reg_high = clamp_range([reg_low, reg_high], _pad_profile["range"])
     velocity_base = pad_cfg.get("velocity", 54)
     # 9th color adds shimmer at higher complexity
     color_9th_prob = pad_cfg.get("color_9th_prob", 0.35 if complexity > 0.5 else 0.0)

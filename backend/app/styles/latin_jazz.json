@@ -6,6 +6,14 @@
         200
     ],
     "default_scale": "major",
+    "instrumentation": {
+        "chords": "jazz_guitar",
+        "bass": "upright_bass",
+        "melody": "alto_sax",
+        "arpeggio": "marimba",
+        "pads": "warm_pad",
+        "counter_melody": "string_ensemble"
+    },
     "preferred_keys": [
         "C",
         "F",
@@ -15,20 +23,90 @@
         "D"
     ],
     "progression_templates": [
-        ["I", "vi", "I", "vi"],
-        ["I", "IV", "ii", "IV"],
-        ["I", "IV", "I", "IV"],
-        ["V", "I", "V", "I"],
-        ["i", "v", "iv", "i"],
-        ["I", "iv", "I", "iv"],
-        ["ii", "V", "I", "vi"],
-        ["I", "vi", "ii", "V"],
-        ["iii", "VI", "ii", "V"],
-        ["I", "bVII", "IV", "I"],
-        ["ii", "V", "iii", "VI"],
-        ["imM7", "iv", "bVII", "bIII"],
-        ["I", "V9sus4", "vi", "ii"],
-        ["I", "IV", "iii", "vi"]
+        [
+            "I",
+            "vi",
+            "I",
+            "vi"
+        ],
+        [
+            "I",
+            "IV",
+            "ii",
+            "IV"
+        ],
+        [
+            "I",
+            "IV",
+            "I",
+            "IV"
+        ],
+        [
+            "V",
+            "I",
+            "V",
+            "I"
+        ],
+        [
+            "i",
+            "v",
+            "iv",
+            "i"
+        ],
+        [
+            "I",
+            "iv",
+            "I",
+            "iv"
+        ],
+        [
+            "ii",
+            "V",
+            "I",
+            "vi"
+        ],
+        [
+            "I",
+            "vi",
+            "ii",
+            "V"
+        ],
+        [
+            "iii",
+            "VI",
+            "ii",
+            "V"
+        ],
+        [
+            "I",
+            "bVII",
+            "IV",
+            "I"
+        ],
+        [
+            "ii",
+            "V",
+            "iii",
+            "VI"
+        ],
+        [
+            "imM7",
+            "iv",
+            "bVII",
+            "bIII"
+        ],
+        [
+            "I",
+            "V9sus4",
+            "vi",
+            "ii"
+        ],
+        [
+            "I",
+            "IV",
+            "iii",
+            "vi"
+        ]
     ],
     "chord_extensions": {
         "allow_7th": 1.0,
@@ -87,16 +165,72 @@
     "drums": {
         "hat_density": 0.5,
         "triplet_probability": 0.6,
-        "snare_standard_beats": [1, 2, 3, 4],
+        "snare_standard_beats": [
+            1,
+            2,
+            3,
+            4
+        ],
         "swing": 0.0,
         "use_ride": false,
         "ride_style": "jazz",
         "tom_fills": true,
         "crash_on_bar_1": true,
         "flam_prob": 0.22,
-        "kick_pattern": [1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0],
-        "hat_pattern": [0.476, 0.12, 0.605, 0.126, 0.599, 0.125, 0.564, 0.086, 0.509, 0.15, 0.596, 0.1, 0.58, 0.09, 0.54, 0.062],
-        "hat_vel": [0.874, 0.593, 0.877, 1.0, 0.903, 0.619, 0.879, 0.694, 0.82, 0.891, 0.88, 0.927, 0.937, 0.696, 0.892, 0.676]
+        "kick_pattern": [
+            1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            1,
+            0
+        ],
+        "hat_pattern": [
+            0.476,
+            0.12,
+            0.605,
+            0.126,
+            0.599,
+            0.125,
+            0.564,
+            0.086,
+            0.509,
+            0.15,
+            0.596,
+            0.1,
+            0.58,
+            0.09,
+            0.54,
+            0.062
+        ],
+        "hat_vel": [
+            0.874,
+            0.593,
+            0.877,
+            1.0,
+            0.903,
+            0.619,
+            0.879,
+            0.694,
+            0.82,
+            0.891,
+            0.88,
+            0.927,
+            0.937,
+            0.696,
+            0.892,
+            0.676
+        ]
     },
     "groove_push": -0.006,
     "prior": "jazz",

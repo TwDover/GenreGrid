@@ -15,6 +15,27 @@ from app.theory.scales import build_scale
 from app.services.variation import should_trigger
 from app.services.humanize import micro_jitter, phrase_breath_factor, timing_jitter, style_jitter
 from app.theory.rhythm import apply_swing
+from app.core.instruments import instrumentation_for
+
+
+def _fold_to_range(events: List[NoteEvent], profile: dict | None) -> List[NoteEvent]:
+    """Octave-fold any note outside the bass instrument's physical range.
+
+    Octave shifts preserve the pitch class, so harmony is untouched — this only
+    stops an upright bass part dipping below its lowest string (the generators'
+    hardcoded clamps allow pitch 24; an upright bottoms out at 28)."""
+    if not profile:
+        return events
+    lo, hi = profile["range"]
+    out: List[NoteEvent] = []
+    for e in events:
+        p = e.pitch
+        while p < lo:
+            p += 12
+        while p > hi:
+            p -= 12
+        out.append(e if p == e.pitch else NoteEvent(p, e.start, e.duration, e.velocity, e.channel))
+    return out
 
 
 def _on_kick(beat: float, kick_times: list[float] | None) -> bool:
@@ -49,6 +70,7 @@ def _generate_walking_bass(
     variation: float,
     progression: list,
     kick_times: list[float] | None = None,
+    harmony_complexity: float | None = None,
 ) -> List[NoteEvent]:
     """Jazz-style 4-to-the-floor walking bass with chord-tone navigation and chromatic approach."""
     events: List[NoteEvent] = []
@@ -66,11 +88,24 @@ def _generate_walking_bass(
     # Build scale note set for diatonic passing notes
     scale_pcs = set(n % 12 for n in build_scale(key, scale, octave_start=2, num_octaves=4))
 
+    # The chords/melody switch to 2 chords per bar above harmony_complexity 0.6
+    # (their shared grid). The walk must index the progression on the SAME grid:
+    # per-bar indexing here left the bass a chord behind the comp for most of
+    # every high-complexity song — cleanly playing the wrong root.
+    _harmony_cplx = complexity if harmony_complexity is None else harmony_complexity
+    chords_per_bar = 2 if _harmony_cplx > 0.6 else 1
+    beats_per_chord = beats_per_bar / chords_per_bar
+
+    def _roman_at(beat: float) -> str:
+        return progression[int(beat / beats_per_chord) % prog_len]
+
     pair_direction: int = 1  # +1 = ascending arc, -1 = descending; refreshed every 2 bars
 
     for bar in range(bars):
-        roman = progression[bar % prog_len]
-        next_roman = progression[(bar + 1) % prog_len]
+        bar_start_f = float(bar * beats_per_bar)
+        roman = _roman_at(bar_start_f)
+        next_roman = _roman_at(bar_start_f + beats_per_bar)
+        mid_roman = _roman_at(bar_start_f + beats_per_bar / 2)   # second half of THIS bar
         pitches = roman_to_chord(roman, key, scale, octave=2)
         next_pitches = roman_to_chord(next_roman, key, scale, octave=2)
 
@@ -111,7 +146,12 @@ def _generate_walking_bass(
         # Beat 3: 5th or scalar passing note
         beat3 = bar_start + 2.0
         kb3 = 6 if _on_kick(beat3, kick_times) else 0
-        if should_trigger(0.35) and complexity > 0.4:
+        if mid_roman != roman:
+            # Harmony changes mid-bar (2 chords/bar): land the incoming chord's
+            # root on beat 3 rather than walking tones of the departed chord.
+            mid_pitches = roman_to_chord(mid_roman, key, scale, octave=2)
+            p3 = max(28, min(52, mid_pitches[0]))
+        elif should_trigger(0.35) and complexity > 0.4:
             # Scalar passing note between beat-2 pitch and beat-4 approach
             mid = (p2 + next_root) // 2
             # Snap to nearest scale or chromatic step
@@ -178,11 +218,25 @@ def _generate_808_bass(
     variation: float,
     progression: list,
     kick_times: list[float] | None = None,
+    harmony_complexity: float | None = None,
 ) -> List[NoteEvent]:
     """Long-sustain 808-style bass with a randomly selected rhythmic pattern per generation."""
     events: List[NoteEvent] = []
     prog_len = len(progression)
     beats_per_bar = 4
+
+    # The chords/melody switch to 2 chords per bar above harmony_complexity 0.6
+    # (their shared grid). Each 808 hit takes the root of the chord actually
+    # sounding at its beat: per-bar indexing here left the bass sustaining the
+    # wrong chord's root for most of every high-complexity song.
+    _harmony_cplx = complexity if harmony_complexity is None else harmony_complexity
+    chords_per_bar = 2 if _harmony_cplx > 0.6 else 1
+    beats_per_chord = beats_per_bar / chords_per_bar
+
+    def _root_at(beat: float) -> int:
+        roman = progression[int(beat / beats_per_chord) % prog_len]
+        pitches = roman_to_chord(roman, key, scale, octave=2)
+        return max(24, min(48, pitches[0]))
 
     # Pick a rhythmic pattern for this entire generation — this is the key source
     # of variation between regenerations. Low complexity favours simpler patterns.
@@ -194,9 +248,6 @@ def _generate_808_bass(
         pattern = random.choice(_808_PATTERNS)
 
     for bar in range(bars):
-        roman = progression[bar % prog_len]
-        pitches = roman_to_chord(roman, key, scale, octave=2)
-        root = max(24, min(48, pitches[0]))
         bar_start = float(bar * beats_per_bar)
 
         # Two-bar variation: second bar of each pair may drop or add one hit
@@ -206,6 +257,13 @@ def _generate_808_bass(
                 bar_pattern = bar_pattern[:-1]          # drop last hit
             elif len(bar_pattern) == 1 and should_trigger(0.25):
                 bar_pattern = bar_pattern + [(2.0, 0.84)]  # add simple mid-bar hit
+
+        # When the harmony moves mid-bar and the pattern leaves the second half
+        # empty, add a hit on the change so the 808 follows the chords instead
+        # of ringing the departed chord's root across the new one.
+        if (chords_per_bar == 2 and _root_at(bar_start) != _root_at(bar_start + 2.0)
+                and not any(off >= 1.75 for off, _ in bar_pattern)):
+            bar_pattern = bar_pattern + [(2.0, 0.88)]
 
         phrase_dyn = phrase_breath_factor(bar)
 
@@ -219,6 +277,7 @@ def _generate_808_bass(
             tail_factor = style.get("bass", {}).get("808_tail", 0.92)
             duration = (next_t - t) * tail_factor
 
+            root = _root_at(bar_start + beat_offset)
             kick_boost = 8 if _on_kick(t, kick_times) else 0
             base_vel = 108 if i == 0 else 94
             vel = min(127, int(base_vel * vel_scale * phrase_dyn) + kick_boost + random.randint(-6, 6))
@@ -245,11 +304,17 @@ def generate_bass(
 
     bass_cfg = style.get("bass", {})
 
+    _bass_profile = instrumentation_for(style).get("bass")
+
     if bass_cfg.get("bass_style") == "808":
-        return _generate_808_bass(style, key, scale, bars, complexity, variation, progression, kick_times)
+        return _fold_to_range(
+            _generate_808_bass(style, key, scale, bars, complexity, variation, progression,
+                               kick_times, harmony_complexity=harmony_complexity), _bass_profile)
 
     if bass_cfg.get("bass_style") == "walking":
-        return _generate_walking_bass(style, key, scale, bars, complexity, variation, progression, kick_times)
+        return _fold_to_range(
+            _generate_walking_bass(style, key, scale, bars, complexity, variation, progression,
+                                   kick_times, harmony_complexity=harmony_complexity), _bass_profile)
 
     events: List[NoteEvent] = []
     density = bass_cfg.get("pattern_density", 0.5)
@@ -385,4 +450,6 @@ def generate_bass(
         events.extend(fill_events)
 
     bass_jitter = style_jitter(style) * 0.55
-    return [NoteEvent(e.pitch, max(0.0, e.start + timing_jitter(bass_jitter)), e.duration, e.velocity, e.channel) for e in events]
+    return _fold_to_range(
+        [NoteEvent(e.pitch, max(0.0, e.start + timing_jitter(bass_jitter)), e.duration, e.velocity, e.channel) for e in events],
+        _bass_profile)

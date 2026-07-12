@@ -14,6 +14,7 @@ from app.theory.chords import roman_to_chord
 from app.services.variation import should_trigger
 from app.services.humanize import timing_jitter, velocity_arc, phrase_breath_factor, style_jitter
 from app.theory.rhythm import apply_swing
+from app.core.instruments import instrumentation_for, clamp_range
 
 
 def _apply_inversion(pitches: list[int], inversion: int) -> list[int]:
@@ -84,6 +85,20 @@ def _drop_2(pitches: list[int]) -> list[int]:
     s = sorted(pitches)
     s[-2] -= 12
     return sorted(s)
+
+
+def _cap_polyphony(pitches: list[int], max_poly: int | None) -> list[int]:
+    """Drop inner voices until the voicing fits the instrument's polyphony.
+
+    Keeps the bass note and the soprano (the two voices that carry the
+    harmony); inner color voices go first — the same call an arranger makes
+    when a 5-note voicing meets a 4-string instrument."""
+    if not max_poly or len(pitches) <= max_poly:
+        return pitches
+    s = sorted(pitches)
+    while len(s) > max_poly:
+        del s[len(s) // 2]
+    return s
 
 
 def _voice_vel_offset(note_idx: int, n_notes: int) -> int:
@@ -188,9 +203,16 @@ def generate_chords(
     swing_amount = style.get("drums", {}).get("swing", 0.0)
 
     altered_dominant_prob = style.get("altered_dominant_prob", 0.0)
+    # Instrument playing profile for the chords part (None for custom styles
+    # without instrumentation — every use below falls back to legacy behavior).
+    _ch_profile = instrumentation_for(style).get("chords")
+
     # Strum timing: seconds per string. Slow styles (lofi/soul) ~20ms, tight styles (funk/jazz) ~5-8ms.
     # Stored as beats; converts to real time at runtime based on BPM (handled by sequencer/DAW).
-    strum_speed = style.get("strum_speed", 0.010)
+    # The style knob wins; otherwise the instrument decides (a guitar strums at
+    # ~18ms, a pad plays true block chords at 0).
+    _default_strum = _ch_profile["strum"] if _ch_profile else 0.010
+    strum_speed = style.get("strum_speed", _default_strum)
 
     # Staccato factor: shorten note durations for styles that want sharp articulation.
     # Only applies when duration is computed from chord_rhythm steps (not comp_duration_override).
@@ -199,6 +221,9 @@ def generate_chords(
     # Register: lower by default to leave headroom for melody above.
     # Styles that use high-register pads can override via "chord_register".
     ch_low, ch_high = style.get("chord_register", [48, 72])
+    if _ch_profile:
+        # Style register is taste; instrument range is physics — honor both.
+        ch_low, ch_high = clamp_range([ch_low, ch_high], _ch_profile["range"])
 
     # Keep chord voicings below the melody's range so they don't fight for the same register
     if melody_ceiling is not None:
@@ -306,6 +331,7 @@ def generate_chords(
             pitches = _drop_2(pitches)
             pitches = _clamp_register(pitches, low=ch_low, high=ch_high)
 
+        pitches = _cap_polyphony(pitches, _ch_profile["polyphony"] if _ch_profile else None)
         prev_pitches = sorted(pitches)  # record the clamped (sounded) voicing
 
         start_beat = i * beats_per_chord
@@ -356,6 +382,7 @@ def generate_chords(
                 else:
                     ta_pitches = sorted(ta_pitches)
                 ta_pitches = _clamp_register(ta_pitches, low=ch_low, high=ch_high)
+                ta_pitches = _cap_polyphony(ta_pitches, _ch_profile["polyphony"] if _ch_profile else None)
                 prev_pitches = sorted(ta_pitches)
                 ta_vel = vel - random.randint(2, 8)
                 ta_sorted = sorted(ta_pitches)
@@ -380,9 +407,14 @@ def generate_chords(
                     if chord_rhythm[(base_idx + s) % len(chord_rhythm)]
                 ]
 
-                # Guarantee a hit on the downbeat of each bar (step 0 when bar_offset < step)
-                # so the chord always sounds at the bar start even in sparse comp rhythms
-                if bar_offset < step and 0 not in hit_steps:
+                # Guarantee a hit at the start of EVERY chord window, not just the
+                # bar's first: at 2 chords per bar, a comp rhythm whose hits all
+                # sit in the first half of the bar (pad_hold's [1,0,...]) left the
+                # second window's slice empty — every other chord of the
+                # progression was silently dropped while the first one rang
+                # through it (bass/melody kept playing the missing chord's notes
+                # against it).
+                if 0 not in hit_steps:
                     hit_steps = [0] + hit_steps
 
                 sorted_pitches = sorted(pitches)
@@ -392,7 +424,10 @@ def generate_chords(
                     # Hold until the next hit (or end of the chord window), then leave a small gap
                     steps_to_next = (hit_steps[hi + 1] - s) if hi + 1 < len(hit_steps) else (num_steps - s)
                     if comp_duration_override is not None:
-                        duration = comp_duration_override
+                        # Never ring past this chord's window: pad_hold's 3.8-beat
+                        # hold was tuned for one chord per bar and smeared across
+                        # the NEXT chord at 2 chords per bar.
+                        duration = min(comp_duration_override, (num_steps - s) * step * 0.95)
                     else:
                         duration = max(step * 0.8, steps_to_next * step * 0.92)
                         if staccato_factor < 1.0:

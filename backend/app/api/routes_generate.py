@@ -43,7 +43,7 @@ from app.core.arrangement import (
     _song_tempo_map,
 )
 from app.services.mixdown import (
-    _DEFAULT_PROGRAMS, _STYLE_PROGRAMS, _PART_CHANNELS, _VELOCITY_SCALE,
+    _DEFAULT_PROGRAMS, _STYLE_PROGRAMS, _PART_CHANNELS, _VELOCITY_SCALE, part_midi_meta,
     _generate_part_cc, _generate_melody_expression_cc, _generate_bass_expression_cc,
     _generate_808_pitch_bends, _drop_quiet, _scale_velocity, _shift,
     _apply_groove_push, _apply_dynamic,
@@ -685,7 +685,7 @@ def generate(req: GenerateRequest):
     output_dir = EXPORTS_DIR / gen_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    programs: dict[str, int] = {**_DEFAULT_PROGRAMS, **_STYLE_PROGRAMS.get(req.style_id, {})}
+    programs, track_names = part_midi_meta(style)
 
     secondary_dominants = style.get("secondary_dominants", False)
     tritone_sub = style.get("tritone_substitution", False)
@@ -781,14 +781,15 @@ def generate(req: GenerateRequest):
         filename = f"{part}.mid"
         out_path = output_dir / filename
         write_midi(events, out_path, bpm=bpm, program=programs.get(part),
-                   cc_events=cc_parts.get(part), pb_events=pb_parts.get(part))
+                   cc_events=cc_parts.get(part), pb_events=pb_parts.get(part),
+                   track_name=track_names.get(part))
         files.append(FileInfo(part=part, filename=filename, url=f"/exports/{gen_id}/{filename}"))
 
     if len(all_events) > 1:
         combined_path = output_dir / "combined.mid"
         clean_events = {p: _drop_quiet(_scale_velocity(e, p, _sid)) for p, e in all_events.items()}
         write_combined_midi(clean_events, combined_path, bpm=bpm, programs=programs,
-                           cc_parts=cc_parts, pb_parts=pb_parts)
+                           cc_parts=cc_parts, pb_parts=pb_parts, track_names=track_names)
         files.append(FileInfo(part="combined", filename="combined.mid", url=f"/exports/{gen_id}/combined.mid"))
 
     # In arrangement mode, also write per-section MIDI files
@@ -812,7 +813,7 @@ def generate(req: GenerateRequest):
                     sec_evts[part] = _drop_quiet(_scale_velocity(clipped, part, _sid))
             if sec_evts:
                 sec_combined = sec_dir / f"{sec_i + 1:02d}_{sec_name}_combined.mid"
-                write_combined_midi(sec_evts, sec_combined, bpm=bpm, programs=programs)
+                write_combined_midi(sec_evts, sec_combined, bpm=bpm, programs=programs, track_names=track_names)
                 section_meta.append({
                     "index": sec_i + 1, "name": sec_name,
                     "bars": sec["bars"], "bpm": bpm,
@@ -858,7 +859,7 @@ def generate_stream(req: GenerateRequest):
         output_dir = EXPORTS_DIR / gen_id
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        programs = {**_DEFAULT_PROGRAMS, **_STYLE_PROGRAMS.get(req.style_id, {})}
+        programs, track_names = part_midi_meta(style)
         secondary_dominants = style.get("secondary_dominants", False)
         tritone_sub = style.get("tritone_substitution", False)
         is_loop = (req.mode == "loop")
@@ -915,14 +916,16 @@ def generate_stream(req: GenerateRequest):
             write_midi(events, output_dir / filename, bpm=bpm,
                        program=programs.get(part),
                        cc_events=(best_cc or {}).get(part),
-                       pb_events=(best_pb or {}).get(part))
+                       pb_events=(best_pb or {}).get(part),
+                       track_name=track_names.get(part))
             files.append(FileInfo(part=part, filename=filename, url=f"/exports/{gen_id}/{filename}"))
 
         if best_events and len(best_events) > 1:
             combined_path = output_dir / "combined.mid"
             clean = {p: _drop_quiet(_scale_velocity(e, p, _sid)) for p, e in best_events.items()}
             write_combined_midi(clean, combined_path, bpm=bpm, programs=programs,
-                               cc_parts=best_cc or {}, pb_parts=best_pb or {})
+                               cc_parts=best_cc or {}, pb_parts=best_pb or {},
+                               track_names=track_names)
             files.append(FileInfo(part="combined", filename="combined.mid",
                                   url=f"/exports/{gen_id}/combined.mid"))
 
@@ -980,7 +983,7 @@ def regenerate_part(req: RegeneratePartRequest):
     new_seed = secrets.randbelow(2**31)
     random.seed(new_seed)
 
-    programs: dict[str, int] = {**_DEFAULT_PROGRAMS, **_STYLE_PROGRAMS.get(req.style_id, {})}
+    programs, track_names = part_midi_meta(style)
     if req.mode == "loop":
         sections = [{"bars": req.bars, "complexity": req.complexity, "parts": [req.part], "offset": 0, "key": req.key}]
     else:
@@ -1105,10 +1108,11 @@ def regenerate_part(req: RegeneratePartRequest):
     filename = f"{req.part}.mid"
     out_path = output_dir / filename
     write_midi(events, out_path, bpm=bpm, program=programs.get(req.part),
-               cc_events=part_cc, pb_events=pb_events)
+               cc_events=part_cc, pb_events=pb_events,
+               track_name=track_names.get(req.part))
 
     # Rebuild combined.mid so it reflects the newly regenerated part
-    rebuild_combined_from_parts(output_dir, bpm)
+    rebuild_combined_from_parts(output_dir, bpm, track_names=track_names)
 
     return FileInfo(part=req.part, filename=filename, url=f"/exports/{req.generation_id}/{filename}")
 

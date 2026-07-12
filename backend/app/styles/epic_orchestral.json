@@ -6,6 +6,14 @@
         80
     ],
     "default_scale": "minor",
+    "instrumentation": {
+        "chords": "brass_section",
+        "bass": "contrabass",
+        "melody": "french_horn",
+        "arpeggio": "string_ensemble",
+        "pads": "warm_pad",
+        "counter_melody": "string_ensemble"
+    },
     "preferred_keys": [
         "D",
         "E",

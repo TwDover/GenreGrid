@@ -6,6 +6,14 @@
         115
     ],
     "default_scale": "major",
+    "instrumentation": {
+        "chords": "wurlitzer_ep",
+        "bass": "electric_bass",
+        "melody": "alto_sax",
+        "arpeggio": "clavinet",
+        "pads": "warm_pad",
+        "counter_melody": "string_ensemble"
+    },
     "preferred_keys": [
         "C",
         "D",
@@ -121,18 +129,73 @@
         0
     ],
     "drums": {
-        "kick_pattern": [1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+        "kick_pattern": [
+            1,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+        ],
         "hat_density": 0.625,
         "triplet_probability": 0.3,
-        "snare_standard_beats": [2, 3, 4],
+        "snare_standard_beats": [
+            2,
+            3,
+            4
+        ],
         "snare_upbeat_prob": 0.45,
         "snare_beat3_prob": 0.25,
         "swing": 0.0,
         "tom_fills": true,
         "ghost_note_prob": 0.65,
         "flam_prob": 0.22,
-        "hat_pattern": [0.875, 0.202, 0.657, 0.293, 0.918, 0.198, 0.753, 0.331, 0.805, 0.225, 0.528, 0.243, 0.928, 0.186, 0.594, 0.17],
-        "hat_vel": [0.811, 0.421, 0.698, 0.396, 1.0, 0.439, 0.669, 0.529, 0.773, 0.445, 0.725, 0.449, 0.839, 0.455, 0.732, 0.495],
+        "hat_pattern": [
+            0.875,
+            0.202,
+            0.657,
+            0.293,
+            0.918,
+            0.198,
+            0.753,
+            0.331,
+            0.805,
+            0.225,
+            0.528,
+            0.243,
+            0.928,
+            0.186,
+            0.594,
+            0.17
+        ],
+        "hat_vel": [
+            0.811,
+            0.421,
+            0.698,
+            0.396,
+            1.0,
+            0.439,
+            0.669,
+            0.529,
+            0.773,
+            0.445,
+            0.725,
+            0.449,
+            0.839,
+            0.455,
+            0.732,
+            0.495
+        ],
         "use_ride": false
     },
     "groove_push": 0.006

@@ -160,6 +160,7 @@ import DownloadNamePrompt from '../components/DownloadNamePrompt.vue'
 import ErrorLogPanel from '../components/ErrorLogPanel.vue'
 import RenderQueuePanel from '../components/RenderQueuePanel.vue'
 import { useErrorLog } from '../composables/useErrorLog'
+import { setStyleCatalog } from '../composables/useStyleCatalog'
 import { useRenderQueue } from '../composables/useRenderQueue'
 import { fetchStyles, generate, batchGenerate, listSongs } from '../services/api'
 import type { StyleInfo, GenerateRequest, GenerateResponse, FileInfo, LibraryEntry, BuildSongResponse } from '../types/midi'
@@ -415,6 +416,7 @@ onUnmounted(() => {
 onMounted(async () => {
   try {
     styles.value = await fetchStyles()
+    setStyleCatalog(styles.value)
     const params = new URLSearchParams(window.location.search)
     if (params.get('seed')) {
       replayData.value = {
@@ -478,6 +480,7 @@ async function retryFetch() {
   error.value = null
   try {
     styles.value = await fetchStyles()
+    setStyleCatalog(styles.value)
   } catch (e) {
     error.value = 'Could not reach backend — make sure uvicorn is running on port 8000.'
   }
@@ -544,6 +547,7 @@ async function handleBatch(form: GenerateRequest, count: number) {
 async function refreshStyles() {
   try {
     styles.value = await fetchStyles()
+    setStyleCatalog(styles.value)
   } catch {
     // ignore — styles list is stale but still usable
   }

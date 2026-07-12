@@ -53,6 +53,7 @@ class StyleInfo(BaseModel):
     default_scale: str = "minor"
     custom: bool = False
     has_prior: bool = False   # a mined corpus prior exists for this style
+    instruments: dict[str, str] = {}   # part role → instrument display name ("melody": "Alto Sax")
 
 
 class FileInfo(BaseModel):
