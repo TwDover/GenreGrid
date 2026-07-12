@@ -6,6 +6,14 @@
         115
     ],
     "default_scale": "major",
+    "instrumentation": {
+        "chords": "nylon_guitar",
+        "bass": "electric_bass",
+        "melody": "marimba",
+        "arpeggio": "nylon_guitar",
+        "pads": "warm_pad",
+        "counter_melody": "string_ensemble"
+    },
     "preferred_keys": [
         "C",
         "D",
@@ -116,18 +124,74 @@
         ]
     },
     "drums": {
-        "kick_pattern": [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 0],
+        "kick_pattern": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            1,
+            0,
+            1,
+            1,
+            0,
+            0
+        ],
         "hat_density": 0.5,
         "triplet_probability": 0.55,
-        "snare_standard_beats": [2, 4],
+        "snare_standard_beats": [
+            2,
+            4
+        ],
         "snare_upbeat_prob": 0.25,
         "swing": 0.0,
         "tom_fills": true,
         "ghost_note_prob": 0.35,
-        "perc_layers": ["shaker"],
+        "perc_layers": [
+            "shaker"
+        ],
         "flam_prob": 0.12,
-        "hat_pattern": [0.709, 0.098, 0.822, 0.006, 0.819, 0.073, 0.957, 0.127, 0.722, 0.115, 0.902, 0.028, 0.595, 0.176, 0.759, 0.042],
-        "hat_vel": [0.666, 0.444, 0.656, 0.855, 0.599, 0.408, 0.655, 1.0, 0.609, 0.551, 0.692, 0.862, 0.612, 0.724, 0.61, 0.708],
+        "hat_pattern": [
+            0.709,
+            0.098,
+            0.822,
+            0.006,
+            0.819,
+            0.073,
+            0.957,
+            0.127,
+            0.722,
+            0.115,
+            0.902,
+            0.028,
+            0.595,
+            0.176,
+            0.759,
+            0.042
+        ],
+        "hat_vel": [
+            0.666,
+            0.444,
+            0.656,
+            0.855,
+            0.599,
+            0.408,
+            0.655,
+            1.0,
+            0.609,
+            0.551,
+            0.692,
+            0.862,
+            0.612,
+            0.724,
+            0.61,
+            0.708
+        ],
         "use_ride": false
     },
     "groove": "afrobeat"

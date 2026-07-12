@@ -247,6 +247,28 @@ _VELOCITY_SCALE: dict[str, float] = {
 _PART_PAN = {"bass": 64, "chords": 46, "melody": 80, "arpeggio": 76, "pads": 40, "counter_melody": 92}
 _PART_CHANNELS = {"chords": 0, "bass": 1, "melody": 2, "arpeggio": 3, "pads": 4, "counter_melody": 5}
 
+
+def part_midi_meta(style: dict) -> tuple[dict[str, int], dict[str, str]]:
+    """(GM programs, MIDI track names) per part for a style.
+
+    Instrumentation-first: parts bound in the style's ``instrumentation`` block
+    take their program and display name from the instrument registry (the
+    single source of truth — see docs/instrument-identity-design.md). Parts a
+    style doesn't bind (and user-authored custom styles with no block at all)
+    fall back to the legacy _STYLE_PROGRAMS/_DEFAULT_PROGRAMS maps with plain
+    role names, which is exactly the pre-instrumentation behavior.
+    """
+    from app.core.instruments import gm_programs_for, track_display_name
+
+    programs = {**_DEFAULT_PROGRAMS, **_STYLE_PROGRAMS.get(style.get("id", ""), {})}
+    programs.update(gm_programs_for(style))
+    track_names = {}
+    for part in _PART_CHANNELS:
+        name = track_display_name(style, part)
+        if name:
+            track_names[part] = name
+    return programs, track_names
+
 # Comp styles that use short articulated hits — sustain pedal would blur their
 # intended staccato character. Styles with chord_rhythm also get the same treatment
 # because their note durations are computed to fill to the next hit, and sustain

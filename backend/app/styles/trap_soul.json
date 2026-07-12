@@ -6,6 +6,14 @@
     80
   ],
   "default_scale": "minor",
+  "instrumentation": {
+    "chords": "newage_pad",
+    "bass": "sub_808",
+    "melody": "warm_pad",
+    "arpeggio": "halo_pad",
+    "pads": "warm_pad",
+    "counter_melody": "string_ensemble"
+  },
   "preferred_keys": [
     "C",
     "D",
@@ -15,23 +23,108 @@
     "Bb"
   ],
   "progression_templates": [
-    ["i", "iv", "i", "iv"],
-    ["i", "V", "i", "V"],
-    ["i", "IV", "i", "IV"],
-    ["iv", "III", "iv", "III"],
-    ["i", "VI", "iv", "V"],
-    ["i", "VI", "i", "VI"],
-    ["i", "iv", "v", "i"],
-    ["i", "VII", "iv", "i"],
-    ["i", "iv", "i", "v"],
-    ["i", "VI", "i", "III"],
-    ["i", "III", "i", "III"],
-    ["i", "VII", "i", "VII"],
-    ["i", "VI", "III", "VII"],
-    ["i", "iv", "VI", "v"],
-    ["i", "VII", "VI", "v"],
-    ["i", "bVII", "bVI", "v"],
-    ["i", "bIII", "bVII", "iv"]
+    [
+      "i",
+      "iv",
+      "i",
+      "iv"
+    ],
+    [
+      "i",
+      "V",
+      "i",
+      "V"
+    ],
+    [
+      "i",
+      "IV",
+      "i",
+      "IV"
+    ],
+    [
+      "iv",
+      "III",
+      "iv",
+      "III"
+    ],
+    [
+      "i",
+      "VI",
+      "iv",
+      "V"
+    ],
+    [
+      "i",
+      "VI",
+      "i",
+      "VI"
+    ],
+    [
+      "i",
+      "iv",
+      "v",
+      "i"
+    ],
+    [
+      "i",
+      "VII",
+      "iv",
+      "i"
+    ],
+    [
+      "i",
+      "iv",
+      "i",
+      "v"
+    ],
+    [
+      "i",
+      "VI",
+      "i",
+      "III"
+    ],
+    [
+      "i",
+      "III",
+      "i",
+      "III"
+    ],
+    [
+      "i",
+      "VII",
+      "i",
+      "VII"
+    ],
+    [
+      "i",
+      "VI",
+      "III",
+      "VII"
+    ],
+    [
+      "i",
+      "iv",
+      "VI",
+      "v"
+    ],
+    [
+      "i",
+      "VII",
+      "VI",
+      "v"
+    ],
+    [
+      "i",
+      "bVII",
+      "bVI",
+      "v"
+    ],
+    [
+      "i",
+      "bIII",
+      "bVII",
+      "iv"
+    ]
   ],
   "chord_extensions": {
     "allow_7th": 0.9,

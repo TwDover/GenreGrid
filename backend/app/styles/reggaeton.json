@@ -6,6 +6,14 @@
     100
   ],
   "default_scale": "minor",
+  "instrumentation": {
+    "chords": "clean_electric_guitar",
+    "bass": "synth_bass",
+    "melody": "saw_lead",
+    "arpeggio": "square_lead",
+    "pads": "warm_pad",
+    "counter_melody": "string_ensemble"
+  },
   "preferred_keys": [
     "C",
     "D",
@@ -14,18 +22,78 @@
     "A"
   ],
   "progression_templates": [
-    ["i", "iv", "V", "i"],
-    ["i", "VI", "i", "V"],
-    ["i", "iv", "i", "VI"],
-    ["i", "VI", "V", "iv"],
-    ["i", "iv", "i", "iv"],
-    ["i", "VI", "iv", "V"],
-    ["i", "VI", "III", "VII"],
-    ["i", "iv", "v", "i"],
-    ["i", "VII", "VI", "VII"],
-    ["i", "bVI", "bIII", "bVII"],
-    ["i", "iv", "bVII", "bVI"],
-    ["i", "bVII", "bVI", "v"]
+    [
+      "i",
+      "iv",
+      "V",
+      "i"
+    ],
+    [
+      "i",
+      "VI",
+      "i",
+      "V"
+    ],
+    [
+      "i",
+      "iv",
+      "i",
+      "VI"
+    ],
+    [
+      "i",
+      "VI",
+      "V",
+      "iv"
+    ],
+    [
+      "i",
+      "iv",
+      "i",
+      "iv"
+    ],
+    [
+      "i",
+      "VI",
+      "iv",
+      "V"
+    ],
+    [
+      "i",
+      "VI",
+      "III",
+      "VII"
+    ],
+    [
+      "i",
+      "iv",
+      "v",
+      "i"
+    ],
+    [
+      "i",
+      "VII",
+      "VI",
+      "VII"
+    ],
+    [
+      "i",
+      "bVI",
+      "bIII",
+      "bVII"
+    ],
+    [
+      "i",
+      "iv",
+      "bVII",
+      "bVI"
+    ],
+    [
+      "i",
+      "bVII",
+      "bVI",
+      "v"
+    ]
   ],
   "chord_extensions": {
     "allow_7th": 0.35,
@@ -66,14 +134,70 @@
     ]
   },
   "drums": {
-    "kick_pattern": [1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0],
+    "kick_pattern": [
+      1,
+      0,
+      0,
+      1,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      1,
+      1,
+      0,
+      1,
+      0
+    ],
     "hat_density": 0.5,
     "triplet_probability": 0.15,
-    "snare_standard_beats": [1, 2, 3, 4],
+    "snare_standard_beats": [
+      1,
+      2,
+      3,
+      4
+    ],
     "snare_beat3_prob": 0.75,
     "swing": 0.0,
-    "hat_pattern": [0.476, 0.12, 0.605, 0.126, 0.599, 0.125, 0.564, 0.086, 0.509, 0.15, 0.596, 0.1, 0.58, 0.09, 0.54, 0.062],
-    "hat_vel": [0.874, 0.593, 0.877, 1.0, 0.903, 0.619, 0.879, 0.694, 0.82, 0.891, 0.88, 0.927, 0.937, 0.696, 0.892, 0.676],
+    "hat_pattern": [
+      0.476,
+      0.12,
+      0.605,
+      0.126,
+      0.599,
+      0.125,
+      0.564,
+      0.086,
+      0.509,
+      0.15,
+      0.596,
+      0.1,
+      0.58,
+      0.09,
+      0.54,
+      0.062
+    ],
+    "hat_vel": [
+      0.874,
+      0.593,
+      0.877,
+      1.0,
+      0.903,
+      0.619,
+      0.879,
+      0.694,
+      0.82,
+      0.891,
+      0.88,
+      0.927,
+      0.937,
+      0.696,
+      0.892,
+      0.676
+    ],
     "use_ride": false
   },
   "chord_register": [

@@ -6,6 +6,14 @@
     145
   ],
   "default_scale": "minor",
+  "instrumentation": {
+    "chords": "bowed_pad",
+    "bass": "sub_808",
+    "melody": "square_lead",
+    "arpeggio": "metallic_pad",
+    "pads": "warm_pad",
+    "counter_melody": "string_ensemble"
+  },
   "preferred_keys": [
     "C",
     "C#",

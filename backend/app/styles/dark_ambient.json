@@ -1,20 +1,55 @@
 {
   "id": "dark_ambient",
   "name": "Dark Ambient",
-  "bpm_range": [40, 60],
+  "bpm_range": [
+    40,
+    60
+  ],
   "default_scale": "minor",
-  "preferred_keys": ["C", "C#", "D", "F", "G#"],
+  "instrumentation": {
+    "chords": "bowed_pad",
+    "bass": "sub_808",
+    "melody": "oboe",
+    "arpeggio": "halo_pad",
+    "pads": "warm_pad",
+    "counter_melody": "string_ensemble"
+  },
+  "preferred_keys": [
+    "C",
+    "C#",
+    "D",
+    "F",
+    "G#"
+  ],
   "progression_templates": [
-    ["i", "i", "VI", "i"],
-    ["i", "VII", "i", "i"],
-    ["i", "VI", "i", "VII"]
+    [
+      "i",
+      "i",
+      "VI",
+      "i"
+    ],
+    [
+      "i",
+      "VII",
+      "i",
+      "i"
+    ],
+    [
+      "i",
+      "VI",
+      "i",
+      "VII"
+    ]
   ],
   "chord_extensions": {
     "allow_7th": 0.6,
     "allow_9th": 0.3
   },
   "velocity_base": 75,
-  "chord_register": [48, 62],
+  "chord_register": [
+    48,
+    62
+  ],
   "bass": {
     "bass_style": "808",
     "pattern_density": 0.15,
@@ -22,11 +57,14 @@
     "sustain_bias": 0.95
   },
   "melody": {
-    "density": 0.30,
+    "density": 0.3,
     "stepwise_motion": 0.9,
     "leap_probability": 0.03,
     "rest_probability": 0.7,
-    "range": [62, 79]
+    "range": [
+      62,
+      79
+    ]
   },
   "drums": {
     "hat_density": 0.05,

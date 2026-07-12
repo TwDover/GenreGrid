@@ -8,7 +8,16 @@
 -->
 <template>
   <div class="part-track" :class="{ playing, expired }">
-    <span class="part-name">{{ file.part }}</span>
+    <span class="part-name" :title="instLabel ? `${file.part} — played by ${instLabel}` : file.part">
+      <!-- Chords and melody show role + instrument (which line is which isn't
+           obvious from the instrument alone); other roles are self-evident
+           from their instrument (a bass is the bass) and stay one line. -->
+      <template v-if="instLabel && showRole">
+        <span class="pn-role">{{ file.part }}</span>
+        <span class="pn-inst">{{ instLabel }}</span>
+      </template>
+      <template v-else>{{ instLabel ?? file.part }}</template>
+    </span>
 
     <div v-if="expired" class="expired-note" title="This export was cleaned up. Replay from history or regenerate to restore it.">⚠ expired — regenerate to restore</div>
 
@@ -107,6 +116,7 @@ import { useDownloadPrompt } from '../composables/useDownloadPrompt'
 import { useToasts } from '../composables/useToasts'
 import { useRenderQueue } from '../composables/useRenderQueue'
 import { logError } from '../composables/useErrorLog'
+import { instrumentLabel } from '../composables/useStyleCatalog'
 import PianoRoll from './PianoRoll.vue'
 
 const props = defineProps<{
@@ -143,6 +153,11 @@ const { toggle, currentlyPlaying, isLoading, getMidiData, prefetchMidi, offlineR
 const { promptFilename } = useDownloadPrompt()
 const { toast } = useToasts()
 const { startJob, updateProgress, completeJob, failJob } = useRenderQueue()
+// Instrument identity: label the part by what plays it ("Alto Sax"), falling
+// back to the role name for styles without instrumentation (custom styles).
+const instLabel = computed(() => instrumentLabel(props.styleId, props.file.part))
+// Roles whose instrument name alone doesn't say what the line IS in the song
+const showRole = computed(() => props.file.part === 'chords' || props.file.part === 'melody')
 const playing = computed(() => currentlyPlaying.value === props.file.url)
 const midiData = computed(() => getMidiData(props.file.url))
 
@@ -371,13 +386,30 @@ async function exportWav() {
 }
 
 .part-name {
-  width: 52px;
+  width: 74px;
   flex-shrink: 0;
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
+  line-height: 1.25;
   color: var(--accent);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.pn-role {
+  font-size: 0.55rem;
+  color: var(--text-faint);
+  letter-spacing: 0.08em;
+}
+
+.pn-inst {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .track-controls {

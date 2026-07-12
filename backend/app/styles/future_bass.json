@@ -1,30 +1,120 @@
 {
   "id": "future_bass",
   "name": "Future Bass",
-  "bpm_range": [140, 160],
+  "bpm_range": [
+    140,
+    160
+  ],
   "default_scale": "major",
-  "preferred_keys": ["C", "D", "F", "G", "A"],
+  "instrumentation": {
+    "chords": "newage_pad",
+    "bass": "synth_bass",
+    "melody": "saw_lead",
+    "arpeggio": "sweep_pad",
+    "pads": "warm_pad",
+    "counter_melody": "string_ensemble"
+  },
+  "preferred_keys": [
+    "C",
+    "D",
+    "F",
+    "G",
+    "A"
+  ],
   "progression_templates": [
-    ["I", "vi", "I", "vi"],
-    ["I", "vi", "iii", "IV"],
-    ["I", "ii", "I", "ii"],
-    ["I", "V", "IV", "I"],
-    ["iv", "i", "III", "iv"],
-    ["i", "iv", "i", "iv"],
-    ["I", "vi", "IV", "V"],
-    ["I", "V", "vi", "IV"],
-    ["vi", "IV", "I", "V"],
-    ["I", "bVII", "IV", "I"],
-    ["I", "iii", "vi", "IV"],
-    ["I", "IV", "bVII", "IV"],
-    ["IV", "I", "bVII", "vi"],
-    ["I", "vi", "ii", "V"]
+    [
+      "I",
+      "vi",
+      "I",
+      "vi"
+    ],
+    [
+      "I",
+      "vi",
+      "iii",
+      "IV"
+    ],
+    [
+      "I",
+      "ii",
+      "I",
+      "ii"
+    ],
+    [
+      "I",
+      "V",
+      "IV",
+      "I"
+    ],
+    [
+      "iv",
+      "i",
+      "III",
+      "iv"
+    ],
+    [
+      "i",
+      "iv",
+      "i",
+      "iv"
+    ],
+    [
+      "I",
+      "vi",
+      "IV",
+      "V"
+    ],
+    [
+      "I",
+      "V",
+      "vi",
+      "IV"
+    ],
+    [
+      "vi",
+      "IV",
+      "I",
+      "V"
+    ],
+    [
+      "I",
+      "bVII",
+      "IV",
+      "I"
+    ],
+    [
+      "I",
+      "iii",
+      "vi",
+      "IV"
+    ],
+    [
+      "I",
+      "IV",
+      "bVII",
+      "IV"
+    ],
+    [
+      "IV",
+      "I",
+      "bVII",
+      "vi"
+    ],
+    [
+      "I",
+      "vi",
+      "ii",
+      "V"
+    ]
   ],
   "chord_extensions": {
     "allow_7th": 0.85,
     "allow_9th": 0.65
   },
-  "chord_register": [55, 84],
+  "chord_register": [
+    55,
+    84
+  ],
   "bass": {
     "pattern_density": 0.7,
     "octave_jumps": 0.3,
@@ -35,7 +125,10 @@
     "stepwise_motion": 0.55,
     "leap_probability": 0.3,
     "rest_probability": 0.15,
-    "range": [64, 88]
+    "range": [
+      64,
+      88
+    ]
   },
   "arpeggio": {
     "pattern": "up_down",
@@ -44,16 +137,70 @@
     "allow_7th": true
   },
   "drums": {
-    "kick_pattern": [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    "kick_pattern": [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0
+    ],
     "hat_density": 1.0,
     "triplet_probability": 0.25,
-    "snare_standard_beats": [2, 4],
+    "snare_standard_beats": [
+      2,
+      4
+    ],
     "swing": 0.0,
     "use_clap": true,
     "crash_on_bar_1": true,
     "edm_drops": true,
-    "hat_pattern": [1.0, 0.507, 0.617, 0.431, 0.617, 0.516, 0.661, 0.453, 0.962, 0.525, 0.554, 0.426, 0.63, 0.466, 0.558, 0.39],
-    "hat_vel": [0.905, 0.656, 0.947, 0.79, 0.779, 0.674, 0.82, 0.923, 0.892, 0.67, 1.0, 0.809, 0.755, 0.749, 0.879, 0.855],
+    "hat_pattern": [
+      1.0,
+      0.507,
+      0.617,
+      0.431,
+      0.617,
+      0.516,
+      0.661,
+      0.453,
+      0.962,
+      0.525,
+      0.554,
+      0.426,
+      0.63,
+      0.466,
+      0.558,
+      0.39
+    ],
+    "hat_vel": [
+      0.905,
+      0.656,
+      0.947,
+      0.79,
+      0.779,
+      0.674,
+      0.82,
+      0.923,
+      0.892,
+      0.67,
+      1.0,
+      0.809,
+      0.755,
+      0.749,
+      0.879,
+      0.855
+    ],
     "use_ride": false
   },
   "prior": "electronic",
