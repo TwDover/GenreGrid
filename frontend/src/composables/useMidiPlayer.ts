@@ -16,7 +16,8 @@ import { getPianoSampler, getMasterCompressor, getBassBus, getMelodicBus, duckOn
 import { drumCharacterForStyle } from '../soundfonts/drums'
 import { makeSynthKit } from '../soundfonts/synthDrums'
 import { getBassSampler } from '../soundfonts/bass'
-import { getMelodicSampler } from '../soundfonts/melodic'
+import { getMelodicSampler, getMelodicSamplerById } from '../soundfonts/melodic'
+import { voiceFor } from './useStyleCatalog'
 import { encodeWav } from '../utils/wavEncoder'
 
 export interface ParsedNote {
@@ -294,12 +295,27 @@ export function useMidiPlayer() {
       // SYNTH_STYLES use synthesis for drums + bass — skip those sampler loads entirely.
       const melodicSamplerPromise = getMelodicSampler(styleId)
 
+      // Instrument-identity voices (Phase 3): each part may name a sampled
+      // playback voice ("electric_piano_1") via the style's instrumentation —
+      // preload those per part; non-sampled voices ("melody_lead") map to
+      // synth families below, and null falls back to legacy style logic.
+      const _partVoice = {
+        chords: voiceFor(styleId, 'chords'),
+        melody: voiceFor(styleId, 'melody'),
+        arpeggio: voiceFor(styleId, 'arpeggio'),
+      }
+      const _samplerP = (v: string | null) =>
+        (v ? getMelodicSamplerById(v) : null) ?? Promise.resolve(null)
+
       const fetchUrl = url.startsWith('blob:') || url.startsWith('data:') ? url : downloadUrl(url)
-      const [, buf, bassSampler, melodicSampler] = await Promise.all([
+      const [, buf, bassSampler, melodicSampler, chordsSamp, melodySamp, arpSamp] = await Promise.all([
         (!isSynth && !isPad && !isLofi && !isMelodicSynth && !melodicSamplerPromise) ? getPianoSampler() : Promise.resolve(null),
         fetch(fetchUrl).then(r => r.arrayBuffer()),
         isSynth ? Promise.resolve(null) : getBassSampler(styleId),
         melodicSamplerPromise ?? Promise.resolve(null),
+        _samplerP(_partVoice.chords),
+        _samplerP(_partVoice.melody),
+        _samplerP(_partVoice.arpeggio),
       ])
 
       if (token !== _playToken) return
@@ -363,6 +379,21 @@ export function useMidiPlayer() {
       // 5 = counter-melody (see backend _PART_CHANNELS)
       function getMelodicInstrument(channel: number, pan: number): Tone.PolySynth | Tone.Sampler {
         if (voiceCache[channel]) return voiceCache[channel]
+
+        // Instrument-identity resolution first: a sampled voice loaded for
+        // this part wins; a wind/brass "melody_lead" voice gets the articulate
+        // soft lead (matches the breath-phrased writing). Anything unresolved
+        // falls through to the legacy style-family logic below.
+        const _voiceSamplers: Record<number, Tone.Sampler | null> = { 0: chordsSamp, 2: melodySamp, 3: arpSamp }
+        const _voiceIds: Record<number, string | null> = { 0: _partVoice.chords, 2: _partVoice.melody, 3: _partVoice.arpeggio }
+        if (_voiceSamplers[channel]) {
+          voiceCache[channel] = _voiceSamplers[channel]!
+          return voiceCache[channel]
+        }
+        if (channel === 2 && _voiceIds[2] === 'melody_lead') {
+          voiceCache[2] = makePanned((out) => makeMelodyLead(true, out), pan)
+          return voiceCache[2]
+        }
 
         let inst: Tone.PolySynth | Tone.Sampler
         if (channel === 4) {
@@ -674,7 +705,11 @@ export function useMidiPlayer() {
               },
             }).connect(chorus)
           }
-          if (variant === 'lead' && (isPad || isSynth)) {
+          // Winds/brass ("melody_lead" voices) get the articulate lead in the
+          // offline render too — the writing is breath-phrased and monophonic,
+          // and the generic triangle poly smears it.
+          const _isWindLead = voiceFor(styleId, 'melody') === 'melody_lead'
+          if (variant === 'lead' && (isPad || isSynth || _isWindLead)) {
             // Dedicated articulate melody lead (matches makeMelodyLead in live play):
             // fast attack, tamed low-pass, only a whisper of chorus so it stays in tune.
             const soft = isPad

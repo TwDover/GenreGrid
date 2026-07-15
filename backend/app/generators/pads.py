@@ -24,6 +24,7 @@ def generate_pads(
     complexity: float,
     variation: float,
     progression: list | None = None,
+    harmony_complexity: float | None = None,
 ) -> List[NoteEvent]:
     """Sustained atmospheric chord layer above the comp chords.
 
@@ -54,19 +55,21 @@ def generate_pads(
     color_9th_prob = pad_cfg.get("color_9th_prob", 0.35 if complexity > 0.5 else 0.0)
 
     beats_per_bar = 4
-    # Pads hold longer than the comp: one chord per bar regardless of the comp's
-    # harmonic rhythm, indexing the same resolved progression grid as the chords
-    # (chords_per_bar = 2 windows both map into the same bar's slot pair, so the
-    # bar-level pad harmony always contains the sounding chord's bar).
-    chords_per_bar = 2 if complexity > 0.6 else 1
+    # Pads follow the SAME harmonic grid as the chords (2 windows per bar above
+    # harmony_complexity 0.6). They used to hold one chord per whole bar, which
+    # left the pad sustaining the departed chord across the second window of
+    # every high-complexity bar — a quiet but constant harmonic smear.
+    _harmony_cplx = complexity if harmony_complexity is None else harmony_complexity
+    chords_per_bar = 2 if _harmony_cplx > 0.6 else 1
+    beats_per_chord = beats_per_bar / chords_per_bar
+    total_windows = bars * chords_per_bar
     prog_len = len(progression)
 
     center = (reg_low + reg_high) // 2
 
     prev_pitches: list[int] = []
-    for bar in range(bars):
-        chord_idx = bar * chords_per_bar
-        roman = progression[chord_idx % prog_len]
+    for window in range(total_windows):
+        roman = progression[window % prog_len]
 
         chord = roman_to_chord(roman, key, scale, octave=5)
         pcs = sorted({p % 12 for p in chord})
@@ -92,9 +95,9 @@ def generate_pads(
             continue
         prev_pitches = pitches
 
-        start = float(bar * beats_per_bar)
-        # Slight overlap into the next bar for a legato wash
-        duration = beats_per_bar * 1.04 if bar < bars - 1 else float(beats_per_bar)
+        start = float(window * beats_per_chord)
+        # Slight overlap into the next window for a legato wash
+        duration = beats_per_chord * 1.04 if window < total_windows - 1 else float(beats_per_chord)
         vel = velocity_base + random.randint(-4, 4)
         for note_i, p in enumerate(sorted(pitches)):
             events.append(NoteEvent(

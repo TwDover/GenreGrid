@@ -46,6 +46,10 @@ def list_styles() -> list[dict]:
         from app.core.instruments import instrumentation_for
         return {part: inst["display_name"] for part, inst in instrumentation_for(data).items()}
 
+    def _voices(data: dict) -> dict[str, str]:
+        from app.core.instruments import instrumentation_for
+        return {part: inst["playback_voice"] for part, inst in instrumentation_for(data).items()}
+
     styles = []
     seen: set[str] = set()
     # Custom styles override built-ins with the same id
@@ -54,7 +58,7 @@ def list_styles() -> list[dict]:
             with open(path) as f:
                 data = json.load(f)
             seen.add(data["id"])
-            styles.append({"id": data["id"], "name": data["name"], "bpm_range": data.get("bpm_range", [40, 240]), "default_scale": data.get("default_scale", "minor"), "custom": True, "has_prior": _has_prior(data), "instruments": _instruments(data)})
+            styles.append({"id": data["id"], "name": data["name"], "bpm_range": data.get("bpm_range", [40, 240]), "default_scale": data.get("default_scale", "minor"), "custom": True, "has_prior": _has_prior(data), "instruments": _instruments(data), "voices": _voices(data)})
         except Exception as exc:
             _logger.warning("Skipping malformed custom style %s: %s", path, exc)
     for path in sorted(STYLES_DIR.glob("*.json")):
@@ -63,7 +67,7 @@ def list_styles() -> list[dict]:
                 data = json.load(f)
             if data["id"] in seen:
                 continue
-            styles.append({"id": data["id"], "name": data["name"], "bpm_range": data.get("bpm_range", [40, 240]), "default_scale": data.get("default_scale", "minor"), "has_prior": _has_prior(data), "instruments": _instruments(data)})
+            styles.append({"id": data["id"], "name": data["name"], "bpm_range": data.get("bpm_range", [40, 240]), "default_scale": data.get("default_scale", "minor"), "has_prior": _has_prior(data), "instruments": _instruments(data), "voices": _voices(data)})
         except Exception as exc:
             _logger.warning("Skipping malformed style %s: %s", path, exc)
     return sorted(styles, key=lambda s: s["name"])
