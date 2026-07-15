@@ -16,6 +16,7 @@ export interface StyleInfo {
   custom?: boolean
   has_prior?: boolean
   instruments?: Record<string, string>   // part role → instrument display name ("melody": "Alto Sax")
+  voices?: Record<string, string>        // part role → playback voice id ("melody": "melody_lead")
 }
 
 export interface GenerateRequest {

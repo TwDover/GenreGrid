@@ -192,6 +192,7 @@ def generate_melody(
     melody_model: dict | None = None,
     harmony_complexity: float | None = None,
     seed_motif: list[int] | None = None,
+    section_type: str | None = None,
 ) -> List[NoteEvent]:
     """`melody_model` — optional mined melody prior (interval/phrase-bigram stats).
 
@@ -249,8 +250,15 @@ def generate_melody(
         t = bar / max(1, total - 1)
         return max(1, min(127, int(base * (start + (1.0 - start) * t))))
 
+    # The chorus contract: what makes a chorus READ as a chorus rather than a
+    # louder verse — it sits higher, holds notes longer, and repeats its hook
+    # harder (see _is_chorus uses below). Verses keep the conversational feel.
+    _is_chorus = section_type in ("chorus", "post_chorus")
+
     density = mel_cfg.get("density", 0.5) * (0.8 + 0.4 * complexity)
     density = min(0.92, max(0.2, density))
+    if _is_chorus:
+        density = min(0.92, density * 0.9)   # fewer, longer notes — anthemic
     stepwise = mel_cfg.get("stepwise_motion", 0.7)
     leap_prob = mel_cfg.get("leap_probability", 0.15)
     note_range = mel_cfg.get("range", [60, 79])
@@ -331,8 +339,10 @@ def generate_melody(
                 cur_pitch = active_scale[current_note_idx] if active_scale else 60
                 active_scale = new_scale
                 current_note_idx = min(range(len(active_scale)), key=lambda i: abs(active_scale[i] - cur_pitch))
-            # Glide halfway toward the phrase's register target
-            _reg_target = int(plan.register * (len(active_scale) - 1))
+            # Glide halfway toward the phrase's register target; choruses sit
+            # noticeably higher than verses (the lift IS the chorus).
+            _reg_bias = 0.18 if _is_chorus else 0.0
+            _reg_target = int(min(1.0, plan.register + _reg_bias) * (len(active_scale) - 1))
             current_note_idx = (current_note_idx + _reg_target) // 2
         is_cadence_bar = beat_in_phrase >= phrase_beats - beats_per_bar  # last bar of phrase
         is_phrase_tail = beat_in_phrase >= phrase_beats - 1.0  # last beat of phrase
@@ -571,6 +581,9 @@ def generate_melody(
             dur_steps = _md
         elif _is_structural:
             dur_steps = random.choices([1, 2, 3, 4], weights=[0.15, 0.38, 0.32, 0.15])[0]
+        elif _is_chorus:
+            # Chorus notes sustain — a hook is sung, not chattered
+            dur_steps = random.choices([1, 2, 3, 4], weights=[0.20, 0.36, 0.28, 0.16])[0]
         elif density < 0.45:
             dur_steps = random.choices([1, 2, 3, 4], weights=[0.35, 0.38, 0.18, 0.09])[0]
         else:
@@ -698,6 +711,10 @@ def generate_melody(
             final.extend(existing)
             continue
         roll = random.uniform(0.0, 0.45) if (is_last_block and num_blocks > 2) else random.random()
+        if _is_chorus:
+            # A chorus repeats its hook: strongly favor exact/near repeats over
+            # fragmentation and inversion transforms.
+            roll *= 0.55
         if roll < 0.27:
             # Exact repeat with velocity shift + per-note micro-jitter
             vel_shift = random.randint(-8, 8)

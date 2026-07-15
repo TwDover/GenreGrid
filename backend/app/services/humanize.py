@@ -8,6 +8,7 @@
 # <https://www.gnu.org/licenses/> for details.
 """Apply subtle timing and velocity humanization to note events."""
 import random
+import zlib
 
 
 def humanize_velocity(velocity: int, amount: float = 0.1) -> int:
@@ -69,31 +70,92 @@ def _humanize_scale(style: dict) -> float:
     return float(style.get("_humanize_scale", 0.5))
 
 
-def style_jitter(style: dict) -> float:
-    """Return a timing jitter amount scaled to the style's feel.
+# Per-style timing-feel base, in beats. Shared by the per-note random jitter
+# AND the groove pocket, so tight styles are tight in both dimensions.
+_STYLE_JITTER_BASE = {
+    # tight
+    "techno": 0.008, "drill": 0.008, "house": 0.010, "drum_and_bass": 0.008,
+    "jersey_club": 0.008, "future_bass": 0.010,
+    # medium
+    "rnb": 0.018, "funk": 0.018, "boom_bap": 0.020, "dark_trap": 0.015,
+    "trap_soul": 0.015, "cloud_rap": 0.015, "reggaeton": 0.015,
+    "dancehall": 0.018, "cumbia": 0.018, "afrobeats": 0.020,
+    # loose
+    "jazz": 0.032, "lofi": 0.030, "bossa_nova": 0.028, "latin_jazz": 0.028,
+    "soul": 0.025, "ambient": 0.035, "dark_ambient": 0.035,
+    "cinematic": 0.025, "epic_orchestral": 0.022, "synthwave": 0.012,
+}
 
-    Tight styles (techno, drill, house): ±0.008 beats
-    Medium styles (rnb, funk, boom_bap): ±0.018 beats
-    Loose styles (jazz, lofi, bossa_nova): ±0.032 beats
+
+def style_jitter(style: dict) -> float:
+    """Return the PER-NOTE random timing jitter amount for a style.
+
+    Deliberately small: most of the human feel now comes from the groove
+    pocket (see apply_groove_pocket) — a per-16th-slot offset every part
+    SHARES. When each part instead wandered ±10-30ms independently per note,
+    no two parts ever quite lined up and the mix read as subtly "not
+    together". The residual random jitter here just keeps repeated notes from
+    being machine-identical.
     """
-    jitter_map = {
-        # tight
-        "techno": 0.008, "drill": 0.008, "house": 0.010, "drum_and_bass": 0.008,
-        "jersey_club": 0.008, "future_bass": 0.010,
-        # medium
-        "rnb": 0.018, "funk": 0.018, "boom_bap": 0.020, "dark_trap": 0.015,
-        "trap_soul": 0.015, "cloud_rap": 0.015, "reggaeton": 0.015,
-        "dancehall": 0.018, "cumbia": 0.018, "afrobeats": 0.020,
-        # loose
-        "jazz": 0.032, "lofi": 0.030, "bossa_nova": 0.028, "latin_jazz": 0.028,
-        "soul": 0.025, "ambient": 0.035, "dark_ambient": 0.035,
-        "cinematic": 0.025, "epic_orchestral": 0.022, "synthwave": 0.012,
-    }
     style_id = style.get("id", "")
-    base = jitter_map.get(style_id, 0.018)
+    base = _STYLE_JITTER_BASE.get(style_id, 0.018)
     # Scale: at humanize=0 → 25% of base; at humanize=1 → 175% of base
     scale = 0.25 + _humanize_scale(style) * 1.5
-    return base * scale
+    return base * scale * 0.4
+
+
+# How closely each part rides the shared pocket. The rhythm section IS the
+# pocket; melodic parts float a little freer on top; pads are washes whose
+# attacks barely read, so they take the least.
+_POCKET_TIGHTNESS = {
+    "drums": 1.0, "bass": 1.0, "chords": 0.85, "arpeggio": 0.85,
+    "melody": 0.7, "counter_melody": 0.7, "pads": 0.45,
+}
+
+
+def groove_pocket_table(style: dict) -> list[float]:
+    """16 micro-offsets in beats, one per 16th-note slot of a 4/4 bar.
+
+    Seeded from the STYLE ID (via crc32 — Python's hash() is salted per
+    process and would break regeneration reproducibility), so every section
+    of a song, every part, and every regeneration flow lands in the identical
+    pocket. Odd slots (the 16th offbeats) lean slightly late — the near
+    universal "laid back off the grid" feel of played music.
+    """
+    style_id = style.get("id", "")
+    rng = random.Random(zlib.crc32(f"pocket:{style_id}".encode()))
+    base = _STYLE_JITTER_BASE.get(style_id, 0.018)
+    scale = 0.25 + _humanize_scale(style) * 1.5
+    table = []
+    for slot in range(16):
+        off = rng.uniform(-0.8, 0.8) * base
+        if slot % 2 == 1:
+            off += base * 0.35   # offbeat 16ths sit a touch behind
+        table.append(off * scale)
+    return table
+
+
+def apply_groove_pocket(parts_events: dict, style: dict) -> None:
+    """Shift every part onto the style's shared groove pocket, in place.
+
+    Each note takes the offset of its nearest 16th slot, scaled by the part's
+    tightness — so a bass note and the kick it locks to move together, which
+    per-note independent jitter could never guarantee. Existing swing and
+    anticipation offsets survive untouched (the pocket ADDS to the start, it
+    doesn't re-quantize)."""
+    from app.services.midi_writer import NoteEvent
+
+    table = groove_pocket_table(style)
+    for part, events in parts_events.items():
+        if not events:
+            continue
+        tightness = _POCKET_TIGHTNESS.get(part, 0.7)
+        parts_events[part] = [
+            NoteEvent(e.pitch,
+                      max(0.0, e.start + table[int(round(e.start / 0.25)) % 16] * tightness),
+                      e.duration, e.velocity, e.channel)
+            for e in events
+        ]
 
 
 def style_velocity_variation(style: dict) -> int:

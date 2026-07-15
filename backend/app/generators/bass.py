@@ -219,6 +219,7 @@ def _generate_808_bass(
     progression: list,
     kick_times: list[float] | None = None,
     harmony_complexity: float | None = None,
+    push_windows: set[int] | None = None,
 ) -> List[NoteEvent]:
     """Long-sustain 808-style bass with a randomly selected rhythmic pattern per generation."""
     events: List[NoteEvent] = []
@@ -278,6 +279,14 @@ def _generate_808_bass(
             duration = (next_t - t) * tail_factor
 
             root = _root_at(bar_start + beat_offset)
+            # Ensemble push: when this hit opens a chord window the comp
+            # anticipates, land WITH the comp on the "and of 4" before it.
+            _win = int((bar_start + beat_offset) / beats_per_chord)
+            if (push_windows and _win in push_windows
+                    and abs((bar_start + beat_offset) - _win * beats_per_chord) < 0.01
+                    and t >= 0.5):
+                t -= 0.5
+                duration += 0.5
             kick_boost = 8 if _on_kick(t, kick_times) else 0
             base_vel = 108 if i == 0 else 94
             vel = min(127, int(base_vel * vel_scale * phrase_dyn) + kick_boost + random.randint(-6, 6))
@@ -297,6 +306,7 @@ def generate_bass(
     kick_times: list[float] | None = None,
     melody_rests: list | None = None,   # NEW: list of (start_beat, end_beat) tuples
     harmony_complexity: float | None = None,   # shared chords-per-bar driver (see generate_chords)
+    push_windows: set[int] | None = None,   # chord windows that anticipate — shared with generate_chords
 ) -> List[NoteEvent]:
     if progression is None:
         templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
@@ -309,7 +319,8 @@ def generate_bass(
     if bass_cfg.get("bass_style") == "808":
         return _fold_to_range(
             _generate_808_bass(style, key, scale, bars, complexity, variation, progression,
-                               kick_times, harmony_complexity=harmony_complexity), _bass_profile)
+                               kick_times, harmony_complexity=harmony_complexity,
+                               push_windows=push_windows), _bass_profile)
 
     if bass_cfg.get("bass_style") == "walking":
         return _fold_to_range(
@@ -371,8 +382,13 @@ def generate_bass(
                 dur = step_size * (3 if should_trigger(sustain_bias) else 1)
                 # Don't sustain past the chord window
                 dur = min(dur, beats_per_chord * 0.9)
+                _anchor = _swing(_snap_to_kick(beat, kick_times))
+                # Ensemble push: anticipate with the comp when this window pushes
+                if push_windows and chord_idx in push_windows and _anchor >= 0.5:
+                    _anchor -= 0.5
+                    dur += 0.5
                 events.append(NoteEvent(
-                    pitch=root, start=_swing(_snap_to_kick(beat, kick_times)), duration=dur * 0.9,
+                    pitch=root, start=_anchor, duration=dur * 0.9,
                     velocity=min(127, int((92 + kick_boost) * phrase_dyn) + random.randint(-4, 4)), channel=1,
                 ))
 
