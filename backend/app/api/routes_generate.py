@@ -34,6 +34,7 @@ from app.generators.pads import generate_pads
 from app.generators.counter_melody import generate_counter_melody
 from app.core.config import EXPORTS_DIR
 from app.core.constants import DRUM_MAP
+from app.services.humanize import apply_groove_pocket
 from app.services.quality import score_generation, extract_rhythm_patterns
 from app.services.priors import load_prior, sample_progression, melody_prior_for, groove_fields_for
 from app.services.library import save_generation as lib_save, is_saved, build_scoring_style
@@ -496,6 +497,15 @@ def _run_attempt(
         _harm_boost = SECTION_PROFILES.get(s_sec_type or "", {}).get("harmonic_boost", 0.0)
         harmony_cplx = min(1.0, backing_cplx + _harm_boost)
 
+        # Ensemble pushes: which chord changes anticipate ("and of 4" early) is
+        # decided ONCE here, seeded, and observed by BOTH the comp and the
+        # bass — a lone early comp against an on-grid bass reads as a mistake;
+        # the band pushing together reads as an arrangement.
+        random.seed(_pseed(section_i, "pushes"))
+        _push_prob = style.get("chord_anticipation_prob", 0.15)
+        _cpb = 2 if harmony_cplx > 0.6 else 1
+        push_windows = {w for w in range(1, s_bars * _cpb) if random.random() < _push_prob}
+
         kick_times: list[float] = []
         if "drums" in req.parts and "drums" in s_parts:
             random.seed(_pseed(section_i, "drums"))
@@ -530,7 +540,8 @@ def _run_attempt(
                                        eff_var, s_resolved, is_loop=is_loop,
                                        melody_model=_melody_model,
                                        harmony_complexity=harmony_cplx,
-                                       seed_motif=melody_seed_motif)
+                                       seed_motif=melody_seed_motif,
+                                       section_type=s_sec_type)
             mel_evts = _apply_dynamic(mel_evts, s_dyn)
             all_events["melody"].extend(_shift(mel_evts, s_off))
             if mel_evts:
@@ -563,18 +574,21 @@ def _run_attempt(
                                        kick_times=kick_times,
                                        melody_rests=mel_rests if has_melody else None,
                                        harmony_complexity=harmony_cplx,
-                                       prev_voicing=_chords_prev)
+                                       prev_voicing=_chords_prev,
+                                       push_windows=push_windows)
                 section_chord_tones = _chord_tones_by_bar(
                     [(e.start, e.pitch) for e in evts], s_bars)
                 _chords_prev = _final_chord_voicing(evts)
             elif part == "pads":
                 evts = generate_pads(style, s_key, req.scale, s_bars, backing_cplx,
-                                     eff_var, s_resolved)
+                                     eff_var, s_resolved,
+                                     harmony_complexity=harmony_cplx)
             elif part == "bass":
                 evts = generate_bass(style, s_key, req.scale, s_bars, backing_cplx,
                                      eff_var, bass_prog, kick_times,
                                      melody_rests=mel_rests,
-                                     harmony_complexity=harmony_cplx)
+                                     harmony_complexity=harmony_cplx,
+                                     push_windows=push_windows)
             elif part == "arpeggio":
                 arp_octave = 6 if has_melody else 5
                 # When melody is active, pull arpeggio back so it supports rather than competes.
@@ -595,6 +609,11 @@ def _run_attempt(
         for gp_part in ("melody", "chords", "arpeggio", "bass", "pads", "counter_melody"):
             if gp_part in all_events and all_events[gp_part]:
                 all_events[gp_part] = _apply_groove_push(all_events[gp_part], groove_push)
+
+    # Shared groove pocket: every part shifts onto the same per-16th-slot
+    # micro-offsets (style-seeded, deterministic) so the band plays TOGETHER —
+    # independent per-note jitter alone made the composite subtly smear.
+    apply_groove_pocket(all_events, style)
 
     if all_events.get("melody"):
         # Per-section scale pcs (sections can sit in shifted keys — chorus lift)

@@ -148,6 +148,40 @@ const melodicCache = new Map<string, Promise<Tone.Sampler>>()
 // Cache: instrument name → promise resolving to the fx input node
 const fxCache = new Map<string, Promise<Tone.ToneAudioNode>>()
 
+// Voice ids that have real sample sets on disk (keys of INSTRUMENT_VOLUME).
+// The instrument registry's playback_voice values reference these; anything
+// else ("melody_lead", "pad_synth"…) is a synth family built in useMidiPlayer.
+export const SAMPLED_VOICES = new Set(Object.keys(INSTRUMENT_VOLUME))
+
+/** Load a melodic sampler by voice id (instrument-registry playback_voice).
+ *  Returns null for non-sampled voices — callers fall back to synth voices. */
+export function getMelodicSamplerById(inst: string): Promise<Tone.Sampler> | null {
+  if (!SAMPLED_VOICES.has(inst)) return null
+
+  if (melodicCache.has(inst)) return melodicCache.get(inst)!
+
+  if (!fxCache.has(inst)) {
+    fxCache.set(inst, buildFxChain(inst, getMelodicBus()))
+  }
+  const fxPromise = fxCache.get(inst)!
+
+  const promise = fxPromise.then(
+    (fxInput) =>
+      new Promise<Tone.Sampler>((resolve, reject) => {
+        const sampler = new Tone.Sampler({
+          urls: MELODIC_SAMPLE_MAP,
+          baseUrl: `/samples/melodic/${inst}/`,
+          volume: INSTRUMENT_VOLUME[inst] ?? DEFAULT_VOLUME,
+          onload: () => resolve(sampler),
+          onerror: reject,
+        }).connect(fxInput)
+      }),
+  )
+
+  melodicCache.set(inst, promise)
+  return promise
+}
+
 export function getMelodicSampler(styleId?: string): Promise<Tone.Sampler> | null {
   const inst = styleId ? STYLE_TO_INSTRUMENT[styleId] : undefined
   if (!inst) return null

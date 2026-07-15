@@ -37,7 +37,8 @@ from app.core.config import EXPORTS_DIR
 from app.core.constants import DRUM_MAP
 from app.core.arrangement import (
     SECTION_PROFILES, _SONG_TEMPLATES, _part_seed, _transpose_key,
-    _apply_section_ramp, _song_tempo_map,
+    _apply_section_ramp, _song_tempo_map, apply_arrangement_dynamics,
+    apply_melodic_pickups,
 )
 from app.services.mixdown import (
     _DEFAULT_PROGRAMS, _STYLE_PROGRAMS, _PART_CHANNELS, part_midi_meta,
@@ -402,6 +403,14 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
                 for e in thin
             )
 
+    # ── Arrangement dynamics ──────────────────────────────────────────────────
+    # Dropouts and breakdowns (pre-chorus drop, bridge breakdown, thinned
+    # verse 2) — applied before the ending bar so the final cadence survives.
+    apply_arrangement_dynamics(song_events, section_results, base_seed)
+    # Pickups run AFTER dynamics so they lead into melody that survived the
+    # dropouts (and can sing across a full-band stop).
+    apply_melodic_pickups(song_events, section_results, base_seed, req.scale, style)
+
     # ── Ending bar ────────────────────────────────────────────────────────────
     # A real cadence instead of just stopping: the tonic chord, bass root, and a
     # kick+crash land on one extra bar and ring out (the tempo map's ritardando
@@ -437,14 +446,10 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
         song_events["bass"].append(NoteEvent(
             pitch=max(0, tonic[0] - 24), start=ending_start, duration=ring,
             velocity=92, channel=1))
-    if "melody" in song_events and song_events.get("melody"):
-        mel_range = style.get("melody", {}).get("range", [60, 79])
-        root_pc = tonic[0] % 12
-        candidates = [p for p in range(mel_range[0], mel_range[1] + 1) if p % 12 == root_pc]
-        if candidates:
-            song_events["melody"].append(NoteEvent(
-                pitch=candidates[len(candidates) // 2], start=ending_start,
-                duration=ring, velocity=78, channel=2))
+    # The melody deliberately does NOT restate a note on the ending bar: its
+    # line already resolved in the outro, and a lone root popping up over the
+    # final chord read as an accidental keypress. The cadence is the band's —
+    # chord + bass + kick/crash ringing out.
     if "drums" in song_events:
         song_events["drums"].append(NoteEvent(DRUM_MAP["kick"], ending_start, 0.1, 116, 9))
         song_events["drums"].append(NoteEvent(DRUM_MAP["crash"], ending_start, ring, 104, 9))

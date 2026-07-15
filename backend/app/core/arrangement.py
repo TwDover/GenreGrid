@@ -12,6 +12,8 @@ planning helpers that turn a bar count or template into a section list.
 Split out of routes_generate.py so arrangement policy lives apart from the
 HTTP endpoints and per-part mixing concerns (see app/services/mixdown.py).
 """
+import random
+
 from app.services.midi_writer import NoteEvent
 
 
@@ -314,6 +316,175 @@ _SONG_TEMPLATES: dict[str, list[dict]] = {
         {"name": "Outro",  "section_type": "outro",  "bars": 4,  "parts_mode": "melodic"},
     ],  # 24 bars
 }
+
+
+def apply_arrangement_dynamics(song_events: dict[str, list],
+                               section_results: list[dict],
+                               base_seed: int) -> None:
+    """Classic arrangement dropouts, applied in place to the assembled song.
+
+    Real records breathe: instruments drop out so others lead. Section
+    part-modes already vary WHICH parts exist per section, but once a part
+    entered it used to run unbroken to the outro. This pass adds the classic
+    devices, chosen per-song from a seeded RNG so every regeneration flow
+    (which replays the same base_seed) reproduces the exact same arrangement:
+
+      drop         — the last 2 beats before a chorus go silent in the rhythm
+                     section (drums always, bass half the time, and sometimes
+                     the FULL band stops with only the melody carrying across),
+                     so the chorus slams back in ("suck the air out, then hit").
+      breakdown    — drums sit out the first half of a bridge; sometimes the
+                     bass sits out with them (melody + chords fully alone),
+                     and the rhythm section re-enters at the halfway point.
+      thinned v2   — the second verse opens with kick and hats only for a few
+                     bars (no snare/claps/cymbals); half the time the chords
+                     sit out too — the classic stripped restart.
+      late entry   — the FIRST verse opens with just the groove for a few
+                     bars before the melody arrives.
+      arp growth   — the first chorus carries its arpeggio only in the second
+                     half, so the final chorus (full arp + counter-melody)
+                     reads bigger than the ones before it.
+
+    Probabilities are below 1 so songs differ — some get several devices,
+    some none. RNG draws never depend on song_events contents, only on the
+    section list, so the same seed always yields the same strip windows.
+    Runs BEFORE the ending bar is appended, so the final cadence is never
+    stripped.
+    """
+    rng = random.Random(_part_seed(base_seed, 911, "dynamics"))
+    # Kick + closed/open hats survive verse-2 thinning (GM pitches)
+    _KICK_HATS = {35, 36, 42, 44, 46}
+
+    def _strip(part: str, lo: float, hi: float, keep: set | None = None) -> None:
+        evs = song_events.get(part)
+        if not evs:
+            return
+        song_events[part] = [
+            e for e in evs
+            if not (lo <= e.start < hi) or (keep is not None and e.pitch in keep)
+        ]
+
+    n_choruses = sum(1 for s in section_results if s.get("section_type") == "chorus")
+    verse_occurrence = 0
+    chorus_occurrence = 0
+    for sec in section_results:
+        stype = sec.get("section_type")
+        start_beat = sec.get("start_bar", 0) * 4.0
+        bars = sec.get("bars", 0)
+
+        if stype == "chorus":
+            chorus_occurrence += 1
+            if start_beat >= 8.0 and rng.random() < 0.6:
+                _strip("drums", start_beat - 2.0, start_beat)
+                if rng.random() < 0.5:
+                    _strip("bass", start_beat - 2.0, start_beat)
+                    # Full-band stop: everything but the melody cuts — the most
+                    # "rehearsed" moment an arrangement can have. Only when the
+                    # bass already dropped, so the stop is all-or-nothing.
+                    if rng.random() < 0.5:
+                        _strip("chords", start_beat - 2.0, start_beat)
+                        _strip("pads", start_beat - 2.0, start_beat)
+                        _strip("arpeggio", start_beat - 2.0, start_beat)
+            # Arp growth: only when a LATER chorus exists to be the bigger one
+            if chorus_occurrence == 1 and n_choruses > 1 and bars >= 4 and rng.random() < 0.5:
+                _strip("arpeggio", start_beat, start_beat + (bars // 2) * 4.0)
+
+        elif stype == "bridge" and bars >= 4 and rng.random() < 0.75:
+            _strip("drums", start_beat, start_beat + (bars // 2) * 4.0)
+            if rng.random() < 0.4:
+                _strip("bass", start_beat, start_beat + (bars // 2) * 4.0)
+
+        elif stype == "verse":
+            verse_occurrence += 1
+            if verse_occurrence == 1 and bars >= 4 and rng.random() < 0.5:
+                entry_bars = min(4, max(2, bars // 4))
+                _strip("melody", start_beat, start_beat + entry_bars * 4.0)
+            elif verse_occurrence == 2 and rng.random() < 0.5:
+                thin_bars = min(4, max(2, bars // 4))
+                _strip("drums", start_beat, start_beat + thin_bars * 4.0, keep=_KICK_HATS)
+                if rng.random() < 0.5:
+                    _strip("chords", start_beat, start_beat + thin_bars * 4.0)
+
+
+def apply_melodic_pickups(song_events: dict[str, list],
+                          section_results: list[dict],
+                          base_seed: int,
+                          scale: str,
+                          style: dict) -> None:
+    """Melodic pickups (anacrusis) into sections, applied in place.
+
+    The classic "and-4-and | ONE": a short stepwise run in the last beats of
+    one section that LEADS into the next section's first melody note, so the
+    boundary is sung across instead of merely arriving. Choruses get pickups
+    most often; verses and bridges sometimes; outros never.
+
+    Must run AFTER apply_arrangement_dynamics so pickups target melody that
+    actually survived the dropouts — and a pickup sounding through a full-band
+    stop (melody alone leading the chorus back in) is exactly the classic move.
+    Seeded from base_seed so regeneration flows reproduce the same pickups.
+    """
+    from app.theory.scales import build_scale
+    from app.core.instruments import instrumentation_for
+
+    melody = song_events.get("melody")
+    if not melody:
+        return
+
+    rng = random.Random(_part_seed(base_seed, 913, "pickups"))
+    mel_scale = style.get("melody_scale", scale)
+    profile = instrumentation_for(style).get("melody")
+    _PICKUP_PROB = {"chorus": 0.55, "verse": 0.3, "bridge": 0.3}
+
+    added: list = []
+    for sec in section_results:
+        prob = _PICKUP_PROB.get(sec.get("section_type"), 0.0)
+        boundary = sec.get("start_bar", 0) * 4.0
+        # RNG draws must not depend on event content — draw first, always.
+        roll = rng.random()
+        n_notes = rng.choice([2, 3])
+        from_below = rng.random() < 0.7
+        if prob == 0.0 or boundary < 4.0 or roll >= prob:
+            continue
+
+        # The target: the section's first melody note, on or just after its downbeat
+        target = min((e for e in melody if boundary - 0.05 <= e.start < boundary + 1.0),
+                     key=lambda e: e.start, default=None)
+        if target is None:
+            continue
+
+        # The runway: the pickup window must be melody-free (don't collide with
+        # a held cadence note ringing across the boundary)
+        span = n_notes * 0.5
+        window_start = boundary - span - 0.1
+        if any(e.start < boundary and e.start + e.duration > window_start for e in melody
+               if e is not target):
+            continue
+
+        # Stepwise run through the section's OWN key (chorus lifts change keys)
+        sec_key = sec.get("key") or "C"
+        try:
+            lattice = build_scale(sec_key, mel_scale, octave_start=2, num_octaves=6)
+        except ValueError:
+            continue
+        t_idx = min(range(len(lattice)), key=lambda i: abs(lattice[i] - target.pitch))
+        step_dir = 1 if from_below else -1
+        pitches = [lattice[max(0, min(len(lattice) - 1, t_idx - step_dir * k))]
+                   for k in range(n_notes, 0, -1)]
+        # A pickup outside the melody instrument's range would be unplayable —
+        # skip the device rather than bend the line.
+        if profile and any(not (profile["range"][0] <= p <= profile["range"][1]) for p in pitches):
+            continue
+
+        for k, pitch in enumerate(pitches):
+            start = boundary - (n_notes - k) * 0.5
+            added.append(type(target)(
+                pitch=pitch, start=start, duration=0.42,
+                velocity=max(30, min(127, target.velocity - 14 + k * 5)),
+                channel=target.channel,
+            ))
+
+    if added:
+        song_events["melody"] = sorted(melody + added, key=lambda e: e.start)
 
 
 def _song_tempo_map(section_results: list[dict], bpm: float,

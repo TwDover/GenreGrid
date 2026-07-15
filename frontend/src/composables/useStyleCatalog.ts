@@ -28,6 +28,13 @@ export function instrumentLabel(styleId: string | undefined, part: string): stri
   return catalog.value.get(styleId)?.instruments?.[part] ?? null
 }
 
+/** Playback voice id for a part in a style ("melody_lead", "electric_piano_1"),
+ *  or null when unknown — callers fall back to legacy style-based voice logic. */
+export function voiceFor(styleId: string | undefined, part: string): string | null {
+  if (!styleId) return null
+  return catalog.value.get(styleId)?.voices?.[part] ?? null
+}
+
 export function useStyleCatalog() {
-  return { catalog, setStyleCatalog, instrumentLabel }
+  return { catalog, setStyleCatalog, instrumentLabel, voiceFor }
 }

@@ -176,6 +176,7 @@ def generate_chords(
     melody_rests: list | None = None,
     harmony_complexity: float | None = None,
     prev_voicing: list[int] | None = None,
+    push_windows: set[int] | None = None,
 ) -> List[NoteEvent]:
     """`harmony_complexity` — the value that decides chords-per-bar, shared with
     melody/bass so all three parts agree on the harmonic grid (falls back to
@@ -434,6 +435,18 @@ def generate_chords(
                             duration = max(step * 0.5, duration * staccato_factor)
 
                     beat_of_hit = start_beat + s * step
+
+                    # Anticipation ("push"): the NEW chord lands an 8th early,
+                    # on the "and of 4" before its window — the played feel a
+                    # strict grid never has. WHICH changes push comes from the
+                    # shared push_windows map (the bass observes the same map,
+                    # so the band pushes together); pad-style holds never push
+                    # (a sustained wash arriving early just smears). Standalone
+                    # calls without a map fall back to an independent roll.
+                    _pushes = (i in push_windows) if push_windows is not None else                         (i > 0 and should_trigger(style.get("chord_anticipation_prob", 0.15)))
+                    if hi == 0 and s == 0 and i > 0 and comp_style != "pad_hold" and _pushes:
+                        beat_of_hit -= 0.5
+                        duration += 0.5
                     kick_boost = 8 if kick_times and any(abs(k - beat_of_hit) < 0.12 for k in kick_times) else 0
                     # Call-and-response: chords step forward (louder, less duck) when
                     # the melody is resting, receding again once it re-enters.
