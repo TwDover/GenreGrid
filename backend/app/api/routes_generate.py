@@ -32,6 +32,7 @@ from app.generators.drums import generate_drums
 from app.generators.arpeggio import generate_arpeggio
 from app.generators.pads import generate_pads
 from app.generators.counter_melody import generate_counter_melody
+from app.generators.answer import melody_cell
 from app.core.config import EXPORTS_DIR
 from app.core.constants import DRUM_MAP
 from app.services.humanize import apply_groove_pocket
@@ -402,6 +403,8 @@ def _run_attempt(
     fixed_progression: list[str] | None = None,
     chords_prev_voicing: list[int] | None = None,
     melody_seed_motif: list[int] | None = None,
+    rhythm_cell: list[float] | None = None,
+    arp_contour: list[int] | None = None,
 ) -> tuple[dict, dict, dict, list, dict | None, dict, list]:
     """Run one generation attempt for a given seed.
 
@@ -552,11 +555,25 @@ def _run_attempt(
                     if gap_e - gap_s >= 1.5:
                         mel_rests.append((round(gap_s, 3), round(gap_e, 3)))
 
-        # Counter-melody: harmony line derived from the melody's structural notes
+        # Call-response answers trace the song's melodic cell. Before that cell
+        # exists (the first verse — its theme is captured only after its backing
+        # is built) fall back to THIS section's own opening contour, so verse 1
+        # (where the space is greatest) can still answer thematically.
+        _answer_cell = arp_contour or melody_cell(mel_evts, s_key, req.scale)
+
+        # Counter-melody: harmony under the hook (choruses) or a thematic ANSWER
+        # in the melody's holes (verse/intro/outro — see generate_counter_melody).
+        # When it's answering, the bass floor-fill stands down for this section
+        # (below) so the two don't both crowd into the same gap.
+        _cm_answering = ("counter_melody" in req.parts and "counter_melody" in s_parts
+                         and bool(mel_evts)
+                         and s_sec_type not in (None, "chorus", "post_chorus"))
         if mel_evts and "counter_melody" in req.parts and "counter_melody" in s_parts:
             random.seed(_pseed(section_i, "counter_melody"))
             cm_evts = generate_counter_melody(mel_evts, s_key, req.scale, s_bars,
-                                              s_resolved, style)
+                                              s_resolved, style,
+                                              melody_rests=mel_rests, cell=_answer_cell,
+                                              section_type=s_sec_type)
             cm_evts = _apply_dynamic(cm_evts, s_dyn)
             all_events["counter_melody"].extend(_shift(cm_evts, s_off))
 
@@ -582,13 +599,16 @@ def _run_attempt(
             elif part == "pads":
                 evts = generate_pads(style, s_key, req.scale, s_bars, backing_cplx,
                                      eff_var, s_resolved,
-                                     harmony_complexity=harmony_cplx)
+                                     harmony_complexity=harmony_cplx,
+                                     melody_top=(mel_range[1] if melody_ceiling is not None else None))
             elif part == "bass":
                 evts = generate_bass(style, s_key, req.scale, s_bars, backing_cplx,
                                      eff_var, bass_prog, kick_times,
-                                     melody_rests=mel_rests,
+                                     melody_rests=(None if _cm_answering else mel_rests),
                                      harmony_complexity=harmony_cplx,
-                                     push_windows=push_windows)
+                                     push_windows=push_windows,
+                                     rhythm_cell=rhythm_cell,
+                                     cell_contour=_answer_cell)
             elif part == "arpeggio":
                 arp_octave = 6 if has_melody else 5
                 # When melody is active, pull arpeggio back so it supports rather than competes.
@@ -597,7 +617,8 @@ def _run_attempt(
                 evts = generate_arpeggio(style, s_key, req.scale, s_bars, arp_cplx,
                                          eff_var, s_resolved, arp_octave,
                                          melody_rests=mel_rests if has_melody else None,
-                                         chord_tones=section_chord_tones)
+                                         chord_tones=section_chord_tones,
+                                         seed_contour=arp_contour)
             evts = _apply_dynamic(evts, s_dyn)
             all_events[part].extend(_shift(evts, s_off))
 

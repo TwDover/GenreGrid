@@ -29,6 +29,31 @@ def test_pads_basic():
         assert 64 <= e.pitch <= 86   # default pad register
 
 
+def test_pads_lift_above_the_melody():
+    """A pad sharing the melody's octave masks the line into mush (measured: the
+    melody was spending ~80% of its time inside the pad's pitch span, which read
+    as "the melody and chords don't go together" even with zero note clash). Given
+    the melody's top note, every pad note must sit strictly above it."""
+    for seed in range(12):
+        random.seed(seed)
+        melody_top = 78
+        events = generate_pads({}, "C", "minor", bars=8, complexity=0.6, variation=0.4,
+                               progression=["i", "VI", "III", "VII"], melody_top=melody_top)
+        assert events
+        assert all(e.pitch > melody_top for e in events), \
+            f"seed {seed}: a pad note fell into the melody's register (<= {melody_top})"
+
+
+def test_pads_default_register_unchanged_without_melody():
+    """With no melody to clear, pads keep their normal register (no regression
+    for pad-only / melody-less sections)."""
+    random.seed(3)
+    events = generate_pads({}, "C", "major", bars=8, complexity=0.5, variation=0.3,
+                           progression=["I", "vi", "IV", "V"], melody_top=None)
+    assert events
+    assert all(64 <= e.pitch <= 86 for e in events)
+
+
 def test_pads_stay_stationary():
     """Pads must not leap registers between adjacent bars — the defining
     property of a pad layer is that it sits still while harmony changes.

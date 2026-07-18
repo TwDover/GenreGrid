@@ -173,12 +173,18 @@ def _melody_clashes(melody: list, harmony: list, song_beats: float,
     return 100.0 * clash_beats / max(song_beats, 1.0)
 
 
-def _melody_out_of_key(melody: list, scale_pcs: set[int], chord_bars: dict[int, set[int]]) -> float:
+def _melody_out_of_key(melody: list, scale_pcs: set[int], chord_bars: dict[int, set[int]],
+                       scale_pcs_by_bar: dict[int, set[int]] | None = None) -> float:
+    """Sections can modulate (the final-chorus key lift writes its own key into
+    song_structure.json), so each note is judged against ITS bar's scale when
+    the structure is available — judging a C# chorus against the song's global
+    C scale flagged perfectly diatonic melodies."""
     total = bad = 0.0
     for start, pitch, dur in melody:
         total += dur
         pc = pitch % 12
-        if pc in scale_pcs:
+        local_scale = (scale_pcs_by_bar or {}).get(_bar_of(start), scale_pcs)
+        if pc in local_scale:
             continue
         if pc in chord_bars.get(_bar_of(start), set()):
             continue   # chord tone (borrowed/raised) — musically fine
@@ -283,6 +289,77 @@ def _polyphony_violations(tracks: dict[str, list], part_poly: dict[str, int]) ->
     return 100.0 * viol / sounding if sounding else 0.0
 
 
+# ── structure metrics (songcraft roadmap) ────────────────────────────────────
+# Informational, NOT part of the issue score: they measure song-ness (shared
+# ideas, escalation, worked transitions), where more/less isn't an error —
+# they exist so before/after movement is visible when songcraft features land.
+
+def _motif_recurrence(melody: list, bass: list) -> float:
+    """Cosine similarity between melody and bass onset histograms on a 2-bar
+    16th grid — "does the bass share the theme's rhythm?" (0..1)."""
+    import math
+
+    def hist(notes):
+        h = [0.0] * 32
+        for start, _, _ in notes:
+            h[int(round((start % 8.0) / 0.25)) % 32] += 1
+        return h
+
+    a, b = hist(melody), hist(bass)
+    na, nb = math.sqrt(sum(x * x for x in a)), math.sqrt(sum(x * x for x in b))
+    if not na or not nb:
+        return 0.0
+    return sum(x * y for x, y in zip(a, b)) / (na * nb)
+
+
+def _load_sections(song_path: Path) -> list[dict]:
+    struct = song_path.parent / "song_structure.json"
+    if not struct.exists():
+        return []
+    try:
+        return json.loads(struct.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
+def _layer_regressions(tracks: dict[str, list], sections: list[dict]) -> int:
+    """Count same-type section repeats that carry FEWER active parts than
+    their previous occurrence — escalation violations (0 is good)."""
+    last_seen: dict[str, int] = {}
+    regressions = 0
+    for sec in sections:
+        stype = sec.get("section_type")
+        if stype in (None, "ending"):
+            continue
+        lo, hi = sec.get("start_bar", 0) * 4.0, (sec.get("start_bar", 0) + sec.get("bars", 0)) * 4.0
+        layers = sum(1 for notes in tracks.values()
+                     if any(lo <= s < hi for s, _, _ in notes))
+        if stype in last_seen and layers < last_seen[stype]:
+            regressions += 1
+        last_seen[stype] = layers
+    return regressions
+
+
+def _transition_coverage(tracks: dict[str, list], sections: list[dict]) -> float:
+    """% of section boundaries carrying at least one transition device:
+    a drop (drum silence in the 2 beats before), a build (snare roll), or a
+    melodic pickup (the device's 0.42-beat fingerprint)."""
+    drums = tracks.get("drums", [])
+    melody = tracks.get("melody", [])
+    boundaries = [s.get("start_bar", 0) * 4.0 for s in sections[1:]
+                  if s.get("section_type") != "ending"]
+    if not boundaries:
+        return 0.0
+    covered = 0
+    for b in boundaries:
+        drop = drums and not any(b - 2.0 <= s < b - 0.05 for s, _, _ in drums)
+        roll = sum(1 for s, p, _ in drums if p in (38, 40) and b - 3.2 <= s < b) >= 6
+        pickup = any(abs(d - 0.42) < 0.02 and b - 1.6 <= s < b for s, _, d in melody)
+        if drop or roll or pickup:
+            covered += 1
+    return 100.0 * covered / len(boundaries)
+
+
 # ── survey ────────────────────────────────────────────────────────────────────
 
 def analyze_song(song_path: Path, key: str, scale: str, style: dict | None = None) -> dict:
@@ -297,7 +374,20 @@ def analyze_song(song_path: Path, key: str, scale: str, style: dict | None = Non
 
     chord_bars = _chord_pcs_by_bar(chords)
     root_pc = note_name_to_midi(key, 4) % 12
-    scale_pcs = {(root_pc + iv) % 12 for iv in SCALE_INTERVALS.get(scale, SCALE_INTERVALS["minor"])}
+    intervals = SCALE_INTERVALS.get(scale, SCALE_INTERVALS["minor"])
+    scale_pcs = {(root_pc + iv) % 12 for iv in intervals}
+
+    # Per-bar scale from the structure file: modulated sections (final-chorus
+    # key lift) declare their own key there.
+    scale_pcs_by_bar: dict[int, set[int]] = {}
+    for sec in _load_sections(song_path):
+        sec_key = sec.get("key")
+        if not sec_key:
+            continue
+        sec_root = note_name_to_midi(sec_key, 4) % 12
+        sec_pcs = {(sec_root + iv) % 12 for iv in intervals}
+        for bar in range(sec.get("start_bar", 0), sec.get("start_bar", 0) + sec.get("bars", 0)):
+            scale_pcs_by_bar[bar] = sec_pcs
 
     song_beats = max((s + d for t in tracks.values() for s, _, d in t), default=0.0)
 
@@ -313,12 +403,17 @@ def analyze_song(song_path: Path, key: str, scale: str, style: dict | None = Non
     return {
         "bass_out_of_chord_pct": round(_bass_out_of_chord(bass, chord_bars), 1),
         "melody_clash_pct":  round(_melody_clashes(melody, harmony, song_beats, chord_bars), 2),
-        "melody_out_of_key_pct": round(_melody_out_of_key(melody, scale_pcs, chord_bars), 1),
+        "melody_out_of_key_pct": round(_melody_out_of_key(melody, scale_pcs, chord_bars,
+                                                          scale_pcs_by_bar), 1),
         "frozen_bass_bars":      _frozen_bass(bass, chord_bars),
         "register_overlap_pct":  round(_register_overlap(chords, melody), 1),
         "dropout_bars":          _dropout_bars(tracks),
         "range_viol_pct":        round(_range_violations(tracks, part_ranges), 2),
         "poly_viol_pct":         round(_polyphony_violations(tracks, part_poly), 2),
+        # structure metrics — informational, excluded from the issue score
+        "motif_recurrence":      round(_motif_recurrence(melody, bass), 3),
+        "layer_regressions":     _layer_regressions(tracks, _load_sections(song_path)),
+        "transition_coverage":   round(_transition_coverage(tracks, _load_sections(song_path)), 1),
     }
 
 

@@ -88,8 +88,10 @@ def test_every_device_fires_across_seeds_and_untouched_elsewhere():
         # Melody may only ever be stripped inside the verse-1 entry window
         assert len(_in(ev, "melody", V1_ENTRY[1], TOTAL_BEATS)) == \
                len(_in(fresh, "melody", V1_ENTRY[1], TOTAL_BEATS))
-        # The final chorus always keeps its full arpeggio (that's the payoff)
-        assert len(_in(ev, "arpeggio", 128.0, 160.0)) == len(_in(fresh, "arpeggio", 128.0, 160.0))
+        # The final chorus's SECOND half always keeps its full arpeggio (the
+        # breakdown-final-chorus device may strip the first half, but the back
+        # half is the payoff and no device touches it)
+        assert len(_in(ev, "arpeggio", 144.0, 160.0)) == len(_in(fresh, "arpeggio", 144.0, 160.0))
 
     missing = [k for k, v in seen.items() if not v]
     assert not missing, f"devices never fired in 60 seeds: {missing}"

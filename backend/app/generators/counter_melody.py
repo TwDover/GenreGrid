@@ -13,6 +13,7 @@ from app.services.midi_writer import NoteEvent
 from app.theory.scales import build_scale
 from app.theory.chords import roman_to_chord
 from app.services.variation import should_trigger
+from app.generators.answer import build_answer_phrase
 
 
 def generate_counter_melody(
@@ -22,15 +23,24 @@ def generate_counter_melody(
     bars: int,
     progression: list | None = None,
     style: dict | None = None,
+    melody_rests: list | None = None,
+    cell: list[int] | None = None,
+    section_type: str | None = None,
 ) -> List[NoteEvent]:
-    """Harmony line derived from the melody — a diatonic 3rd/6th below.
+    """The melody's second voice — dual mode depending on the section.
 
-    Follows the melody's rhythm but only on its structural notes (longer values,
-    strong beats), so the harmony supports without doubling every ornament.
-    On chord-change downbeats the harmony note snaps to the nearest chord tone
-    below the melody so the interval always agrees with the sounding chord.
-    Softer and slightly behind the lead in velocity so it reads as a backing
-    voice, not a second lead.
+    HARMONY mode (choruses, and the default when no ``section_type`` is given):
+    a diatonic 3rd/6th below the lead's structural notes, snapping to chord tones
+    on downbeats — thickens the hook without doubling every ornament.
+
+    ANSWER mode (verse/intro/outro, where the melody leaves space): instead of
+    shadowing the lead it ANSWERS it — dropping a short thematic lick (shaped by
+    the song's melodic ``cell``) into each ``melody_rests`` hole, so the two
+    voices trade phrases the way a horn answers a vocal. Needs ``melody_rests``
+    and ``cell``; without them it stays silent (the lead simply owns the space).
+
+    Either way it's softer than the lead so it reads as a response, not a
+    competing second lead.
     """
     if not melody_events:
         return []
@@ -42,6 +52,28 @@ def generate_counter_melody(
 
     beats_per_bar = 4
     prog_len = len(progression) if progression else 0
+
+    # ── Answer mode ───────────────────────────────────────────────────────────
+    if section_type not in (None, "chorus", "post_chorus"):
+        if not (melody_rests and cell and progression):
+            return []
+        mel_sorted = sorted(melody_events, key=lambda e: e.start)
+        answers: List[NoteEvent] = []
+        for rest_start, rest_end in melody_rests:
+            if rest_end - rest_start < 2.0 or not should_trigger(0.6):
+                continue
+            # Reply at or just below the call's last pitch — a connected response.
+            before = [e for e in mel_sorted if e.start + e.duration <= rest_start + 0.1]
+            call_pitch = before[-1].pitch if before else 67
+            call_vel   = before[-1].velocity if before else 80
+            hi = min(78, call_pitch)
+            lo = max(53, hi - 12)
+            roman = progression[int(rest_start / beats_per_bar) % prog_len]
+            answers.extend(build_answer_phrase(
+                cell, key, scale, roman, rest_start, rest_end,
+                lo=lo, hi=hi, channel=5, base_vel=max(1, int(call_vel * 0.82)),
+                rng=random, invert=True))
+        return answers
 
     # Scale lattice spanning below the melody register for stepping down 3rds/6ths
     scale_notes = build_scale(key, scale, octave_start=3, num_octaves=4)
