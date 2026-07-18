@@ -374,7 +374,11 @@ def apply_arrangement_dynamics(song_events: dict[str, list],
 
         if stype == "chorus":
             chorus_occurrence += 1
+            _dropped = False
+            # (When the drop fires it REPLACES any boundary drum fill living in
+            # the same two beats — fill or drop, never both, by construction.)
             if start_beat >= 8.0 and rng.random() < 0.6:
+                _dropped = True
                 _strip("drums", start_beat - 2.0, start_beat)
                 if rng.random() < 0.5:
                     _strip("bass", start_beat - 2.0, start_beat)
@@ -385,6 +389,30 @@ def apply_arrangement_dynamics(song_events: dict[str, list],
                         _strip("chords", start_beat - 2.0, start_beat)
                         _strip("pads", start_beat - 2.0, start_beat)
                         _strip("arpeggio", start_beat - 2.0, start_beat)
+            # Snare-roll build into the FINAL chorus: a 16th-note roll swelling
+            # through the last 3 beats — the drop's opposite ("fill the air,
+            # then hit"), so the two are mutually exclusive.
+            _roll = rng.random()
+            if (chorus_occurrence == n_choruses and n_choruses > 1 and not _dropped
+                    and start_beat >= 16.0 and _roll < 0.5 and song_events.get("drums")):
+                t = start_beat - 3.0
+                while t < start_beat - 0.2:
+                    vel = int(50 + (t - (start_beat - 3.0)) / 2.8 * 60)
+                    song_events["drums"].append(NoteEvent(38, t, 0.12, min(115, vel), 9))
+                    t += 0.25
+                song_events["drums"].sort(key=lambda e: e.start)
+            # Breakdown final chorus (the modern double-chorus): the final
+            # chorus opens half-stripped — melody over a thinned kit — and the
+            # full band returns at the midpoint, making the back half enormous.
+            _breakdown_roll = rng.random()
+            if (chorus_occurrence == n_choruses and n_choruses > 1 and bars >= 8
+                    and _breakdown_roll < 0.3):
+                half = start_beat + (bars // 2) * 4.0
+                _strip("chords", start_beat, half)
+                _strip("pads", start_beat, half)
+                _strip("arpeggio", start_beat, half)
+                _strip("bass", start_beat, half)
+                _strip("drums", start_beat, half, keep=_KICK_HATS | {39})
             # Arp growth: only when a LATER chorus exists to be the bigger one
             if chorus_occurrence == 1 and n_choruses > 1 and bars >= 4 and rng.random() < 0.5:
                 _strip("arpeggio", start_beat, start_beat + (bars // 2) * 4.0)
@@ -397,8 +425,17 @@ def apply_arrangement_dynamics(song_events: dict[str, list],
         elif stype == "verse":
             verse_occurrence += 1
             if verse_occurrence == 1 and bars >= 4 and rng.random() < 0.5:
-                entry_bars = min(4, max(2, bars // 4))
-                _strip("melody", start_beat, start_beat + entry_bars * 4.0)
+                # A late vocal entrance only works over a groove-only lead-in. If
+                # the intro already carried a melody (its own line or the chorus
+                # hook tease), stripping the verse's opening bars turns one clean
+                # entrance into melody -> silence -> melody, which reads as the
+                # melody dropping out. Only earn the late entry when nothing
+                # melodic preceded this first verse.
+                intro_had_melody = any(e.start < start_beat - 0.5
+                                       for e in song_events.get("melody", []))
+                if not intro_had_melody:
+                    entry_bars = min(4, max(2, bars // 4))
+                    _strip("melody", start_beat, start_beat + entry_bars * 4.0)
             elif verse_occurrence == 2 and rng.random() < 0.5:
                 thin_bars = min(4, max(2, bars // 4))
                 _strip("drums", start_beat, start_beat + thin_bars * 4.0, keep=_KICK_HATS)
@@ -501,11 +538,16 @@ def _song_tempo_map(section_results: list[dict], bpm: float,
     in_push = False
     for sec in section_results:
         start_beat = float(sec["start_bar"] * 4)
-        is_chorus = sec["section_type"] in ("chorus", "post_chorus")
+        stype = sec["section_type"]
+        is_chorus = stype in ("chorus", "post_chorus")
+        if stype == "pre_chorus" and not in_push:
+            # Micro-accel through the build: half the chorus push, so the
+            # pre-chorus leans forward and the chorus completes the lift.
+            points.append((start_beat, bpm * 1.006))
         if is_chorus and not in_push:
             points.append((start_beat, bpm * 1.012))
             in_push = True
-        elif not is_chorus and in_push:
+        elif not is_chorus and stype != "pre_chorus" and in_push:
             points.append((start_beat, float(bpm)))
             in_push = False
     if ending_bars > 0 and section_results:

@@ -42,6 +42,7 @@ def generate_arpeggio(
     octave: int = 5,
     melody_rests: list | None = None,
     chord_tones: list | None = None,
+    seed_contour: list[int] | None = None,
 ) -> List[NoteEvent]:
     """Generate an arpeggio part.
 
@@ -96,6 +97,19 @@ def generate_arpeggio(
         effective_pattern = pattern
         if chord_idx % 2 == 1 and pattern in ("up", "down") and should_trigger(variation * 0.55):
             effective_pattern = "down" if pattern == "up" else "up"
+
+        # Thematic unification: each 4-bar phrase OPENS with the gesture of
+        # the song theme's melodic cell — the arp outlines the same shape the
+        # hook sings (rising cell → rising arp, arched cell → up_down).
+        if seed_contour and chord_idx % 4 == 0:
+            _ups = sum(1 for iv in seed_contour if iv > 0)
+            _downs = sum(1 for iv in seed_contour if iv < 0)
+            if _ups and _downs:
+                effective_pattern = "up_down"
+            elif _downs:
+                effective_pattern = "down"
+            elif _ups:
+                effective_pattern = "up"
 
         if effective_pattern == "up":
             seq = pitches

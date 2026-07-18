@@ -215,11 +215,13 @@ def test_custom_template_build_and_regen():
 
 
 def test_pads_and_counter_melody_arrangement_rules():
-    """Pads only in chorus/bridge; counter-melody only in the final chorus."""
+    """Pads only in chorus/bridge; the counter-melody harmonizes the FINAL
+    chorus (and may answer the lead in verse/intro/outro) but never appears in a
+    non-final chorus."""
     r = build_song(BuildSongRequest(style_id="lofi", key="C", scale="major", bpm=90,
                                     template="verse_chorus",
                                     parts=["chords", "bass", "melody", "drums",
-                                           "pads", "counter_melody"], seed=41))
+                                           "pads", "counter_melody"], seed=42))
     d = EXPORTS_DIR / r.generation_id
     secs = {s.name: (s.start_bar * 4, (s.start_bar + s.bars) * 4) for s in r.sections}
 
@@ -282,3 +284,31 @@ def test_planned_climax_carries_the_section_peak():
             hits += 1
     assert total >= 10
     assert hits / total >= 0.6, f"climax placement too weak: {hits}/{total}"
+
+
+def test_intro_tease_commits_to_a_phrase_or_stays_silent():
+    """The intro hook tease must never leave a single stray note (a lone note
+    reads as an accidental keypress, not a preview). Across styles/seeds the
+    intro melody is either a real phrase (>=3 notes) or empty — and the tease
+    velocity must clear the mixdown's quiet-note cull so a committed phrase
+    isn't decimated back down to one note."""
+    for style in ("cloud_rap", "soul", "lofi", "rnb"):
+        for seed in range(1000, 1006):
+            r = build_song(BuildSongRequest(style_id=style, template="verse_chorus",
+                    parts=["chords", "bass", "melody", "drums", "pads"], seed=seed))
+            intro = next((s for s in r.sections if s.section_type == "intro"), None)
+            if intro is None:
+                continue
+            lo, hi = intro.start_bar * 4.0, (intro.start_bar + intro.bars) * 4.0
+            mid = mido.MidiFile(str(EXPORTS_DIR / r.generation_id / "melody.mid")) \
+                if (EXPORTS_DIR / r.generation_id / "melody.mid").exists() else None
+            if mid is None:
+                continue
+            n = 0
+            for tr in mid.tracks:
+                t = 0
+                for msg in tr:
+                    t += msg.time
+                    if msg.type == "note_on" and msg.velocity > 0 and lo <= t / mid.ticks_per_beat < hi:
+                        n += 1
+            assert n == 0 or n >= 3, f"{style} seed {seed}: intro has {n} melody notes (a lone stray)"

@@ -87,6 +87,49 @@ def _drop_2(pitches: list[int]) -> list[int]:
     return sorted(s)
 
 
+def _declutter(pitches: list[int], core_pcs: set[int], low: int, high: int) -> list[int]:
+    """Open internal semitone clusters so the chord reads as a clear chord.
+
+    Voice-leading inverts an extended chord to minimise movement, which can drag
+    a tension (typically the 9th) down a semitone from a core tone in the SAME
+    octave — a Cm9 collapses into a C-D-Eb grind that the ear hears as mud, not
+    harmony (measured: ~40% of block-chord voicings had such a cluster). For each
+    semitone-adjacent pair, relocate the offending note an octave (harmony-
+    preserving — same pitch classes) so the voicing spreads; when the register is
+    too tight to spread (chords are capped below the melody), DROP the tension so
+    a clean triad/7th remains — the 9th colour still lives in the pads/arp. Core
+    tones (root/3rd/5th/7th) are never dropped; a rare all-core crunch (a tight
+    maj7) is left alone."""
+    ps = sorted(set(pitches))
+    for _ in range(2 * len(ps) + 2):
+        ci = next((i for i in range(len(ps) - 1) if ps[i + 1] - ps[i] == 1), None)
+        if ci is None:
+            break
+        a, b = ci, ci + 1
+        a_core = ps[a] % 12 in core_pcs
+        b_core = ps[b] % 12 in core_pcs
+        # Relocate the non-core (tension) note; if both are core, the upper one.
+        move = b if (a_core and not b_core) else a if (b_core and not a_core) else b
+        both_core = a_core and b_core
+        up, down = ps[move] + 12, ps[move] - 12
+        if up <= high and up not in ps:
+            ps[move] = up
+        elif down >= low and down not in ps:
+            ps[move] = down
+        elif not both_core:
+            ps.pop(move)            # tension with no room to spread → drop it
+        elif len(ps) > 3:
+            # An unspreadable both-core semitone is a maj7 root/7th crunch (the
+            # only internal semitone triads+7ths produce). Tightly voiced low it
+            # reads as mud; drop the 7th (the lower note) for a clean triad — the
+            # maj7 colour still lives in the pads. Kept only down to a triad.
+            ps.pop(a)
+        else:
+            break                   # already a triad — accept the crunch
+        ps = sorted(ps)
+    return ps
+
+
 def _cap_polyphony(pitches: list[int], max_poly: int | None) -> list[int]:
     """Drop inner voices until the voicing fits the instrument's polyphony.
 
@@ -303,6 +346,9 @@ def generate_chords(
         allow_7th = should_trigger(allow_7th_prob)
         allow_9th = should_trigger(allow_9th_prob) if allow_7th else False
         pitches = roman_to_chord(roman, key, scale, octave=4, allow_7th=allow_7th, allow_9th=allow_9th)
+        # Core tones (triad + any 7th) — what the de-cluster must never drop; the
+        # 9th/altered extensions on top of these are the droppable tensions.
+        core_pcs = {p % 12 for p in roman_to_chord(roman, key, scale, octave=4, allow_7th=allow_7th)}
 
         # Altered dominant: on V / secondary dominant chords, substitute a b9, #9, or b13
         if altered_dominant_prob > 0 and _is_dominant(roman) and allow_7th and should_trigger(altered_dominant_prob):
@@ -333,6 +379,8 @@ def generate_chords(
             pitches = _clamp_register(pitches, low=ch_low, high=ch_high)
 
         pitches = _cap_polyphony(pitches, _ch_profile["polyphony"] if _ch_profile else None)
+        # Open any internal semitone cluster so the chord reads clearly (not mud).
+        pitches = _declutter(pitches, core_pcs, ch_low, ch_high)
         prev_pitches = sorted(pitches)  # record the clamped (sounded) voicing
 
         start_beat = i * beats_per_chord

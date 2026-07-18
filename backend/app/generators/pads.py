@@ -25,6 +25,7 @@ def generate_pads(
     variation: float,
     progression: list | None = None,
     harmony_complexity: float | None = None,
+    melody_top: int | None = None,
 ) -> List[NoteEvent]:
     """Sustained atmospheric chord layer above the comp chords.
 
@@ -50,6 +51,27 @@ def generate_pads(
     _pad_profile = instrumentation_for(style).get("pads")
     if _pad_profile:
         reg_low, reg_high = clamp_range([reg_low, reg_high], _pad_profile["range"])
+    # Keep the pad OUT of the melody's octave. A sustained pad voicing sharing
+    # the melody's register masks the line into mush — even with no actual note
+    # clash the melody stops reading as a melody (measured: melodies were
+    # spending ~80% of their time inside the pad's pitch span). The chord comp is
+    # already capped BELOW the melody; the pad is the mirror image — an airy
+    # shimmer lifted just ABOVE the melody's ceiling, so the stack reads
+    # chords < melody < pads with no register collision.
+    if melody_top is not None:
+        reg_low = max(reg_low, melody_top + 1)
+        reg_high = max(reg_high, reg_low + 13)
+        if _pad_profile:
+            hi_cap = _pad_profile["range"][1]
+            # If the instrument can't reach above the melody, fall back to a low
+            # cushion BELOW it rather than forcing an out-of-range voicing.
+            if reg_low > hi_cap:
+                reg_low, reg_high = pad_cfg.get("register", style.get("pad_register", [64, 86]))
+                reg_high = min(reg_high, melody_top - 1)
+                reg_low = min(reg_low, reg_high - 13)
+            else:
+                reg_high = min(reg_high, hi_cap)
+
     velocity_base = pad_cfg.get("velocity", 54)
     # 9th color adds shimmer at higher complexity
     color_9th_prob = pad_cfg.get("color_9th_prob", 0.35 if complexity > 0.5 else 0.0)

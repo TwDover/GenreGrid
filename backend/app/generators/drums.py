@@ -660,6 +660,38 @@ def generate_drums(
                         channel=DRUM_CHANNEL,
                     ))
 
+        # ── Mid-phrase micro-variation ─────────────────────────────────────────
+        # Without tom_fills a style otherwise repeats one groove verbatim for a
+        # whole section — a real drummer instead marks the turn of each 4-bar
+        # phrase with a tiny gesture. This adds a SUBTLE one (a ghost-snare
+        # pickup or a kick push) on the last bar of each INTERIOR phrase. It is
+        # deliberately smaller than a fill and excludes: the section-end bar
+        # (which already gets the real transition fill), intros/outros (which
+        # strip or decay), and tom_fills styles (already filling bar%4==3), so
+        # the gesture never doubles up or competes with a boundary fill.
+        if (bars >= 8 and bar % 4 == 3 and not is_section_end and not is_last_bar
+                and not is_intro and not is_outro and not tom_fills
+                and complexity > 0.25 and should_trigger(0.45 + variation * 0.3)):
+            if should_trigger(0.66):
+                # Ghost-snare pickup: two soft snares leaning over the barline.
+                for _mo, _mv in ((3.5, 44), (3.75, 60)):
+                    events.append(NoteEvent(
+                        pitch=DRUM_MAP["snare"],
+                        start=bar_start + _mo + _jitter("ghost", h),
+                        duration=0.05,
+                        velocity=max(1, min(127, int(_mv * phrase_dyn) + random.randint(-5, 5))),
+                        channel=DRUM_CHANNEL,
+                    ))
+            else:
+                # Kick push: an extra kick on the "and of 4" nudging the turn.
+                events.append(NoteEvent(
+                    pitch=DRUM_MAP["kick"],
+                    start=bar_start + 3.5 + _jitter("kick", h),
+                    duration=0.1,
+                    velocity=max(1, min(127, int(82 * phrase_dyn) + random.randint(-6, 6))),
+                    channel=DRUM_CHANNEL,
+                ))
+
         # ── Percussion layers ─────────────────────────────────────────────────
         if "shaker" in perc_layers:
             for s in [i * 0.5 for i in range(8)]:

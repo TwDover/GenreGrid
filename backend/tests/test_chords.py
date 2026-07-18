@@ -67,3 +67,56 @@ def test_sparse_comp_rhythm_still_sounds_every_chord_window():
             w_start = ((e.start + 0.1) // 2.0) * 2.0
             assert e.start + e.duration <= w_start + 2.3, \
                 f"seed {seed}: chord at {e.start} rings {e.duration} beats across the next window"
+
+
+def test_declutter_opens_internal_semitone_clusters():
+    """Voice-leading an extended chord in a register capped below the melody can
+    pack a tension (the 9th) a semitone from a core tone — a Cm9 collapses to a
+    C-D-Eb grind that reads as mud, not a chord. The de-cluster pass must leave
+    no two voiced notes a semitone apart in the same chord (block-comp styles)."""
+    import random
+    from collections import defaultdict
+    from app.services.style_loader import load_style
+
+    for style_id in ("cloud_rap", "trap_soul"):
+        style = load_style(style_id)
+        clustered = total = 0
+        for seed in range(20):
+            random.seed(seed)
+            events = generate_chords(style, "C", "minor", bars=8, complexity=0.6,
+                                     variation=0.3, progression=["i", "VI", "III", "VII"],
+                                     resolved_progression=["i", "VI", "III", "VII"],
+                                     harmony_complexity=0.5, melody_ceiling=60)
+            by_onset = defaultdict(list)
+            for e in events:
+                by_onset[round(e.start, 2)].append(e.pitch)
+            for ps in by_onset.values():
+                ps = sorted(set(ps))
+                total += 1
+                if any(b - a == 1 for a, b in zip(ps, ps[1:])):
+                    clustered += 1
+        # allow a tiny residue (a triad-only maj7 crunch with no room to open)
+        assert clustered / total < 0.03, \
+            f"{style_id}: {100*clustered/total:.0f}% of chords still cluster"
+
+
+def test_declutter_keeps_a_playable_chord_and_the_core_triad():
+    """De-cluster must never strip a chord below its triad, and must keep the
+    root/3rd/5th (it only drops tensions / an unspreadable maj7)."""
+    import random
+    from app.theory.chords import roman_to_chord
+    from app.services.style_loader import load_style
+
+    style = load_style("cloud_rap")
+    for seed in range(20):
+        random.seed(seed)
+        events = generate_chords(style, "C", "minor", bars=8, complexity=0.7,
+                                 variation=0.4, progression=["i", "VI", "III", "VII"],
+                                 resolved_progression=["i", "VI", "III", "VII"],
+                                 harmony_complexity=0.5, melody_ceiling=60)
+        from collections import defaultdict
+        by_onset = defaultdict(list)
+        for e in events:
+            by_onset[round(e.start, 2)].append(e.pitch)
+        for ps in by_onset.values():
+            assert len(set(p % 12 for p in ps)) >= 3, "chord thinned below a triad"
