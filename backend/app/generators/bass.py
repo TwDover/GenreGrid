@@ -16,6 +16,7 @@ from app.services.variation import should_trigger
 from app.services.humanize import micro_jitter, phrase_breath_factor, timing_jitter, style_jitter
 from app.theory.rhythm import apply_swing
 from app.core.instruments import instrumentation_for
+from app.generators.answer import build_answer_phrase
 
 
 def _fold_to_range(events: List[NoteEvent], profile: dict | None) -> List[NoteEvent]:
@@ -220,6 +221,7 @@ def _generate_808_bass(
     kick_times: list[float] | None = None,
     harmony_complexity: float | None = None,
     push_windows: set[int] | None = None,
+    rhythm_cell: list[float] | None = None,
 ) -> List[NoteEvent]:
     """Long-sustain 808-style bass with a randomly selected rhythmic pattern per generation."""
     events: List[NoteEvent] = []
@@ -266,6 +268,15 @@ def _generate_808_bass(
                 and not any(off >= 1.75 for off, _ in bar_pattern)):
             bar_pattern = bar_pattern + [(2.0, 0.88)]
 
+        # Thematic unification: every other bar, the bass quotes the song
+        # theme's characteristic syncopated onset — the "one composer" glue
+        # (a record's bass echoes its hook's rhythm; independent patterns
+        # never do).
+        if rhythm_cell and bar % 2 == 1:
+            _cell_off = next((o for o in rhythm_cell if o % 1.0 != 0.0 and 0.5 <= o <= 3.5), None)
+            if _cell_off is not None and not any(abs(off - _cell_off) < 0.3 for off, _ in bar_pattern):
+                bar_pattern = sorted(bar_pattern + [(_cell_off, 0.78)])
+
         phrase_dyn = phrase_breath_factor(bar)
 
         for i, (beat_offset, vel_scale) in enumerate(bar_pattern):
@@ -307,6 +318,8 @@ def generate_bass(
     melody_rests: list | None = None,   # NEW: list of (start_beat, end_beat) tuples
     harmony_complexity: float | None = None,   # shared chords-per-bar driver (see generate_chords)
     push_windows: set[int] | None = None,   # chord windows that anticipate — shared with generate_chords
+    rhythm_cell: list[float] | None = None,   # the song's rhythmic cell (theme onset offsets) — the bass quotes it
+    cell_contour: list[int] | None = None,   # the song's melodic cell (scale-step deltas) — shapes call-response answers
 ) -> List[NoteEvent]:
     if progression is None:
         templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
@@ -320,7 +333,7 @@ def generate_bass(
         return _fold_to_range(
             _generate_808_bass(style, key, scale, bars, complexity, variation, progression,
                                kick_times, harmony_complexity=harmony_complexity,
-                               push_windows=push_windows), _bass_profile)
+                               push_windows=push_windows, rhythm_cell=rhythm_cell), _bass_profile)
 
     if bass_cfg.get("bass_style") == "walking":
         return _fold_to_range(
@@ -376,6 +389,10 @@ def generate_bass(
             beat = chord_start + step * step_size
             steps_to_next = subdivisions - 1 - step
             kick_boost = 10 if _on_kick(beat, kick_times) else 0
+            # Thematic unification: onsets shared with the song theme's
+            # rhythmic cell get a subtle accent, tying bass and melody gestures
+            if rhythm_cell and any(abs((beat % 4.0) - o) < 0.13 for o in rhythm_cell):
+                kick_boost += 6
 
             if step == 0:
                 # Always anchor on chord root at the start of each chord window
@@ -433,9 +450,12 @@ def generate_bass(
                     velocity=min(127, int((66 + kick_boost) * phrase_dyn) + random.randint(-8, 8)), channel=1,
                 ))
 
-    # ── Call-response fills during melody rests ───────────────────────────────
-    # When melody has a meaningful rest (>= 1.5 beats), bass answers with a
-    # brief 2-note ascending figure (root → 5th) to fill the silence.
+    # ── Call-response answer during melody rests ──────────────────────────────
+    # When the melody leaves a meaningful hole (>= 1.5 beats), the bass answers
+    # it. With the song's melodic cell available the answer traces that theme
+    # (build_answer_phrase — a low echo of the hook's contour landing on a chord
+    # tone); before the theme is set (e.g. the intro/first verse, cell_contour
+    # None) it falls back to the original root->5th figure so nothing regresses.
     if melody_rests:
         fill_events: List[NoteEvent] = []
         total_beats_inner = bars * beats_per_bar
@@ -447,6 +467,12 @@ def generate_bass(
                 continue
             c_idx = int(rest_start / beats_per_chord)
             fill_roman = progression[c_idx % prog_len]
+            if cell_contour:
+                fill_events.extend(build_answer_phrase(
+                    cell_contour, key, scale, fill_roman, rest_start,
+                    min(rest_end, total_beats_inner), lo=28, hi=48, channel=1,
+                    base_vel=74, rng=random, swing=_swing, invert=False))
+                continue
             try:
                 fill_pitches = roman_to_chord(fill_roman, key, scale, octave=3)
             except Exception:

@@ -197,6 +197,7 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     # continuity at seams) and the verse's opening motif (chorus develops it).
     prev_voicing: list[int] | None = None
     verse_motif: list[int] | None = None
+    rhythm_cell: list[float] | None = None   # the song's rhythmic cell (onset offsets, from the first theme)
     _hook_motif = (_melody_motif_intervals(hook_melody, req.key, req.scale)
                    if hook_melody else None)
     # Intro hook tease: when the intro would carry a melody, hold it back and
@@ -211,12 +212,25 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
         parts_mode = sec_def.get("parts_mode", "full")
         sec_parts  = list(parts_modes.get(parts_mode, full_parts) or full_parts)
 
-        # Arrangement colors: pads fill out only the big sections; the
-        # counter-melody appears only on the final chorus.
+        # Arrangement colors: pads fill out only the big sections. The
+        # counter-melody harmonizes the hook on the final chorus AND answers the
+        # lead's holes in the sections with space (verse/intro/outro); it's kept
+        # out of the dense middle sections so it never turns into a constant
+        # second lead. See generate_counter_melody for the mode split.
         if "pads" in sec_parts and sec_type not in ("chorus", "bridge"):
             sec_parts = [p for p in sec_parts if p != "pads"]
-        if "counter_melody" in sec_parts and sec_i != last_chorus_i:
+        if "counter_melody" in sec_parts and not (
+                sec_i == last_chorus_i or sec_type in ("verse", "intro", "outro")):
             sec_parts = [p for p in sec_parts if p != "counter_melody"]
+
+        # Layer accumulation: every RETURN of a section type carries something
+        # its first pass didn't, so repeats escalate instead of photocopying.
+        # Verse 2+ gains the arpeggio its template mode withheld; repeated
+        # choruses get busier hats (below, via the style overlay).
+        _prior_occ = type_occurrence.get(sec_type, 0)
+        if (sec_type == "verse" and _prior_occ >= 1
+                and "arpeggio" in req.parts and "arpeggio" not in sec_parts):
+            sec_parts = sec_parts + ["arpeggio"]
 
         # Intro tease: strip the intro's own melody — the chorus hook (thinned)
         # takes its place once the chorus theme exists.
@@ -242,6 +256,10 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
 
         next_sec_type = template[sec_i + 1]["section_type"] if sec_i + 1 < len(template) else None
         sec_style, sec_scoring = _style_for(sec_def.get("style_id"))
+        if sec_type == "chorus" and _prior_occ >= 1:
+            _drums_cfg = sec_style.get("drums", {})
+            sec_style = {**sec_style, "drums": {
+                **_drums_cfg, "hat_density": min(1.0, _drums_cfg.get("hat_density", 0.5) * 1.18)}}
         sec_progression = _prechorus_prog if sec_type == "pre_chorus" else song_progression
 
         sec_req = GenerateRequest.model_construct(
@@ -273,6 +291,7 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
                     scoring_style=sec_scoring, regen_part=regen_part, regen_salt=regen_salt,
                     fixed_progression=sec_progression,
                     chords_prev_voicing=prev_voicing, melody_seed_motif=sec_motif,
+                    rhythm_cell=rhythm_cell, arp_contour=verse_motif,
                 )
             except Exception as exc:
                 logger.error("build_song section %r failed: %s", sec_name, exc, exc_info=True)
@@ -290,6 +309,7 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
                         scoring_style=sec_scoring, regen_part=regen_part, regen_salt=regen_salt,
                         fixed_progression=sec_progression,
                         chords_prev_voicing=prev_voicing, melody_seed_motif=sec_motif,
+                        rhythm_cell=rhythm_cell, arp_contour=verse_motif,
                     )
                 except Exception as exc:
                     logger.error("build_song section %r attempt %d failed: %s", sec_name, attempt, exc, exc_info=True)
@@ -344,13 +364,21 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
                     evts[p] = _vary_repeat(evts[p], p)
             # The theme swap replaced this section's melody with the cached one, so
             # any counter-melody derived from the discarded fresh melody would be
-            # harmonizing a line that no longer sounds — re-derive it from the
-            # melody that will actually play.
+            # answering/harmonizing a line that no longer sounds — re-derive it
+            # from the melody that will actually play (in the same mode the
+            # section uses: harmony on the chorus, answer in verse/intro/outro).
             if "counter_melody" in evts and evts.get("melody"):
                 random.seed(_part_seed(winning_seed, 0, "counter_melody"))
+                _cm_mel = sorted(evts["melody"], key=lambda e: e.start)
+                _cm_rests = [(round(_cm_mel[i - 1].start + _cm_mel[i - 1].duration, 3),
+                              round(_cm_mel[i].start, 3))
+                             for i in range(1, len(_cm_mel))
+                             if _cm_mel[i].start - (_cm_mel[i - 1].start + _cm_mel[i - 1].duration) >= 1.5]
+                _cm_cell = verse_motif or _melody_motif_intervals(evts["melody"], sec_key, req.scale)
                 evts["counter_melody"] = generate_counter_melody(
                     evts["melody"], sec_key, req.scale, sec_bars,
-                    song_progression, sec_style)
+                    song_progression, sec_style,
+                    melody_rests=_cm_rests, cell=_cm_cell, section_type=sec_type)
 
         # Thread voice-leading and the verse theme into the next section: the
         # post-theme-swap events are what actually sound, so extract from those.
@@ -358,6 +386,20 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
             prev_voicing = _final_chord_voicing(evts["chords"])
         if verse_motif is None and sec_type == "verse" and evts.get("melody"):
             verse_motif = _melody_motif_intervals(evts["melody"], req.key, req.scale)
+        if rhythm_cell is None and evts.get("melody"):
+            # The song's rhythmic cell: the first theme's opening onset
+            # pattern (16th-quantized, within-bar offsets). Later sections'
+            # bass echoes it and the arpeggio takes its contour — the "one
+            # composer" glue between parts.
+            _onsets = sorted(e.start for e in evts["melody"] if e.start < 8.0)
+            rhythm_cell = []
+            for _o in _onsets:
+                _q = round((_o % 4) * 4) / 4
+                if _q not in rhythm_cell:
+                    rhythm_cell.append(_q)
+                if len(rhythm_cell) >= 4:
+                    break
+            rhythm_cell = rhythm_cell or None
 
         for part, part_evts in evts.items():
             if part in song_events and part_evts:
@@ -391,16 +433,25 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
         if chorus_mel:
             limit = tease_intro["bars"] * 4
             in_window = [e for e in chorus_mel if e.start < limit - 0.05]
-            # Prefer the hook's structural notes; if the chorus opens busy (no
-            # long/strong-beat notes in the intro window), tease the full line
-            # instead so the intro never ends up silent.
+            # Prefer the hook's structural notes for a clean preview.
             thin = [e for e in in_window
-                    if (e.start % 1.0) < 0.13 or e.duration >= 0.75] or in_window
+                    if (e.start % 1.0) < 0.13 or e.duration >= 0.75]
+            # Commit to a real phrase or stay silent: a lone note (or two) reads
+            # as an accidental keypress, not a hook preview. Use the thinned hook
+            # only if it's a phrase; else tease the fuller line; if even that is
+            # just a note or two, leave the intro to the groove.
+            _PHRASE = 3
+            tease = (thin if len(thin) >= _PHRASE
+                     else in_window if len(in_window) >= _PHRASE else [])
             song_events["melody"].extend(
                 NoteEvent(min(127, max(0, e.pitch - chorus_theme_shift)), e.start,
                           min(e.duration, limit - e.start),
-                          max(1, int(e.velocity * 0.72)), e.channel)
-                for e in thin
+                          # Floor above the _drop_quiet threshold (20): a soft-
+                          # style hook (lofi) scaled by 0.72 dips below it, and
+                          # the mixdown would then cull the quiet notes back down
+                          # to the lone stray this whole branch exists to avoid.
+                          max(34, int(e.velocity * 0.72)), e.channel)
+                for e in tease
             )
 
     # ── Arrangement dynamics ──────────────────────────────────────────────────
@@ -410,6 +461,39 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     # Pickups run AFTER dynamics so they lead into melody that survived the
     # dropouts (and can sing across a full-band stop).
     apply_melodic_pickups(song_events, section_results, base_seed, req.scale, style)
+
+    # ── Ending variety ────────────────────────────────────────────────────────
+    # Every song used to end with the identical ring-out formula. Three seeded
+    # endings now: ring-out (the classic), cold stop (staccato final hit), and
+    # the hook-echo outro — the outro's own melody is replaced by thinned
+    # fragments of the chorus hook, fading, so the song looks BACK at its own
+    # idea on the way out instead of introducing fresh material.
+    _end_rng = random.Random(_part_seed(base_seed, 917, "ending"))
+    _ending_style = _end_rng.choices(["ring", "cold", "hook_echo"], weights=[0.45, 0.2, 0.35])[0]
+    _outro_sec = next((s for s in section_results if s.get("section_type") == "outro"), None)
+    if _ending_style == "hook_echo":
+        _hook = type_theme.get("chorus", {}).get("melody") or []
+        if _outro_sec and _hook and "melody" in song_events:
+            o_start = _outro_sec["start_bar"] * 4.0
+            o_beats = _outro_sec["bars"] * 4.0
+            frag = [e for e in sorted(_hook, key=lambda e: e.start) if e.start < 8.0]
+            thin = [e for e in frag if (e.start % 1.0) < 0.13 or e.duration >= 0.75] or frag
+            song_events["melody"] = [e for e in song_events["melody"]
+                                     if not (o_start - 0.1 <= e.start < o_start + o_beats)]
+            placements = [(o_start, 0.72)]
+            if o_beats >= 12:
+                placements.append((o_start + o_beats / 2, 0.5))
+            for _base, _velf in placements:
+                for e in thin:
+                    t = _base + e.start
+                    if t < o_start + o_beats - 0.25:
+                        song_events["melody"].append(NoteEvent(
+                            min(127, max(0, e.pitch - chorus_theme_shift)), t,
+                            min(e.duration, o_start + o_beats - t),
+                            max(1, int(e.velocity * _velf)), e.channel))
+            song_events["melody"].sort(key=lambda e: e.start)
+        else:
+            _ending_style = "ring"   # nothing to echo — fall back gracefully
 
     # ── Ending bar ────────────────────────────────────────────────────────────
     # A real cadence instead of just stopping: the tonic chord, bass root, and a
@@ -421,7 +505,8 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     tonic_roman = "i" if req.scale in ("minor", "dorian", "phrygian", "harmonic_minor",
                                        "pentatonic_minor", "blues", "locrian") else "I"
     tonic = roman_to_chord(tonic_roman, req.key, req.scale, octave=4)
-    ring = 4.0
+    # Cold stop: the band hits the final chord staccato and it's over — no ring.
+    ring = 0.35 if _ending_style == "cold" else 4.0
     if "chords" in song_events:
         # Voice the final chord in the register the song's comp actually ended
         # in (prev_voicing = the outro's closing voicing). The hardcoded

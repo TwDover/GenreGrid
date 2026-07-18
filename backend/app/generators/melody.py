@@ -784,6 +784,38 @@ def generate_melody(
         else:
             final.extend(existing)
 
+    # ── Antecedent/consequent pairing (question → answer) ────────────────────
+    # The strongest "written by a human" signal in a melody: when a phrase
+    # plan pairs an open (half-cadence) phrase with a closing one, the answer
+    # REPLAYS the question — same rhythm, same line — and changes only its
+    # ending, landing closed on the tonic. Classic period form (A → A').
+    _PHRASE = phrase_beats
+    for _k in range(len(_plans) - 1):
+        if not (_plans[_k].cadence_open and not _plans[_k + 1].cadence_open):
+            continue
+        if _plans[_k + 1].climax or not should_trigger(0.6):
+            continue
+        q_lo, q_hi = _k * _PHRASE, (_k + 1) * _PHRASE
+        a_lo, a_hi = q_hi, q_hi + _PHRASE
+        if a_hi > total_beats + 0.1:
+            continue
+        question = [n for n in final if q_lo - 0.1 <= n.start < q_hi - 0.1]
+        if len(question) < 3:
+            continue
+        answer = sorted(question, key=lambda n: n.start)
+        rebuilt = [n for n in final if not (a_lo - 0.1 <= n.start < a_hi - 0.1)]
+        tonic_candidates = [p for p in scale_notes if p % 12 == key_root_pc]
+        for _j, n in enumerate(answer):
+            pitch = n.pitch
+            if _j >= len(answer) - 1 and tonic_candidates:
+                # the answer's final note closes on the tonic nearest the line
+                pitch = min(tonic_candidates, key=lambda p: abs(p - n.pitch))
+            rebuilt.append(NoteEvent(pitch, n.start + _PHRASE,
+                                     min(n.duration, total_beats - (n.start + _PHRASE)),
+                                     max(1, min(127, n.velocity + random.randint(-5, 5))),
+                                     n.channel))
+        final = sorted(rebuilt, key=lambda n: n.start)
+
     # Post-process: enforce max-2-consecutive-same-pitch across full output
     # (motif copies at block boundaries can create longer runs). The variation
     # pitch moves to the NEIGHBOURING SCALE TONE — a raw ±1 semitone here
