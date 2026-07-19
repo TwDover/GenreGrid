@@ -57,24 +57,50 @@ def save_generation(
     seed: int,
     quality_raw: dict,
     patterns: dict,          # {"kick_pattern": [...], "chord_pattern": [...]}
+    keep: float = 1.0,       # taste weight — user-kept generations outweigh merely high-scoring ones
+    source: str = "score",   # "score" | "export" | "thumbs_up"
 ) -> None:
-    """Persist a generation's metadata and rhythm fingerprints."""
-    entry = {
-        "gen_id":   gen_id,
-        "style_id": style_id,
-        "key":      key,
-        "scale":    scale,
-        "bpm":      bpm,
-        "bars":     bars,
-        "seed":     seed,
-        "saved_at": datetime.now(timezone.utc).isoformat(),
-        "quality":  quality_raw,
-        "patterns": patterns,
-    }
+    """Persist a generation's metadata and rhythm fingerprints.
+
+    ``keep`` is the taste weight the learner applies (see _get_learned_patterns):
+    a scorer auto-save is 1.0; an explicit user keep (export/thumbs-up) counts for
+    more. Re-saving an existing gen keeps the STRONGER signal (max weight)."""
+    path = _style_dir(style_id) / f"{gen_id}.json"
     with _write_lock:
-        (_style_dir(style_id) / f"{gen_id}.json").write_text(
-            json.dumps(entry, indent=2)
-        )
+        if path.exists():
+            try:
+                prev = json.loads(path.read_text())
+                keep = max(keep, float(prev.get("keep", 1.0)))
+                if prev.get("source") in ("thumbs_up", "export") and source == "score":
+                    source = prev["source"]   # don't demote an explicit keep
+            except Exception:
+                pass
+        entry = {
+            "gen_id":   gen_id,
+            "style_id": style_id,
+            "key":      key,
+            "scale":    scale,
+            "bpm":      bpm,
+            "bars":     bars,
+            "seed":     seed,
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+            "quality":  quality_raw,
+            "patterns": patterns,
+            "keep":     keep,
+            "source":   source,
+        }
+        path.write_text(json.dumps(entry, indent=2))
+
+
+def exclude_generation(style_id: str, gen_id: str) -> bool:
+    """Thumbs-down: drop a generation from the library so its patterns stop
+    steering the learner. Returns True if an entry was removed."""
+    path = LIBRARY_DIR / style_id / f"{gen_id}.json"
+    with _write_lock:
+        if path.exists():
+            path.unlink()
+            return True
+    return False
 
 
 def is_saved(style_id: str, gen_id: str) -> bool:
@@ -102,21 +128,30 @@ def list_library(style_id: str | None = None) -> list[dict]:
 
 
 def _get_learned_patterns(style_id: str) -> dict | None:
-    """Average rhythm patterns across saved examples for this style."""
+    """Weighted-average rhythm patterns across saved examples for this style.
+
+    Each example contributes in proportion to its ``keep`` weight, so a
+    generation the USER kept (exported or thumbed-up, weight ~2.5) pulls the
+    learned reference toward the user's taste far more than a merely
+    high-scoring auto-save (weight 1.0) — the priors learn what the user likes,
+    not just what the scorer rewards."""
     entries = list_library(style_id)
     if len(entries) < _MIN_EXAMPLES:
         return None
 
-    n = len(entries)
+    total_w = sum(max(0.0, float(e.get("keep", 1.0))) for e in entries) or 1.0
     kick_avg  = [0.0] * 16
     chord_avg = [0.0] * 16
     for e in entries:
+        w = max(0.0, float(e.get("keep", 1.0))) / total_w
         pats = e.get("patterns", {})
+        kick = pats.get("kick_pattern",  [0.0] * 16)
+        chord = pats.get("chord_pattern", [0.0] * 16)
         for i in range(16):
-            kick_avg[i]  += pats.get("kick_pattern",  [0.0] * 16)[i] / n
-            chord_avg[i] += pats.get("chord_pattern", [0.0] * 16)[i] / n
+            kick_avg[i]  += (kick[i]  if i < len(kick)  else 0.0) * w
+            chord_avg[i] += (chord[i] if i < len(chord) else 0.0) * w
 
-    return {"kick_pattern": kick_avg, "chord_pattern": chord_avg, "example_count": n}
+    return {"kick_pattern": kick_avg, "chord_pattern": chord_avg, "example_count": len(entries)}
 
 
 def build_scoring_style(style: dict, style_id: str) -> dict:

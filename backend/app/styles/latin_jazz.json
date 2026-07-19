@@ -6,6 +6,7 @@
         200
     ],
     "default_scale": "major",
+  "chromatic_color": 0.35,
     "instrumentation": {
         "chords": "jazz_guitar",
         "bass": "upright_bass",

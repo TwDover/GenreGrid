@@ -14,8 +14,9 @@ so sections and regenerations reproduce it exactly.
 """
 import random
 
-from app.services.humanize import groove_pocket_table, apply_groove_pocket
+from app.services.humanize import groove_pocket_table, apply_groove_pocket, apply_feel
 from app.services.midi_writer import NoteEvent
+from app.core.constants import DRUM_MAP
 
 
 def test_pocket_table_is_deterministic_and_style_specific():
@@ -55,6 +56,56 @@ def test_pocket_never_produces_negative_starts():
     for part in events:
         for e in events[part]:
             assert e.start >= 0.0
+
+
+def test_feel_profile_drags_backbeat_and_lags_bass():
+    """A laid-back style (lofi) drags the snare backbeat behind the grid, pushes
+    the hats ahead, and sits the bass behind the kick — systematic, not random."""
+    style = {"id": "lofi", "_humanize_scale": 0.5}
+    snare, kick, hat = DRUM_MAP["snare"], DRUM_MAP["kick"], DRUM_MAP["closed_hat"]
+    events = {
+        "drums": [NoteEvent(snare, 1.0, 0.1, 100, 9),   # beat 2 = backbeat (slot 4)
+                  NoteEvent(kick, 0.0, 0.1, 110, 9),
+                  NoteEvent(hat, 0.5, 0.1, 80, 9)],       # slot 2
+        "bass":  [NoteEvent(40, 0.0, 0.9, 90, 1)],
+    }
+    handled = apply_feel(events, style)
+    assert handled == {"drums", "bass"}
+    snare_ev = next(e for e in events["drums"] if e.pitch == snare)
+    hat_ev   = next(e for e in events["drums"] if e.pitch == hat)
+    assert snare_ev.start > 1.0                 # backbeat drags LATE
+    assert hat_ev.start < 0.5                    # hat pushes EARLY
+    assert events["bass"][0].start > 0.0         # bass sits behind the kick
+
+
+def test_feel_absent_style_is_untouched():
+    """A style with no feel profile is placed by neither apply_feel nor a feel
+    branch — byte-identical to pre-feel output."""
+    style = {"id": "techno", "_humanize_scale": 0.5}
+    before = [NoteEvent(DRUM_MAP["snare"], 1.0, 0.1, 100, 9)]
+    events = {"drums": list(before), "bass": [NoteEvent(40, 0.0, 0.9, 90, 1)]}
+    assert apply_feel(events, style) == set()
+    assert events["drums"][0].start == 1.0 and events["drums"][0].velocity == 100
+    assert events["bass"][0].start == 0.0
+
+
+def test_mined_feel_derivation_recovers_offsets():
+    """derive_feel turns per-voice microtiming into per-class timing offsets."""
+    from app.mining.drums import empty_groove, analyze_drum_song, derive_feel
+    from app.mining.midi_io import MidiSong, Note
+
+    # Eight bars (>16 notes, the analyzer's floor): snare backbeats consistently
+    # 0.03 beat late, kicks on the grid.
+    notes = []
+    for bar in range(8):
+        notes.append(Note(pitch=36, start=bar * 4 + 0.0, duration=0.2, velocity=110, channel=9))
+        notes.append(Note(pitch=38, start=bar * 4 + 1.0 + 0.03, duration=0.2, velocity=100, channel=9))
+        notes.append(Note(pitch=38, start=bar * 4 + 3.0 + 0.03, duration=0.2, velocity=100, channel=9))
+    g = empty_groove("t")
+    analyze_drum_song(MidiSong(notes=notes, ppq=480, total_beats=32.0), g)
+    feel = derive_feel(g)
+    assert abs(feel["snare"]["timing"][4] - 0.03) < 1e-6    # beat 2 backbeat late
+    assert abs(feel["kick"]["timing"][0]) < 1e-6            # kick on the grid
 
 
 def test_chord_anticipation_pushes_changes_early():

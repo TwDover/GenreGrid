@@ -306,6 +306,44 @@ def _generate_808_bass(
     return [NoteEvent(e.pitch, max(0.0, e.start + micro_jitter()), e.duration, e.velocity, e.channel) for e in events]
 
 
+def _render_riff_bass(
+    style: dict, key: str, scale: str, bars: int, progression: list,
+    section_type: str | None,
+) -> List[NoteEvent]:
+    """Render the song's riff (app.generators.riff) an octave below the guitar,
+    as single notes — the bass locks to the guitar in unison. Accents get a
+    slight velocity bump; approach notes carry through so the walk matches."""
+    from app.generators.riff import build_riff
+
+    swing_amount = style.get("drums", {}).get("swing", 0.0)
+    ticks_per_beat = 480
+
+    def _swing(beat: float) -> float:
+        if swing_amount < 0.01:
+            return beat
+        tick = int(beat * ticks_per_beat)
+        return apply_swing(tick, swing_amount, ticks_per_beat) / ticks_per_beat
+
+    vel_base = style.get("velocity_base", 90)
+    # Pedal an octave below the guitar's low register so the two lock in unison.
+    ch_low = style.get("chord_register", [40, 60])[0]
+    riff = build_riff(style, key, scale, progression, bars, section_type,
+                      pedal_low=max(28, ch_low - 12))
+
+    events: List[NoteEvent] = []
+    for rn in riff:
+        bar_num = int(rn.start / 4.0)
+        vel = int(vel_base * phrase_breath_factor(bar_num)) + (8 if rn.accent else 0)
+        events.append(NoteEvent(
+            pitch=min(127, max(0, rn.pitch)),
+            start=max(0.0, _swing(rn.start) + timing_jitter(style_jitter(style) * 0.55)),
+            duration=rn.duration,
+            velocity=max(1, min(127, vel + random.randint(-4, 4))),
+            channel=1,
+        ))
+    return events
+
+
 def generate_bass(
     style: dict,
     key: str,
@@ -320,6 +358,7 @@ def generate_bass(
     push_windows: set[int] | None = None,   # chord windows that anticipate — shared with generate_chords
     rhythm_cell: list[float] | None = None,   # the song's rhythmic cell (theme onset offsets) — the bass quotes it
     cell_contour: list[int] | None = None,   # the song's melodic cell (scale-step deltas) — shapes call-response answers
+    section_type: str | None = None,   # riff mode: the bass doubles the guitar riff in riff sections
 ) -> List[NoteEvent]:
     if progression is None:
         templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
@@ -328,6 +367,15 @@ def generate_bass(
     bass_cfg = style.get("bass", {})
 
     _bass_profile = instrumentation_for(style).get("bass")
+
+    # Riff mode: in a riff section the bass plays the guitar's riff an octave
+    # down, in unison — the genre's defining low-end lock. Same figure, so the
+    # onsets coincide exactly (survey: bass/guitar onset correlation spikes).
+    from app.generators.riff import riff_section_comp
+    if riff_section_comp(style, section_type):
+        return _fold_to_range(
+            _render_riff_bass(style, key, scale, bars, progression, section_type),
+            _bass_profile)
 
     if bass_cfg.get("bass_style") == "808":
         return _fold_to_range(

@@ -30,12 +30,11 @@
         <span v-if="regenLoading">…</span>
         <span v-else>⟳</span>
       </button>
+      <button v-if="rollable" class="icon-btn roll-btn" :disabled="regenLoading || locked" @click="$emit('roll', file.part)" :title="locked ? 'Locked — unlock to roll' : 'Roll 3 variations to compare and keep one'">×3</button>
       <button v-if="hasUndo" class="icon-btn" @click="$emit('undo')" title="Undo last regeneration">↩</button>
-      <template v-if="!simple">
-        <button class="icon-btn lock-btn" :class="{ locked }" @click="$emit('toggle-lock', file.part)" :title="locked ? 'Unlock part' : 'Lock part (keeps it when regenerating others)'">
-          {{ locked ? '🔒' : '🔓' }}
-        </button>
-      </template>
+      <button v-if="!simple || lockable" class="icon-btn lock-btn" :class="{ locked }" @click="$emit('toggle-lock', file.part)" :title="locked ? 'Unlock part' : 'Lock part (keeps it when re-rolling sections)'">
+        {{ locked ? '🔒' : '🔓' }}
+      </button>
       <input
         v-if="gain !== undefined"
         type="range"
@@ -128,15 +127,19 @@ const props = defineProps<{
   keyRoot?: string
   scale?: string
   simple?: boolean
+  lockable?: boolean   // force-show the lock toggle even in simple (song-stem) mode
+  rollable?: boolean   // show the "×3" roll-candidates button (song stems only)
   gain?: number   // mixer gain (1.0 = generated balance); undefined hides the slider
   editable?: boolean   // enable piano-roll note editing (song stems only)
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'regen', part: string): void
+  (e: 'roll', part: string): void
   (e: 'toggle-lock', part: string): void
   (e: 'undo'): void
   (e: 'gain', part: string, gain: number): void
+  (e: 'edited', part: string): void
 }>()
 
 const saving = ref(false)
@@ -211,6 +214,7 @@ async function saveEdits() {
     editDirty.value = false
     editedNotes.value = null
     rollRef.value?.markSaved()
+    emit('edited', props.file.part)   // hand-edited parts auto-lock so a section re-roll won't discard them
     await cacheTempFile(props.file.url)   // re-verify + refresh caches / drag temp file
   } catch (e: any) {
     // Keep the edits on screen; surface the failure via the button title.
@@ -438,6 +442,7 @@ async function exportWav() {
 .icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .playing .icon-btn:first-child { background: var(--accent-surface-strong); border-color: var(--accent); }
 .lock-btn { font-size: 0.75rem; }
+.roll-btn { font-size: 0.68rem; font-weight: 700; }
 .lock-btn.locked { background: var(--accent-surface); border-color: color-mix(in srgb, var(--accent) 33%, transparent); }
 
 .drag-handle {

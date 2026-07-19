@@ -92,6 +92,8 @@ _FILL_LAYER_KEYS = frozenset({"tom_hi", "tom_mid", "tom_lo", "snare", "clap", "c
 _SECTION_ENERGY = {
     "intro": 0.30, "verse": 0.55, "pre_chorus": 0.70, "chorus": 1.00,
     "post_chorus": 0.80, "bridge": 0.60, "instrumental_solo": 0.75, "outro": 0.25,
+    # DJ intro/outro: steady, low-drama, mixable beats outside the arc.
+    "dj_intro": 0.35, "dj_outro": 0.30,
 }
 
 
@@ -130,6 +132,8 @@ def generate_drums(
     is_chorus    = sec in ("chorus", "post_chorus")
     is_prechorus = sec == "pre_chorus"
     is_outro     = sec == "outro"
+    # DJ intro/outro: a steady beat-only section for mixing — no fills, no builds.
+    is_dj        = sec in ("dj_intro", "dj_outro")
     # Bridge half-time: snare moves to beat 3, hats thin to 8ths, kick strips back.
     half_time = sec == "bridge" and drum_cfg.get("half_time_bridge", True)
     next_energy = _SECTION_ENERGY.get(next_section_type) if next_section_type else None
@@ -603,8 +607,9 @@ def generate_drums(
             (tom_fills and bar % 4 == 3 and complexity > 0.3 and not is_last_bar)
             or (is_section_end and not is_last_bar)
         )
-        # Outros wind down — no fill vocabulary, the section just decays
-        if is_outro:
+        # Outros wind down — no fill vocabulary, the section just decays.
+        # DJ intro/outro stay dead-steady so they loop cleanly under a mix.
+        if is_outro or is_dj:
             do_fill = False
 
         # Size the section-boundary fill by the energy of what comes next: a fill

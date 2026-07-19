@@ -101,7 +101,35 @@ export async function regenerateSongPart(req: { generation_id: string; part: str
   return res.json()
 }
 
-export async function regenerateSongSection(req: { generation_id: string; section_index: number }): Promise<FileInfo[]> {
+export interface SongPartCandidate { index: number; filename: string; url: string }
+
+export async function rollSongPartCandidates(req: { generation_id: string; part: string; count?: number }): Promise<SongPartCandidate[]> {
+  const res = await fetch(`${BASE_URL}/roll-song-part-candidates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Rolling candidates failed')
+  }
+  return res.json()
+}
+
+export async function keepSongPartCandidate(req: { generation_id: string; part: string; index: number }): Promise<FileInfo> {
+  const res = await fetch(`${BASE_URL}/keep-song-part-candidate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Keeping candidate failed')
+  }
+  return res.json()
+}
+
+export async function regenerateSongSection(req: { generation_id: string; section_index: number; locked_parts?: string[] }): Promise<FileInfo[]> {
   const res = await fetch(`${BASE_URL}/regenerate-song-section`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -255,6 +283,19 @@ export async function arrangeDownload(entries: { generation_id: string; filename
     throw new Error(err.detail ?? 'Failed to build arrangement')
   }
   return res.blob()
+}
+
+export async function rebuildSongProgression(req: { generation_id: string; progression: string[] }): Promise<BuildSongResponse> {
+  const res = await fetch(`${BASE_URL}/rebuild-song-progression`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Rebuilding progression failed')
+  }
+  return res.json()
 }
 
 export async function buildSong(req: BuildSongRequest): Promise<BuildSongResponse> {
