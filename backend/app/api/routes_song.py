@@ -26,7 +26,9 @@ from fastapi import File as FastAPIFile
 from app.models.schemas import (GenerateRequest, FileInfo, BuildSongRequest, BuildSongResponse,
                                 SongSectionResult, RegenerateSongPartRequest,
                                 RegenerateSongSectionRequest, RestoreSongVersionRequest,
-                                SetPartGainRequest, EditPartRequest)
+                                SetPartGainRequest, EditPartRequest, SongSectionDef,
+                                RollSongPartRequest, SongPartCandidate, KeepSongPartCandidateRequest,
+                                RebuildSongProgressionRequest)
 from app.services.style_loader import load_style
 from app.services.midi_writer import (NoteEvent, write_midi, write_combined_midi,
                                       rebuild_combined_from_parts, mido_key_signature)
@@ -131,7 +133,18 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     if custom_template:
         template = [dict(sd) for sd in custom_template]
     else:
-        template = _SONG_TEMPLATES.get(req.template, _SONG_TEMPLATES["verse_chorus"])
+        template = [dict(sd) for sd in _SONG_TEMPLATES.get(req.template, _SONG_TEMPLATES["verse_chorus"])]
+
+    # DJ edit: bookend the arrangement with an 8-bar beat-only (drums+bass)
+    # section for mixing — steady, no fills, no melodic content, outside the arc.
+    # Only meaningful when the song actually has a rhythm section.
+    if getattr(req, "dj_edit", False) and {"drums", "bass"} & set(req.parts):
+        template = (
+            [{"name": "DJ Intro", "section_type": "dj_intro", "bars": 8, "parts_mode": "foundation"}]
+            + template
+            + [{"name": "DJ Outro", "section_type": "dj_outro", "bars": 8, "parts_mode": "foundation"}]
+        )
+
     full_parts   = list(req.parts)
     no_arp       = [p for p in req.parts if p != "arpeggio"]
     foundation   = [p for p in req.parts if p in ("drums", "bass")]
@@ -261,6 +274,13 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
             sec_style = {**sec_style, "drums": {
                 **_drums_cfg, "hat_density": min(1.0, _drums_cfg.get("hat_density", 0.5) * 1.18)}}
         sec_progression = _prechorus_prog if sec_type == "pre_chorus" else song_progression
+        # Bridge escape: a fresh progression that opens off the song's beaten path
+        # and walks home on a dominant pedal. Seeded so ~half of songs keep today's
+        # bridge; opt-in per style via bridge_escape_prob (default 0 = unchanged).
+        if sec_type == "bridge":
+            _besc = style.get("bridge_escape_prob", 0.0)
+            if _besc and random.Random(base_seed ^ 0x8B12D6).random() < _besc:
+                sec_progression, _ = _bridge_escape_progression(song_progression, req.scale)
 
         sec_req = GenerateRequest.model_construct(
             style_id=req.style_id, key=sec_key, scale=req.scale, bpm=bpm,
@@ -546,7 +566,7 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     })
     total_bars += 1
 
-    return song_events, section_results, total_bars, section_seeds
+    return song_events, section_results, total_bars, section_seeds, song_progression
 
 
 def _section_markers(section_results: list[dict], home_key: str) -> list[tuple[float, str]]:
@@ -623,10 +643,81 @@ def _write_song_output(song_events: dict, output_dir, gen_id: str, bpm: int, sty
     return files
 
 
+_MAJOR_FAMILY_SCALES = ("major", "mixolydian", "lydian", "pentatonic_major")
+
+
+def _bridge_escape_progression(song_progression: list, scale: str) -> tuple[list, str]:
+    """A bridge grammar that starts somewhere the song hasn't been and walks home
+    (roadmap-2 item 5). Opens on a diatonic chord absent from the verse/chorus
+    loop (vi if the song is I-heavy, ♭VI as the deceptive option in minor), takes
+    a bar of departure, then a dominant-pedal bar that pulls back into the return.
+
+    Returns (progression, opening_chord). The caller decides (seeded) whether to
+    use it, so half of songs keep today's bridge sound."""
+    used = set(song_progression)
+    if scale in _MAJOR_FAMILY_SCALES:
+        openers, mid, dom = ["vi", "IV", "ii", "iii"], "ii", "V"
+    else:
+        openers, mid, dom = ["bVI", "iv", "bII", "bVII"], "iv", "V"
+    opener = next((c for c in openers if c not in used), openers[0])
+    if mid == opener:
+        mid = dom
+    return [opener, mid, dom, dom], opener
+
+
 @router.post("/build-song", response_model=BuildSongResponse)
 def build_song(req: BuildSongRequest):
     """Generate a full song by stitching independently-generated sections."""
     return _do_build_song(req)
+
+
+_ROMAN_TOKEN_RE = re.compile(
+    r'^[b#]?(VII|VI|IV|V|III|II|I|vii|vi|iv|v|iii|ii|i)(maj7|m7b5|dim7|dim|aug|sus[24]|add\d+|m?6|m?7|m?9|\+)?$')
+
+
+@router.post("/rebuild-song-progression", response_model=BuildSongResponse)
+def rebuild_song_progression(req: RebuildSongProgressionRequest):
+    """Rebuild a song with a user-edited progression (roadmap-2 item 6).
+
+    Everything else — style, key, seed, template, section layout — is replayed
+    from the original build, so only the harmony changes. Produces a new song
+    (the original stays on disk); the edited progression is validated against the
+    song's key before anything is regenerated."""
+    output_dir = EXPORTS_DIR / req.generation_id
+    meta_path = output_dir / "song_meta.json"
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail="Song not found or too old to edit")
+    meta = _json_module.loads(meta_path.read_text())
+
+    key, scale = meta.get("key", "C"), meta.get("scale", "minor")
+    prog = [r.strip() for r in req.progression if r.strip()]
+    if len(prog) < 2:
+        raise HTTPException(status_code=400, detail="A progression needs at least two chords")
+    # Validate each token is a real roman numeral (optional accidental + I–VII in
+    # either case + an optional chord-quality suffix) — roman_to_chord silently
+    # defaults unknown tokens to the tonic, so a shape check is what actually rejects typos.
+    for roman in prog:
+        if not _ROMAN_TOKEN_RE.match(roman):
+            raise HTTPException(status_code=400, detail=f"'{roman}' isn't a valid roman numeral")
+
+    custom = meta.get("custom_template")
+    song_req = BuildSongRequest(
+        style_id=meta["style_id"], key=key, scale=scale, bpm=meta["bpm"],
+        complexity=meta["complexity"], variation=meta["variation"],
+        dynamics=meta.get("dynamics", 0.5), humanize=meta["humanize"],
+        parts=meta["parts"], template=meta.get("template", "verse_chorus"),
+        seed=meta["base_seed"], use_priors=meta["use_priors"],
+        chorus_key_shift=meta.get("chorus_key_shift"),
+        bridge_key_shift=meta.get("bridge_key_shift"),
+        final_chorus_lift=meta.get("final_chorus_lift"),
+        custom_template=[SongSectionDef(**sd) for sd in custom] if custom else None,
+        blend_style_id=meta.get("blend_style_id"),
+        blend_amount=meta.get("blend_amount", 0.5),
+        dj_edit=meta.get("dj_edit", False),
+        progression_override=prog,
+    )
+    # Preserve an imported hook melody (melody-import songs) while overriding harmony.
+    return _do_build_song(song_req, hook_melody=_hook_from_meta(meta))
 
 
 def _do_build_song(req: BuildSongRequest, user_progression: list[str] | None = None,
@@ -664,13 +755,13 @@ def _do_build_song(req: BuildSongRequest, user_progression: list[str] | None = N
 
     base_seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
 
-    song_events, section_results, total_bars, section_seeds = _generate_song_sections(
+    song_events, section_results, total_bars, section_seeds, song_progression = _generate_song_sections(
         req, style, bpm, base_seed, chorus_key_shift,
         secondary_dominants, tritone_sub, groove_push,
         bridge_key_shift=bridge_key_shift,
         final_chorus_lift=final_chorus_lift,
         custom_template=custom_template,
-        user_progression=user_progression,
+        user_progression=user_progression or getattr(req, "progression_override", None),
         hook_melody=hook_melody,
     )
 
@@ -686,7 +777,11 @@ def _do_build_song(req: BuildSongRequest, user_progression: list[str] | None = N
         "final_chorus_lift": final_chorus_lift, "custom_template": custom_template,
         "blend_style_id": getattr(req, "blend_style_id", None),
         "blend_amount": getattr(req, "blend_amount", 0.5),
+        "dj_edit": getattr(req, "dj_edit", False),
         "user_progression": user_progression,
+        # The resolved song progression, pinned so section re-rolls reproduce it
+        # and the UI can show/lock it (roadmap-2 item 6).
+        "song_progression": song_progression,
         "hook_melody": ([[e.pitch, round(e.start, 4), round(e.duration, 4), e.velocity, e.channel]
                          for e in hook_melody] if hook_melody else None),
         "section_seeds": section_seeds,
@@ -709,6 +804,7 @@ def _do_build_song(req: BuildSongRequest, user_progression: list[str] | None = N
         sections=[SongSectionResult(**s) for s in section_results],
         bpm=bpm,
         key=f"{req.key} {req.scale}",
+        progression=song_progression,
     )
 
 
@@ -761,10 +857,11 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
         dynamics=meta.get("dynamics", 0.5),
         parts=gen_parts, template=meta["template"], use_priors=meta["use_priors"],
         seed=meta["base_seed"], chorus_key_shift=meta["chorus_key_shift"],
+        dj_edit=meta.get("dj_edit", False),   # keep the DJ bookends so section seeds still line up
     )
 
     salt = secrets.randbelow(2 ** 31) or 1   # non-zero so the part actually changes
-    song_events, _sections, total_bars, _seeds = _generate_song_sections(
+    song_events, _sections, total_bars, _seeds, _prog = _generate_song_sections(
         song_req, style, bpm, meta["base_seed"], meta["chorus_key_shift"],
         secondary_dominants, tritone_sub, groove_push,
         regen_part=req.part, regen_salt=salt,
@@ -772,7 +869,8 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
         fixed_section_seeds=meta.get("section_seeds"),
         final_chorus_lift=meta.get("final_chorus_lift", 0),
         custom_template=meta.get("custom_template"),
-        user_progression=meta.get("user_progression"),
+        # Pin the persisted progression so a part re-roll targets the same harmony.
+        user_progression=meta.get("song_progression") or meta.get("user_progression"),
         hook_melody=_hook_from_meta(meta),
     )
 
@@ -827,6 +925,149 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
         meta_path.write_text(_json_module.dumps(meta))
 
     return FileInfo(part=req.part, filename=fname, url=f"/exports/{req.generation_id}/{fname}")
+
+
+def _render_song_part_stem(output_dir, meta: dict, style: dict, part: str, salt: int,
+                           programs: dict, track_names: dict, bpm: int, out_name: str) -> bool:
+    """Render one variation of a song part (salted) and write it to `out_name`,
+    WITHOUT touching the live stem or song.mid. Used to roll compare-and-keep
+    candidates. Returns False when the part produced no notes."""
+    secondary_dominants = style.get("secondary_dominants", False)
+    tritone_sub = style.get("tritone_substitution", False)
+    groove_push = style.get("groove_push", 0.0)
+
+    song_req = BuildSongRequest.model_construct(
+        style_id=meta["style_id"], key=meta["key"], scale=meta["scale"], bpm=meta["bpm"],
+        complexity=meta["complexity"], variation=meta["variation"], humanize=meta["humanize"],
+        dynamics=meta.get("dynamics", 0.5),
+        parts=meta["parts"], template=meta["template"], use_priors=meta["use_priors"],
+        seed=meta["base_seed"], chorus_key_shift=meta["chorus_key_shift"],
+        dj_edit=meta.get("dj_edit", False),
+    )
+    song_events, _sections, total_bars, _seeds, _prog = _generate_song_sections(
+        song_req, style, bpm, meta["base_seed"], meta["chorus_key_shift"],
+        secondary_dominants, tritone_sub, groove_push,
+        regen_part=part, regen_salt=salt,
+        bridge_key_shift=meta.get("bridge_key_shift", 0),
+        fixed_section_seeds=meta.get("section_seeds"),
+        final_chorus_lift=meta.get("final_chorus_lift", 0),
+        custom_template=meta.get("custom_template"),
+        user_progression=meta.get("song_progression") or meta.get("user_progression"),
+        hook_melody=_hook_from_meta(meta),
+    )
+    evts = song_events.get(part) or []
+    if not evts:
+        return False
+
+    _sid = style.get("id", "")
+    part_cc = None
+    if part != "drums":
+        channel = _PART_CHANNELS.get(part, 0)
+        part_cc = _generate_part_cc(part, total_bars, channel, style=style)
+        if part == "melody":
+            part_cc = part_cc + _generate_melody_expression_cc(evts, channel)
+        for automation in (generate_build_sweeps(_sections, [part]),
+                           generate_section_crescendo(_sections, [part])):
+            part_cc = part_cc + automation.get(part, [])
+    part_pb = None
+    if part == "bass" and style.get("bass", {}).get("bass_style") == "808":
+        part_pb = _generate_808_pitch_bends(evts, _PART_CHANNELS.get("bass", 1))
+
+    tempo_map = _song_tempo_map(_sections, bpm, ending_bars=1)
+    scaled = _drop_quiet(_scale_velocity(evts, part, _sid))
+    write_midi(scaled, output_dir / out_name, bpm=bpm, program=programs.get(part),
+               cc_events=part_cc, pb_events=part_pb, tempo_events=tempo_map,
+               track_name=track_names.get(part))
+    return True
+
+
+def _clear_part_candidates(output_dir, part: str) -> None:
+    for f in output_dir.glob(f"{part}.cand*.mid"):
+        f.unlink(missing_ok=True)
+
+
+@router.post("/roll-song-part-candidates", response_model=list[SongPartCandidate])
+def roll_song_part_candidates(req: RollSongPartRequest):
+    """Roll several candidate variations of one song part so the user can compare
+    and keep the best (roadmap-2 item 7). Candidates are written to separate
+    `{part}.candN.mid` files; the live stem and song.mid are left untouched until
+    the user commits one via /keep-song-part-candidate."""
+    output_dir = EXPORTS_DIR / req.generation_id
+    meta_path = output_dir / "song_meta.json"
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail="Song not found or too old to re-roll")
+    meta = _json_module.loads(meta_path.read_text())
+    if req.part not in meta.get("parts", []):
+        raise HTTPException(status_code=400, detail=f"'{req.part}' is not a part of this song")
+
+    try:
+        style = load_style(meta["style_id"])
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    bpm_min, bpm_max = style.get("bpm_range", [40, 240])
+    bpm = max(bpm_min, min(bpm_max, meta["bpm"]))
+    style = _blend_styles(style, meta.get("blend_style_id"), meta.get("blend_amount", 0.5))
+    style = {**style, "_humanize_scale": meta["humanize"]}
+    programs, track_names = part_midi_meta(style)
+
+    _clear_part_candidates(output_dir, req.part)
+    candidates: list[SongPartCandidate] = []
+    # Deterministic per-generation salts so the same song always rolls the same
+    # candidate set (reproducible), while each candidate differs from the others.
+    for i in range(req.count):
+        salt = (secrets.randbelow(2 ** 31) or 1)
+        out_name = f"{req.part}.cand{i}.mid"
+        if _render_song_part_stem(output_dir, meta, style, req.part, salt,
+                                  programs, track_names, bpm, out_name):
+            candidates.append(SongPartCandidate(
+                index=i, filename=out_name,
+                url=f"/exports/{req.generation_id}/{out_name}"))
+    if not candidates:
+        raise HTTPException(status_code=500, detail=f"No candidates generated for {req.part}")
+    return candidates
+
+
+@router.post("/keep-song-part-candidate", response_model=FileInfo)
+def keep_song_part_candidate(req: KeepSongPartCandidateRequest):
+    """Commit a rolled candidate as the part's live stem: snapshot for history,
+    promote the chosen candidate, rebuild song.mid, and clear the candidates."""
+    output_dir = EXPORTS_DIR / req.generation_id
+    meta_path = output_dir / "song_meta.json"
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail="Song not found")
+    meta = _json_module.loads(meta_path.read_text())
+    cand_path = output_dir / f"{req.part}.cand{req.index}.mid"
+    if not cand_path.exists():
+        raise HTTPException(status_code=404, detail="That candidate is no longer available — re-roll to try again")
+
+    try:
+        style = load_style(meta["style_id"])
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    bpm_min, bpm_max = style.get("bpm_range", [40, 240])
+    bpm = max(bpm_min, min(bpm_max, meta["bpm"]))
+    style = _blend_styles(style, meta.get("blend_style_id"), meta.get("blend_amount", 0.5))
+    style = {**style, "_humanize_scale": meta["humanize"]}
+    _, track_names = part_midi_meta(style)
+
+    _snapshot_song(output_dir)   # version history: state before this mutation
+    live = output_dir / f"{req.part}.mid"
+    if live.exists():
+        shutil.copy(live, output_dir / f"{req.part}.prev")   # one-level undo
+    shutil.copy(cand_path, live)
+    _clear_part_candidates(output_dir, req.part)
+
+    layout = _template_section_results(
+        meta.get("template", "verse_chorus"), meta.get("key", "C"),
+        custom=meta.get("custom_template"))
+    rebuild_combined_from_parts(
+        output_dir, bpm, combined_name="song.mid",
+        tempo_events=_song_tempo_map(layout, bpm, ending_bars=1),
+        markers=_section_markers(layout, meta.get("key", "C")),
+        key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")),
+        track_names=track_names)
+    return FileInfo(part=req.part, filename=f"{req.part}.mid",
+                    url=f"/exports/{req.generation_id}/{req.part}.mid")
 
 
 def _template_section_results(template_name: str, key: str = "C",
@@ -1057,6 +1298,7 @@ def list_songs(limit: int = 20):
                 sections=[SongSectionResult(**s) for s in sections],
                 bpm=meta.get("bpm", 120),
                 key=f"{meta.get('key', 'C')} {meta.get('scale', 'minor')}",
+                progression=meta.get("song_progression"),
                 mixer=meta.get("mixer") or {},
             )))
         except Exception:
@@ -1209,14 +1451,15 @@ def regenerate_song_section(req: RegenerateSongSectionRequest):
         parts=meta["parts"], template=meta["template"], use_priors=meta["use_priors"],
         seed=meta["base_seed"], chorus_key_shift=meta["chorus_key_shift"],
     )
-    song_events, section_results, total_bars, _seeds = _generate_song_sections(
+    song_events, section_results, total_bars, _seeds, _prog = _generate_song_sections(
         song_req, style, bpm, meta["base_seed"], meta["chorus_key_shift"],
         secondary_dominants, tritone_sub, groove_push,
         bridge_key_shift=meta.get("bridge_key_shift", 0),
         fixed_section_seeds=section_seeds,
         final_chorus_lift=meta.get("final_chorus_lift", 0),
         custom_template=meta.get("custom_template"),
-        user_progression=meta.get("user_progression"),
+        # Pin the persisted progression so re-rolling a section keeps the song's harmony.
+        user_progression=meta.get("song_progression") or meta.get("user_progression"),
         hook_melody=_hook_from_meta(meta),
     )
 
@@ -1229,6 +1472,25 @@ def regenerate_song_section(req: RegenerateSongSectionRequest):
     files = _write_song_output(song_events, output_dir, req.generation_id, bpm, style,
                                programs, list(meta["parts"]), total_bars, section_results,
                                key=meta.get("key", "C"), scale=meta.get("scale", "minor"))
+
+    # Part locking: any locked stem is restored to its pre-reroll state (the .prev
+    # backup taken above) so it stays byte-identical — the section re-roll only
+    # rewrites the unlocked parts. song.mid is then rebuilt from the on-disk stems
+    # (locked = old, unlocked = fresh) so playback matches.
+    locked = [p for p in (req.locked_parts or []) if p in meta["parts"]]
+    if locked:
+        for part in locked:
+            prev = output_dir / f"{part}.prev"
+            if prev.exists():
+                shutil.copy(prev, output_dir / f"{part}.mid")
+        rebuild_combined_from_parts(
+            output_dir, bpm, combined_name="song.mid",
+            tempo_events=_song_tempo_map(section_results, bpm, ending_bars=1),
+            markers=_section_markers(section_results, meta.get("key", "C")),
+            key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")),
+            track_names=track_names)
+        # Don't ask the client to reload a locked stem that didn't change.
+        files = [f for f in files if f.part not in locked]
 
     meta["section_seeds"] = section_seeds
     meta_path.write_text(_json_module.dumps(meta))

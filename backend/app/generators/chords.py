@@ -17,6 +17,54 @@ from app.theory.rhythm import apply_swing
 from app.core.instruments import instrumentation_for, clamp_range
 
 
+def _render_riff_guitar(
+    style: dict, key: str, scale: str, bars: int, progression: list,
+    section_type: str | None, ch_low: int, ch_high: int,
+    velocity_base: int, vel_arc_start: float, swing_amount: float, strum_speed: float,
+) -> List[NoteEvent]:
+    """Render the song's riff (app.generators.riff) as a distorted guitar part:
+    power-chord stabs (root+5th, +octave when it fits) on the figure's accents,
+    single-note palm-muted chugs elsewhere. Approach notes stay single notes."""
+    from app.generators.riff import build_riff
+    from app.theory.rhythm import apply_swing as _apply_swing
+
+    ticks_per_beat = 480
+
+    def _swing(beat: float) -> float:
+        if swing_amount < 0.01:
+            return beat
+        tick = int(beat * ticks_per_beat)
+        return _apply_swing(tick, swing_amount, ticks_per_beat) / ticks_per_beat
+
+    riff = build_riff(style, key, scale, progression, bars, section_type, pedal_low=ch_low)
+    events: List[NoteEvent] = []
+    for rn in riff:
+        bar_num = int(rn.start / 4.0)
+        t = bar_num / max(1, bars - 1)
+        base = int(velocity_base * (vel_arc_start + (1.0 - vel_arc_start) * t))
+        base = int(base * phrase_breath_factor(bar_num))
+        # Stabs punch above the chugs; the wrist accents the figure.
+        vel = base + (10 if rn.accent else -6) + random.randint(-4, 4)
+
+        if rn.accent and not rn.approach:
+            voices = [rn.pitch, rn.pitch + 7]
+            if rn.pitch + 12 <= ch_high:
+                voices.append(rn.pitch + 12)
+        else:
+            voices = [rn.pitch]
+
+        start = max(0.0, _swing(rn.start) + timing_jitter(style_jitter(style)))
+        for vi, p in enumerate(voices):
+            events.append(NoteEvent(
+                pitch=min(127, max(0, p)),
+                start=max(0.0, start + vi * strum_speed),
+                duration=rn.duration,
+                velocity=max(1, min(127, vel - vi * 3)),
+                channel=0,
+            ))
+    return events
+
+
 def _apply_inversion(pitches: list[int], inversion: int) -> list[int]:
     result = sorted(pitches)
     for _ in range(inversion % max(1, len(result))):
@@ -185,6 +233,69 @@ def _apply_substitution(roman: str, scale: str, complexity: float, secondary_dom
     return roman
 
 
+# Secondary dominants, expressed as the applied-dominant major triad a perfect
+# fifth above the target's root (roman_to_chord voices these on any degree). Keyed
+# by the target chord that FOLLOWS — placing sec[target] before `target` gives a
+# correct V/x → x resolution. Verified: V/ii=VI, V/iii=VII, V/V=II, V/vi=III (maj);
+# V/v=II, V/♭VII=IV (min).
+_SEC_DOM_MAJOR = {"ii": "VI", "iii": "VII", "V": "II", "vi": "III"}
+_SEC_DOM_MINOR = {"v": "II", "V": "II", "bVII": "IV"}
+# Borrowed chords (modal interchange) — placed only on weak bars.
+_BORROWED_MAJOR = ["iv", "bVII", "bVI"]
+_BORROWED_MINOR = ["bII", "bVI"]
+_MAJOR_FAMILY = ("major", "mixolydian", "lydian", "pentatonic_major")
+
+
+def apply_chromatic_color(progression: list, scale: str, prob: float,
+                          rng: "random.Random | None" = None) -> list:
+    """Season a diatonic progression with at most ONE chromatic color chord per
+    4-bar phrase (roadmap-2 item 4). Two devices, resolution-aware:
+
+      * secondary dominant — replace chord *i* with V/x where x = chord *i+1*,
+        so the applied dominant actually resolves into the chord it precedes;
+      * borrowed chord — modal interchange (iv/♭VII/♭VI in major, ♭II/♭VI in
+        minor), only on a weak bar.
+
+    Never touches the final chord (the cadence). ``prob`` 0 → returns the
+    progression unchanged (byte-identical); styles opt in via ``chromatic_color``.
+    Deterministic given ``rng`` (seed it from the song seed)."""
+    if prob <= 0 or len(progression) < 2:
+        return list(progression)
+    rng = rng or random
+    out = list(progression)
+    is_major = scale in _MAJOR_FAMILY
+    sec = _SEC_DOM_MAJOR if is_major else _SEC_DOM_MINOR
+    borrowed = _BORROWED_MAJOR if is_major else _BORROWED_MINOR
+    last = len(out) - 1
+
+    for p0 in range(0, len(out), 4):
+        idxs = list(range(p0, min(p0 + 4, len(out))))
+        if len(idxs) < 2 or rng.random() >= prob:
+            continue
+        # Prefer a secondary dominant that resolves into the chord that follows.
+        # Keep i+1 inside this phrase (idxs[:-1]) so a later phrase can't overwrite
+        # the chord an applied dominant was chosen to resolve into.
+        cands = [i for i in idxs[:-1] if i != last]
+        rng.shuffle(cands)
+        placed = False
+        for i in cands:
+            target = out[i + 1]
+            repl = sec.get(target)
+            if repl and out[i] != repl:
+                out[i] = repl
+                placed = True
+                break
+        if placed:
+            continue
+        # Otherwise a borrowed chord on a weak bar (2nd/4th of the phrase).
+        weak = [i for i in idxs if (i - p0) % 2 == 1 and i != last]
+        rng.shuffle(weak)
+        if weak:
+            choice = rng.choice([b for b in borrowed if b != out[weak[0]]] or borrowed)
+            out[weak[0]] = choice
+    return out
+
+
 def resolve_progression(progression: list, scale: str, complexity: float, secondary_dominants: bool = False, tritone_sub: bool = False) -> list:
     """Pre-apply substitutions once so chords and melody share identical harmony.
 
@@ -314,6 +425,17 @@ def generate_chords(
         "doom_crush":  [1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0],
     }
     # fmt: on
+
+    # Riff mode: the guitar plays a low-register pedal-tone figure (the song's
+    # riff), not a comped voicing. Rendered here as power-chord stabs on the
+    # figure's accents and single-note palm-muted chugs elsewhere. The riff is a
+    # song-level object (app.generators.riff) that the bass renders in unison.
+    if comp_style == "riff":
+        return _render_riff_guitar(
+            style, key, scale, bars, prog_source or progression, section_type,
+            ch_low, ch_high, style.get("velocity_base", 74),
+            style.get("vel_arc_start", 0.75), swing_amount, strum_speed)
+
     chord_rhythm = _COMP_RHYTHMS.get(comp_style) if comp_style else style.get("chord_rhythm")
 
     # Comp style also affects note duration

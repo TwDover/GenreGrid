@@ -6,6 +6,7 @@
         110
     ],
     "default_scale": "major",
+  "chromatic_color": 0.25,
     "instrumentation": {
         "chords": "steel_guitar",
         "bass": "upright_bass",

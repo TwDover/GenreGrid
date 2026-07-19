@@ -418,6 +418,78 @@ def _mix_balance(
     return (sum(scores) / len(scores) if scores else 0.70), flags
 
 
+def _hook_score(chorus_melody: list[NoteEvent]) -> tuple[float | None, list[str]]:
+    """How *memorable* the chorus melody is. Correctness scorers (coherence,
+    contour, …) can pass a chorus that's valid but forgettable. A hook is
+    catchy because it's *compressible*: a rhythmic figure that repeats across
+    bars, a small pitch vocabulary, and a melodic motif that recurs.
+
+    Returns ``(None, [])`` when there's no chorus melody to judge (too few
+    notes) so styles/sections without a chorus aren't scored on this dimension.
+
+    Sub-scores:
+      (a) onset self-similarity — mean pairwise cosine of the per-bar 16-step
+          onset vectors. High = the bars share a rhythmic figure (the hook).
+      (b) pitch-class economy — distinct pitch-class count, best in a 3–6
+          sweet spot; fewer is monotonous, more resists memorisation.
+      (c) motif repetition — share of notes covered by a repeated interval
+          trigram (the tune restates a shape rather than wandering).
+    """
+    if len(chorus_melody) < 8:
+        return None, []
+
+    from collections import Counter
+
+    notes   = sorted(chorus_melody, key=lambda e: e.start)
+    pitches = [n.pitch for n in notes]
+
+    # (a) per-bar onset self-similarity
+    bar_vecs: dict[int, list[float]] = {}
+    for n in notes:
+        b   = int(n.start // _BEATS_PER_BAR)
+        vec = bar_vecs.setdefault(b, [0.0] * 16)
+        step = round((n.start - b * _BEATS_PER_BAR) / _STEP)
+        if 0 <= step < 16:
+            vec[step] += 1.0
+    active = [v for v in bar_vecs.values() if sum(v) > 0]
+    if len(active) >= 2:
+        sims = [_cosine(active[i], active[j])
+                for i in range(len(active)) for j in range(i + 1, len(active))]
+        s_selfsim = sum(sims) / len(sims)
+    else:
+        s_selfsim = 0.5                       # single-bar chorus — can't judge repetition
+
+    # (b) pitch-class economy — sweet spot 3–6 distinct classes
+    n_pcs = len({p % 12 for p in pitches})
+    if 3 <= n_pcs <= 6:
+        s_pcs = 1.0
+    elif n_pcs < 3:
+        s_pcs = 0.55                          # one or two notes — droning, not a tune
+    else:
+        s_pcs = max(0.0, 1.0 - (n_pcs - 6) * 0.12)
+
+    # (c) motif repetition — notes covered by a repeated interval trigram
+    intervals = [pitches[i + 1] - pitches[i] for i in range(len(pitches) - 1)]
+    N = 3
+    grams  = [tuple(intervals[i:i + N]) for i in range(len(intervals) - N + 1)]
+    counts = Counter(grams)
+    covered: set[int] = set()
+    for i, g in enumerate(grams):
+        if counts[g] >= 2:
+            covered.update(range(i, i + N + 1))   # trigram spans N+1 pitches
+    motif_ratio = len(covered) / len(pitches)
+    s_motif = min(1.0, motif_ratio / 0.5)     # 50% coverage = full marks
+
+    score = s_selfsim * 0.40 + s_pcs * 0.25 + s_motif * 0.35
+
+    flags = []
+    if s_selfsim < 0.35:
+        flags.append("Chorus bars don't share a rhythmic figure — no hook")
+    if n_pcs > 8:
+        flags.append("Chorus melody uses too many pitches to be catchy")
+    return min(1.0, score), flags
+
+
 # ── pattern extraction (also used by the library) ────────────────────────────
 
 def extract_rhythm_patterns(all_events: dict, bars: int) -> dict:
@@ -491,9 +563,15 @@ def score_generation(
     bars:        int,
     progression: list,
     complexity:  float,
+    chorus_spans: list[tuple[float, float]] | None = None,
 ) -> dict:
     """
     Score a generation across five musical dimensions.
+
+    ``chorus_spans`` (start_beat, end_beat) pairs mark the song's chorus
+    sections; when supplied, the melody inside them is scored for hook
+    memorability as an extra dimension. Omit it (loops without a chorus,
+    callers that don't track sections) and the hook dimension is skipped.
 
     Returns:
         total     — weighted composite (0–1)
@@ -503,6 +581,7 @@ def score_generation(
         contour   — melodic shape / interval & pitch variety
         density   — notes-per-beat vs style targets
         mix       — velocity balance
+        hook      — chorus memorability (0 when no chorus melody to judge)
         label     — "Excellent" | "Good" | "Fair" | "Weak"
         flags     — list of human-readable issue descriptions
     """
@@ -521,14 +600,28 @@ def score_generation(
     s_mix,    f_mix    = _mix_balance(melody, chords, bass)
     s_style,  f_style  = _style_match(progression, melody, style)
 
+    # Hook memorability — chorus melody only. Slice the melody to the chorus
+    # spans; when a chorus is present the search starts hunting *catchy*
+    # choruses, not merely valid ones.
+    s_hook, f_hook = None, []
+    if chorus_spans and melody:
+        chorus_mel = [
+            n for n in melody
+            if any(start <= n.start < end for start, end in chorus_spans)
+        ]
+        s_hook, f_hook = _hook_score(chorus_mel)
+
     # Weighted, normalised over the applicable dimensions (style-match only counts
-    # when a corpus prior exists, so styles without one aren't diluted).
+    # when a corpus prior exists, and hook only when there's a chorus melody, so
+    # styles/sections without them aren't diluted).
     weighted = [
         (s_harm, 0.30), (s_reg, 0.16), (s_rhythm, 0.23),
         (s_cont, 0.10), (s_dens, 0.11), (s_mix, 0.10),
     ]
     if s_style is not None:
         weighted.append((s_style, 0.14))
+    if s_hook is not None:
+        weighted.append((s_hook, 0.12))
     total = sum(v * w for v, w in weighted) / sum(w for _, w in weighted)
 
     if total >= 0.82:
@@ -549,6 +642,7 @@ def score_generation(
         "density":  round(s_dens,   3),
         "mix":      round(s_mix,    3),
         "style_match": round(s_style, 3) if s_style is not None else 0.0,
+        "hook":     round(s_hook, 3) if s_hook is not None else 0.0,
         "label":    label,
-        "flags":    f_harm + f_reg + f_rhythm + f_cont + f_dens + f_mix + f_style,
+        "flags":    f_harm + f_reg + f_rhythm + f_cont + f_dens + f_mix + f_style + f_hook,
     }

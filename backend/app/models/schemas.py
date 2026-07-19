@@ -86,6 +86,7 @@ class QualityScore(BaseModel):
     density: float
     mix: float
     style_match: float = 0.0   # match to the genre's mined distribution (0 if no prior)
+    hook: float = 0.0          # chorus memorability (0 if no chorus melody to judge)
     label: str
     flags: List[str]
 
@@ -136,6 +137,8 @@ class BuildSongRequest(BaseModel):
     custom_template: Optional[List[SongSectionDef]] = Field(default=None, max_length=20)  # overrides `template` when provided
     blend_style_id: Optional[str] = None   # second style blended into the whole song
     blend_amount: float = Field(default=0.5, ge=0.0, le=1.0)
+    dj_edit: bool = False   # prepend/append an 8-bar beat-only (drums+bass) DJ intro/outro for mixing
+    progression_override: Optional[List[str]] = Field(default=None, max_length=32)  # pin an explicit roman-numeral progression, bypassing the style pool
 
 
 class RegenerateSongPartRequest(BaseModel):
@@ -146,6 +149,30 @@ class RegenerateSongPartRequest(BaseModel):
 class RegenerateSongSectionRequest(BaseModel):
     generation_id: str
     section_index: int  # index into the song's template sections (the ending bar is not re-rollable)
+    locked_parts: List[str] = []  # parts to leave byte-identical — the section re-roll regenerates only the rest
+
+
+class RollSongPartRequest(BaseModel):
+    generation_id: str
+    part: str
+    count: int = Field(default=3, ge=2, le=4)  # how many candidate variations to roll
+
+
+class SongPartCandidate(BaseModel):
+    index: int
+    filename: str
+    url: str
+
+
+class KeepSongPartCandidateRequest(BaseModel):
+    generation_id: str
+    part: str
+    index: int  # which rolled candidate to promote to the live stem
+
+
+class RebuildSongProgressionRequest(BaseModel):
+    generation_id: str
+    progression: List[str] = Field(..., min_length=2, max_length=32)  # the user-edited roman-numeral progression
 
 
 class RestoreSongVersionRequest(BaseModel):
@@ -193,4 +220,5 @@ class BuildSongResponse(BaseModel):
     sections: List[SongSectionResult]
     bpm: int
     key: str
+    progression: Optional[List[str]] = None  # resolved roman-numeral progression (shown + lockable in the UI)
     mixer: Optional[dict] = None  # per-part gain (1.0 = as generated), persisted in song_meta

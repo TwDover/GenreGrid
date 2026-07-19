@@ -6,6 +6,8 @@
         140
     ],
     "default_scale": "major",
+  "chromatic_color": 0.35,
+  "bridge_escape_prob": 0.5,
     "instrumentation": {
         "chords": "rhodes_ep",
         "bass": "upright_bass",
