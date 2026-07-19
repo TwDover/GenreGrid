@@ -52,6 +52,7 @@ INSTRUMENTS: dict[str, dict] = {
     "wurlitzer_ep":   _inst("Wurlitzer EP",    5,  "electric_piano_2", (28, 96), 8, "decay", strum=0.008),
     "clavinet":       _inst("Clavinet",        7,  "clavinet",         (36, 88), 4, "decay"),
     "drawbar_organ":  _inst("Drawbar Organ",   16, "drawbar_organ",    (36, 96), 8, "sustain"),
+    "rock_organ":     _inst("Rock Organ",      18, "drawbar_organ",    (36, 96), 8, "sustain"),
     "accordion":      _inst("Accordion",       23, "accordion",        (41, 91), 6, "sustain"),
     # ── Mallets ───────────────────────────────────────────────────────────────
     "vibraphone":     _inst("Vibraphone",      11, "vibraphone",       (53, 89), 4, "ring"),
@@ -61,9 +62,15 @@ INSTRUMENTS: dict[str, dict] = {
     "steel_guitar":   _inst("Steel Guitar",    25, "acoustic_guitar_nylon", (40, 84), 6, "decay", strum=0.018),
     "jazz_guitar":    _inst("Jazz Guitar",     26, "acoustic_guitar_nylon", (40, 84), 6, "decay", strum=0.015),
     "clean_electric_guitar": _inst("Clean Electric Guitar", 27, "acoustic_guitar_nylon", (40, 86), 6, "decay", strum=0.012),
+    # Distorted guitars sustain like a held synth, not a plucked string, and
+    # honest polyphony is low: distortion turns dense voicings into mud, which
+    # is why rock/metal styles pair these with power_chords (root+5 dyads).
+    "overdriven_guitar":  _inst("Overdriven Guitar", 29, "synth_lead", (35, 86), 4, "sustain", strum=0.008),
+    "distortion_guitar":  _inst("Distortion Guitar", 30, "synth_lead", (35, 86), 4, "sustain", strum=0.006),
     # ── Basses ────────────────────────────────────────────────────────────────
     "upright_bass":   _inst("Upright Bass",    32, "bass_sampler",     (28, 60), 1, "decay", monophonic_legato=True),
     "electric_bass":  _inst("Electric Bass",   33, "bass_sampler",     (28, 62), 1, "decay", monophonic_legato=True),
+    "picked_bass":    _inst("Picked Bass",     34, "bass_sampler",     (28, 62), 1, "decay", monophonic_legato=True),
     "synth_bass":     _inst("Synth Bass",      38, "synth_bass",       (24, 60), 1, "sustain", monophonic_legato=True),
     "sub_808":        _inst("808 Sub",         38, "synth_bass",       (24, 55), 1, "sustain", monophonic_legato=True),
     "contrabass":     _inst("Contrabass",      43, "bass_sampler",     (28, 60), 1, "sustain", monophonic_legato=True),

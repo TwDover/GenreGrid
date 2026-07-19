@@ -138,6 +138,11 @@
         <label class="sb-label">Variation <span class="sb-val">{{ form.variation.toFixed(2) }}</span></label>
         <input type="range" v-model.number="form.variation" min="0" max="1" step="0.01" class="sb-range" />
       </div>
+      <div class="sb-field">
+        <label class="sb-label">Dynamics <span class="sb-val">{{ form.dynamics.toFixed(2) }}</span></label>
+        <input type="range" v-model.number="form.dynamics" min="0" max="1" step="0.01" class="sb-range"
+               title="How hard the arrangement dramatizes: drops, fills, breakdowns, verse/chorus contrast. 0 = steady beat-tape, 1 = every lift pushed." />
+      </div>
     </div>
 
     <!-- Style blend -->
@@ -265,6 +270,7 @@ const form = ref({
   bpm: 120,
   complexity: 0.6,
   variation: 0.4,
+  dynamics: 0.5,
   humanize: 0.5,
   // Pads default on: they only sound in choruses/bridges and are the cheapest
   // "full arrangement" win — untick to drop them.

@@ -172,6 +172,7 @@
   },
   "drums": {
     "hat_density": 0.5,
+    "hat_roll_prob": 0.2,
     "triplet_probability": 0.35,
     "snare_standard_beats": [
       2,

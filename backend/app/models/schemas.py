@@ -18,6 +18,7 @@ class GenerateRequest(BaseModel):
     bars: int = Field(default=8, ge=1, le=128)
     complexity: float = Field(default=0.5, ge=0.0, le=1.0)
     variation: float = Field(default=0.4, ge=0.0, le=1.0)
+    dynamics: float = Field(default=0.5, ge=0.0, le=1.0)  # arrangement drama: 0.5 = classic behavior, 0 = flat beat-tape, 1 = every drop/fill/lift pushed
     parts: List[str] = ["chords", "bass", "melody", "drums"]
     mode: str = "loop"   # "loop" | "arrangement"
     seed: Optional[int] = None
@@ -41,6 +42,7 @@ class RegeneratePartRequest(BaseModel):
     bars: int = Field(default=8, ge=1, le=128)
     complexity: float = Field(default=0.5, ge=0.0, le=1.0)
     variation: float = Field(default=0.4, ge=0.0, le=1.0)
+    dynamics: float = Field(default=0.5, ge=0.0, le=1.0)  # must match the original generation for faithful drum replay
     mode: str = "arrangement"
     seed: int  # original seed — replayed to derive the same progression
     use_priors: bool = True
@@ -122,6 +124,7 @@ class BuildSongRequest(BaseModel):
     bpm: int = Field(default=120, ge=40, le=240)
     complexity: float = Field(default=0.6, ge=0.0, le=1.0)
     variation: float = Field(default=0.4, ge=0.0, le=1.0)
+    dynamics: float = Field(default=0.5, ge=0.0, le=1.0)  # arrangement drama: scales drops/fills/breakdowns/section contrast; 0.5 = classic
     humanize: float = Field(default=0.5, ge=0.0, le=1.0)
     parts: List[str] = ["chords", "bass", "melody", "drums"]
     template: str = "verse_chorus"

@@ -40,7 +40,7 @@ from app.services.quality import score_generation, extract_rhythm_patterns
 from app.services.priors import load_prior, sample_progression, melody_prior_for, groove_fields_for
 from app.services.library import save_generation as lib_save, is_saved, build_scoring_style
 from app.core.arrangement import (
-    SECTION_PROFILES, _SONG_TEMPLATES, _part_seed, _transpose_key,
+    SECTION_PROFILES, _SONG_TEMPLATES, _part_seed, _transpose_key, scaled_profile,
     _apply_section_ramp, _plan_sections, _auto_arc_section_type, _section_end_bars,
     _song_tempo_map,
 )
@@ -437,8 +437,10 @@ def _run_attempt(
     progression = fixed_progression if fixed_progression is not None else _choose_progression(style, _use_priors, seed, req.scale)
     _melody_model = melody_prior_for(_prior_name(style), getattr(req, "use_priors", True))
 
-    # Resolve section profile for loop-mode shaping
-    _sec_profile = SECTION_PROFILES.get(req.section_type or "", {}) if is_loop else {}
+    # Resolve section profile for loop-mode shaping (contrast spread scaled by
+    # the dynamics macro — 0.5 reproduces SECTION_PROFILES exactly)
+    _dynamics = getattr(req, "dynamics", 0.5)
+    _sec_profile = scaled_profile(req.section_type, _dynamics) if is_loop else {}
     _sec_cplx = min(1.0, req.complexity * _sec_profile.get("complexity_scale", 1.0))
     _sec_var  = min(1.0, req.variation  * _sec_profile.get("variation_scale",  1.0))
     _sec_dyn  = _sec_profile.get("velocity_scale", 1.0)
@@ -497,7 +499,7 @@ def _run_attempt(
 
         # Harmonic rhythm: choruses/pre-choruses change chords faster. The boost
         # feeds one shared value into chords, bass, and melody so their grids agree.
-        _harm_boost = SECTION_PROFILES.get(s_sec_type or "", {}).get("harmonic_boost", 0.0)
+        _harm_boost = scaled_profile(s_sec_type, _dynamics).get("harmonic_boost", 0.0)
         harmony_cplx = min(1.0, backing_cplx + _harm_boost)
 
         # Ensemble pushes: which chord changes anticipate ("and of 4" early) is
@@ -516,7 +518,8 @@ def _run_attempt(
                                        section_end_bars=_section_end_bars(sections, s_off),
                                        is_loop=is_loop,
                                        section_type=s_sec_type,
-                                       next_section_type=s_next_type)
+                                       next_section_type=s_next_type,
+                                       dynamics=_dynamics)
             drum_evts = _apply_dynamic(drum_evts, s_dyn)
             all_events["drums"].extend(_shift(drum_evts, s_off))
             kick_times = [e.start for e in drum_evts if e.pitch == DRUM_MAP["kick"]]
@@ -592,7 +595,8 @@ def _run_attempt(
                                        melody_rests=mel_rests if has_melody else None,
                                        harmony_complexity=harmony_cplx,
                                        prev_voicing=_chords_prev,
-                                       push_windows=push_windows)
+                                       push_windows=push_windows,
+                                       section_type=s_sec_type)
                 section_chord_tones = _chord_tones_by_bar(
                     [(e.start, e.pitch) for e in evts], s_bars)
                 _chords_prev = _final_chord_voicing(evts)
@@ -1071,7 +1075,8 @@ def regenerate_part(req: RegeneratePartRequest):
             saved_state = random.getstate()
             random.seed(_part_seed(req.seed, section_i, "drums"))
             drum_evts_tmp = generate_drums(style, s_bars, s_cplx, req.variation,
-                                           section_end_bars=_section_end_bars(sections, s_off))
+                                           section_end_bars=_section_end_bars(sections, s_off),
+                                           dynamics=getattr(req, "dynamics", 0.5))
             kick_times = [e.start for e in drum_evts_tmp if e.pitch == DRUM_MAP["kick"]]
             random.setstate(saved_state)
 
@@ -1107,7 +1112,8 @@ def regenerate_part(req: RegeneratePartRequest):
                                            s_resolved, style)
         elif req.part == "drums":
             evts = generate_drums(style, s_bars, s_cplx, req.variation,
-                                  section_end_bars=_section_end_bars(sections, s_off))
+                                  section_end_bars=_section_end_bars(sections, s_off),
+                                  dynamics=getattr(req, "dynamics", 0.5))
         elif req.part == "arpeggio":
             arp_octave = 6 if melody_exists else 5
             sec_tones = None
