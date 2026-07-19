@@ -1,0 +1,85 @@
+{
+  "id": "doom_metal",
+  "name": "Doom Metal",
+  "bpm_range": [
+    55,
+    78
+  ],
+  "default_scale": "minor",
+  "instrumentation": {
+    "chords": "distortion_guitar",
+    "bass": "picked_bass",
+    "melody": "overdriven_guitar",
+    "arpeggio": "clean_electric_guitar",
+    "pads": "choir_pad",
+    "counter_melody": "tremolo_strings"
+  },
+  "preferred_keys": [
+    "E",
+    "D",
+    "C",
+    "B",
+    "A"
+  ],
+  "progression_templates": [
+    ["i", "bII", "i", "bII"],
+    ["i", "bVI", "i", "bVII"],
+    ["i", "iv", "bII", "i"],
+    ["i", "bIII", "bII", "i"],
+    ["i", "bVI", "bVII", "i"],
+    ["i", "iv", "i", "bVI"],
+    ["i", "v", "bVI", "i"],
+    ["i", "bVII", "iv", "i"]
+  ],
+  "chord_extensions": {
+    "allow_7th": 0.0,
+    "allow_9th": 0.0
+  },
+  "power_chords": true,
+  "comp_style": "doom_crush",
+  "comp_section_variants": {
+    "chorus": "rock_drive"
+  },
+  "chord_register": [
+    36,
+    54
+  ],
+  "strum_speed": 0.012,
+  "velocity_base": 84,
+  "vel_arc_start": 0.8,
+  "bass": {
+    "pattern_density": 0.3,
+    "octave_jumps": 0.05,
+    "sustain_bias": 0.9
+  },
+  "melody": {
+    "density": 0.3,
+    "stepwise_motion": 0.7,
+    "leap_probability": 0.1,
+    "rest_probability": 0.5,
+    "range": [
+      50,
+      72
+    ]
+  },
+  "drums": {
+    "kick_pattern": [
+      1, 0, 0, 0,
+      0, 0, 0, 1,
+      0, 0, 1, 0,
+      0, 0, 0, 0
+    ],
+    "hat_density": 0.3,
+    "triplet_probability": 0.3,
+    "snare_standard_beats": [
+      3
+    ],
+    "swing": 0.0,
+    "crash_on_bar_1": true,
+    "tom_fills": true,
+    "flam_prob": 0.08,
+    "ghost_note_prob": 0.0,
+    "use_ride": false
+  },
+  "groove_push": -0.012
+}

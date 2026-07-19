@@ -1,0 +1,89 @@
+{
+  "id": "hip_hop",
+  "name": "Hip Hop",
+  "bpm_range": [
+    88,
+    102
+  ],
+  "default_scale": "minor",
+  "instrumentation": {
+    "chords": "rhodes_ep",
+    "bass": "synth_bass",
+    "melody": "square_lead",
+    "arpeggio": "clavinet",
+    "pads": "warm_pad",
+    "counter_melody": "string_ensemble"
+  },
+  "preferred_keys": [
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "A"
+  ],
+  "progression_templates": [
+    ["i", "iv", "i", "iv"],
+    ["i", "VII", "i", "VII"],
+    ["i", "VI", "VII", "i"],
+    ["i", "v", "i", "v"],
+    ["i", "iv", "i", "V"],
+    ["i", "VI", "iv", "v"],
+    ["i", "iv", "VII", "i"],
+    ["i", "VI", "i", "VII"]
+  ],
+  "chord_extensions": {
+    "allow_7th": 0.7,
+    "allow_9th": 0.4
+  },
+  "melody_scale": "pentatonic_minor",
+  "blue_notes": true,
+  "chord_register": [
+    50,
+    74
+  ],
+  "chord_rhythm": [
+    1, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 0
+  ],
+  "bass": {
+    "pattern_density": 0.5,
+    "octave_jumps": 0.2,
+    "sustain_bias": 0.5
+  },
+  "melody": {
+    "density": 0.45,
+    "stepwise_motion": 0.65,
+    "leap_probability": 0.15,
+    "rest_probability": 0.4,
+    "range": [
+      67,
+      86
+    ]
+  },
+  "drums": {
+    "kick_pattern": [
+      1, 0, 0, 0,
+      0, 0, 0, 1,
+      0, 0, 1, 0,
+      0, 0, 0, 0
+    ],
+    "hat_density": 0.55,
+    "triplet_probability": 0.1,
+    "snare_standard_beats": [
+      2,
+      4
+    ],
+    "swing": 0.35,
+    "ghost_note_prob": 0.3,
+    "hat_roll_prob": 0.05,
+    "flam_prob": 0.05,
+    "open_hat_style": "offbeats",
+    "tom_fills": false,
+    "use_ride": false
+  },
+  "groove_push": -0.008,
+  "prior": "boom_bap"
+}

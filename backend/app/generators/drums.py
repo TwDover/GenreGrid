@@ -104,6 +104,7 @@ def generate_drums(
     is_loop: bool = False,
     section_type: str | None = None,
     next_section_type: str | None = None,
+    dynamics: float = 0.5,
 ) -> List[NoteEvent]:
     """`section_type` / `next_section_type` — song-section context (loop-mode song
     building). The groove *arranges* per section instead of playing the same beat
@@ -117,6 +118,12 @@ def generate_drums(
     events: List[NoteEvent] = []
     drum_cfg = style.get("drums", {})
     h = _humanize(style)
+
+    # Dynamics macro: one song-wide knob for how hard the kit dramatizes the
+    # arrangement. Scales fill commitment, chorus texture opening, and the
+    # per-section density spread. 0.5 is neutral (exactly the old behavior);
+    # 0 flattens toward a steady beat-tape, 1 pushes every contrast harder.
+    dyn_f = 0.4 + 1.2 * max(0.0, min(1.0, dynamics))
 
     sec = section_type or ""
     is_intro     = sec == "intro"
@@ -149,9 +156,24 @@ def generate_drums(
     edm_drops   = drum_cfg.get("edm_drops", False)
     perc_layers = drum_cfg.get("perc_layers", [])
     flam_prob   = drum_cfg.get("flam_prob", 0.0)
+    double_kick_prob = drum_cfg.get("double_kick_prob", 0.0)
     mined_fills = drum_cfg.get("fills")     # mined section-transition fills (groove prior)
     mined_hat_pattern = drum_cfg.get("hat_pattern")   # per-step closed-hat placement prob
     mined_hat_vel     = drum_cfg.get("hat_vel")       # per-step closed-hat velocity accent
+
+    # Section texture: the chorus OPENS UP — hat rolls come more often and
+    # offbeat 8ths sometimes open — while verses pull the rolls back and keep
+    # the closed grid. The drums themselves then restate the section change
+    # instead of playing one texture through the whole song (measured: verse
+    # and chorus bars were near-identical in voice and density).
+    chorus_open_offbeat_prob = 0.0
+    if is_chorus:
+        if hat_roll_prob > 0:
+            hat_roll_prob = min(0.5, hat_roll_prob * 1.6)
+        if not use_ride and open_hat_style != "offbeats":
+            chorus_open_offbeat_prob = min(0.5, 0.25 * dyn_f)
+    elif sec == "verse":
+        hat_roll_prob *= 0.5
 
     section_ends = set(section_end_bars) if section_end_bars else set()
     hat_note     = DRUM_MAP["ride"] if use_ride else DRUM_MAP["closed_hat"]
@@ -196,11 +218,13 @@ def generate_drums(
             sec_hat = 1.12
         else:
             sec_hat = 1.0
+        # Dynamics macro widens/narrows the per-section density spread
+        sec_hat = max(0.2, 1.0 + (sec_hat - 1.0) * dyn_f)
 
         # Hat breath: bar 4 of every 8-bar phrase slightly thinner
         hat_breath = 0.72 if bar_in_8 == 4 else 1.0
 
-        # ── Crash ──────────────────────────────────────────────────────────────
+        # ── Crash / section marker ─────────────────────────────────────────────
         # A chorus always announces itself with a crash on its first downbeat,
         # independent of the style's crash_on_bar_1 flag.
         if (is_chorus and bar == 0) or (
@@ -210,6 +234,18 @@ def generate_drums(
                 start=bar_start + _jitter("fill", h),
                 duration=0.5,
                 velocity=min(127, int((100 + random.randint(-6, 6)) * phrase_dyn)),
+                channel=DRUM_CHANNEL,
+            ))
+        elif bar == 0 and sec and not is_intro and not is_outro and not use_ride:
+            # Any other section re-entry gets a lighter marker — an open hat
+            # ringing over the downbeat — so verse 2 after a chorus reads as an
+            # arrival instead of the groove just... continuing (crash-less
+            # section starts previously passed completely unannounced).
+            events.append(NoteEvent(
+                pitch=DRUM_MAP["open_hat"],
+                start=bar_start + _jitter("hat", h),
+                duration=0.4,
+                velocity=min(127, int((70 + random.randint(-5, 5)) * phrase_dyn)),
                 channel=DRUM_CHANNEL,
             ))
 
@@ -245,6 +281,11 @@ def generate_drums(
         # Half-time bridge: kick on 1, optional lazy "and of 3"
         elif half_time:
             kick_beats = [0.0] + ([2.5] if complexity > 0.5 and should_trigger(0.4) else [])
+        # Double kick: machine-gun 16ths replace the bar's kick pattern (metal).
+        # Choruses run it more often; never under a stripped or half-time feel.
+        elif (double_kick_prob > 0 and not is_outro
+                and should_trigger(min(0.9, double_kick_prob * (1.5 if is_chorus else 1.0) * dyn_f))):
+            kick_beats = [i * step for i in range(16)]
 
         for b in kick_beats:
             t      = bar_start + b
@@ -474,6 +515,13 @@ def generate_drums(
                 elif use_planned_open and pos_key in open_hat_positions:
                     note = DRUM_MAP["open_hat"]
                     dur  = 0.35   # sustains until the kick closes it
+                elif (chorus_open_offbeat_prob > 0 and not half_time
+                        and abs(beat_frac - 0.5) < 0.01
+                        and should_trigger(chorus_open_offbeat_prob)):
+                    # Chorus lift: an offbeat 8th opens — the classic "section
+                    # got bigger" hat move (see section-texture block above).
+                    note = DRUM_MAP["open_hat"]
+                    dur  = 0.3
                 else:
                     note = hat_note
                     dur  = 0.06
@@ -590,26 +638,37 @@ def generate_drums(
             # Data-driven fill mined from a real drummer (Groove MIDI). Layer its
             # toms / snares / crash across the bar; the kick/hat groove already
             # placed above keeps the pulse underneath.
+            #
+            # Commit or stay silent: intensity used to gate EACH note, which
+            # decimated low-energy fills to a lone stray hit that read as a
+            # mistake, not a fill. Now one roll decides the whole fill; when it
+            # commits, every note plays, with intensity shaping velocity instead.
             chosen = random.choice(mined_fills)
             fill_intensity = min(1.0, (0.7 + complexity * 0.25) * transition_scale)
-            for entry in chosen:
-                key, vel = entry[1], entry[2]
-                if key not in _FILL_LAYER_KEYS or not should_trigger(fill_intensity):
-                    continue
-                fv = int(vel * phrase_dyn) + random.randint(-5, 5)
-                events.append(NoteEvent(
-                    pitch=DRUM_MAP[key],
-                    start=bar_start + entry[0] * step + _jitter("fill", h),
-                    duration=0.1,
-                    velocity=min(127, max(1, fv)),
-                    channel=DRUM_CHANNEL,
-                ))
+            if should_trigger(min(1.0, fill_intensity * dyn_f)):
+                _vel_scale = 0.7 + 0.3 * fill_intensity
+                for entry in chosen:
+                    key, vel = entry[1], entry[2]
+                    if key not in _FILL_LAYER_KEYS:
+                        continue
+                    fv = int(vel * _vel_scale * phrase_dyn) + random.randint(-5, 5)
+                    events.append(NoteEvent(
+                        pitch=DRUM_MAP[key],
+                        start=bar_start + entry[0] * step + _jitter("fill", h),
+                        duration=0.1,
+                        velocity=min(127, max(1, fv)),
+                        channel=DRUM_CHANNEL,
+                    ))
 
-        elif do_fill:
+        elif do_fill and should_trigger(min(1.0, (0.55 + complexity * 0.35) * transition_scale * dyn_f)):
+            # Commit or stay silent (see mined branch): one roll decides the
+            # whole fill. The old per-note gate shrank a 4-hit cascade into a
+            # single tom, and the always-placed signal snare could survive as a
+            # stray accent announcing a fill that never came.
             fill_intensity = min(1.0, (0.55 + complexity * 0.35) * transition_scale)
+            _vel_scale = 0.7 + 0.3 * fill_intensity
 
-            # Micro fill (subtle): always precedes a big fill to signal it
-            # — one soft snare accent 3 16ths before bar end, always present
+            # Micro fill signal: one soft snare accent 3 16ths before bar end
             micro_start = bar_start + 3.25
             events.append(NoteEvent(
                 pitch=DRUM_MAP["snare"],
@@ -650,15 +709,14 @@ def generate_drums(
             chosen_fill = random.choices(_FILL_VARIANTS, weights=[w / total_w for w in weights])[0]
 
             for b_offset, drum_key, base_vel in chosen_fill:
-                if should_trigger(fill_intensity):
-                    fill_vel = int(base_vel * phrase_dyn) + random.randint(-6, 6)
-                    events.append(NoteEvent(
-                        pitch=DRUM_MAP[drum_key],
-                        start=bar_start + b_offset + _jitter("fill", h),
-                        duration=0.1,
-                        velocity=min(127, max(1, fill_vel)),
-                        channel=DRUM_CHANNEL,
-                    ))
+                fill_vel = int(base_vel * _vel_scale * phrase_dyn) + random.randint(-6, 6)
+                events.append(NoteEvent(
+                    pitch=DRUM_MAP[drum_key],
+                    start=bar_start + b_offset + _jitter("fill", h),
+                    duration=0.1,
+                    velocity=min(127, max(1, fill_vel)),
+                    channel=DRUM_CHANNEL,
+                ))
 
         # ── Mid-phrase micro-variation ─────────────────────────────────────────
         # Without tom_fills a style otherwise repeats one groove verbatim for a

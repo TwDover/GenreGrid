@@ -227,6 +227,36 @@ _STYLE_PROGRAMS: dict[str, dict[str, int]] = {
         "melody":   80,  # Lead Square
         "arpeggio": 80,  # Lead Square — busy synth layers
     },
+    # ── Rock / Metal ─────────────────────────────────────────────────────────
+    "rock": {
+        "chords":   29,  # Overdriven Guitar — power-chord rhythm
+        "bass":     34,  # Picked Bass — pick attack drives with the kick
+        "melody":   30,  # Distortion Guitar — lead over the rhythm's crunch
+        "arpeggio": 27,  # Clean Electric Guitar — verse arpeggios
+        "pads":     18,  # Rock Organ — Hammond wash under choruses
+    },
+    "metal": {
+        "chords":   30,  # Distortion Guitar — palm-muted riffs
+        "bass":     34,  # Picked Bass
+        "melody":   29,  # Overdriven Guitar — lead, one gain stage under the riffs
+        "arpeggio": 29,  # Overdriven Guitar — fast picked lines
+        "pads":     91,  # Pad Choir — symphonic backdrop
+    },
+    "doom_metal": {
+        "chords":   30,  # Distortion Guitar — crushing sustained power chords
+        "bass":     34,  # Picked Bass
+        "melody":   29,  # Overdriven Guitar — mournful lead
+        "arpeggio": 27,  # Clean Electric Guitar — eerie clean picking
+        "pads":     91,  # Pad Choir — funeral-doom choir
+        "counter_melody": 44,  # Tremolo Strings — dread underneath
+    },
+    "hip_hop": {
+        "chords":   4,   # EP 1 (Rhodes) — classic West Coast keys
+        "bass":     38,  # Synth Bass 1 — Moog-style G-funk low end
+        "melody":   80,  # Lead Square — the G-funk whistle
+        "arpeggio": 7,   # Clavinet — funk DNA
+        "pads":     89,  # Pad Warm
+    },
 }
 
 _VELOCITY_DROP = 20  # notes quieter than this are inaudible — discard them
@@ -275,6 +305,8 @@ def part_midi_meta(style: dict) -> tuple[dict[str, int], dict[str, str]]:
 # would smear across those carefully-timed arrivals.
 _NO_SUSTAIN_COMP_STYLES = frozenset({
     "jazz_comp", "bossa_comp", "funk_stab", "house_stab", "synth_gate",
+    # Distorted-guitar comps: pedal smear across power-chord changes is mud
+    "rock_drive", "palm_mute", "doom_crush",
 })
 # Styles whose chord instruments (strings, brass) already sustain naturally —
 # adding CC64 causes unintended smear across bar lines.

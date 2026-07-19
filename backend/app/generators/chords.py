@@ -220,6 +220,7 @@ def generate_chords(
     harmony_complexity: float | None = None,
     prev_voicing: list[int] | None = None,
     push_windows: set[int] | None = None,
+    section_type: str | None = None,
 ) -> List[NoteEvent]:
     """`harmony_complexity` — the value that decides chords-per-bar, shared with
     melody/bass so all three parts agree on the harmonic grid (falls back to
@@ -244,6 +245,10 @@ def generate_chords(
     ext = style.get("chord_extensions", {})
     allow_7th_prob = ext.get("allow_7th", 0.3)
     allow_9th_prob = ext.get("allow_9th", 0.1)
+    # Power chords: root+5th(+octave), no 3rd — the only voicing that stays
+    # clear under distortion. Replaces extensions, alterations and voice-led
+    # inversions (a 5th-in-the-bass power chord reads as a different chord).
+    power_chords = bool(style.get("power_chords", False))
     swing_amount = style.get("drums", {}).get("swing", 0.0)
 
     altered_dominant_prob = style.get("altered_dominant_prob", 0.0)
@@ -276,6 +281,13 @@ def generate_chords(
 
     # comp_style overrides chord_rhythm with a curated comping pattern
     comp_style = style.get("comp_style")
+    # Per-section comp variants: the style can re-voice its comp per section
+    # ("verse" sparser, "intro"/"outro" ringing holds) so the rhythm part
+    # arranges across the song instead of chugging one pattern wall-to-wall
+    # (measured: rock_drive played identical 8ths through all 81 bars).
+    _comp_variants = style.get("comp_section_variants") or {}
+    if section_type and section_type in _comp_variants:
+        comp_style = _comp_variants[section_type]
     # fmt: off
     _COMP_RHYTHMS = {
         # Jazz: sparse syncopated — "and of 1", beat 2, "and of 3", beat 4
@@ -292,6 +304,14 @@ def generate_chords(
         "house_stab":  [0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0],
         # Synthwave: quarter-note gated stabs
         "synth_gate":  [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
+        # Rock: driving straight 8th-note chugs
+        "rock_drive":  [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0],
+        # Rock verse: damped hits with space — 1, and-of-2, and-of-3, 4
+        "rock_verse":  [1,0,0,0,0,0,1,0,0,0,1,0,1,0,0,0],
+        # Metal: palm-muted gallop — 8th + two 16ths on every beat
+        "palm_mute":   [1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1],
+        # Doom: crushing hit on 1 and the and-of-3, ringing until the next hit
+        "doom_crush":  [1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0],
     }
     # fmt: on
     chord_rhythm = _COMP_RHYTHMS.get(comp_style) if comp_style else style.get("chord_rhythm")
@@ -305,6 +325,10 @@ def generate_chords(
         "pad_hold":    3.80,   # long sustain
         "house_stab":  0.42,   # offbeat 8th-note stabs
         "synth_gate":  0.20,   # very short = gated synth
+        "rock_drive":  0.40,   # driven but not staccato
+        "rock_verse":  0.35,   # damped verse hits
+        "palm_mute":   0.11,   # tight chug — the mute IS the sound
+        "doom_crush":  None,   # auto (ring until the next hit)
     }
     comp_duration_override = _COMP_DURATIONS.get(comp_style) if comp_style else None
 
@@ -350,15 +374,27 @@ def generate_chords(
         # 9th/altered extensions on top of these are the droppable tensions.
         core_pcs = {p % 12 for p in roman_to_chord(roman, key, scale, octave=4, allow_7th=allow_7th)}
 
+        if power_chords:
+            # Root anchored lowest in the register; extensions discarded.
+            root = pitches[0]
+            while root < ch_low:
+                root += 12
+            while root > ch_high - 7 and root - 12 >= ch_low:
+                root -= 12
+            pitches = [root, root + 7]
+            if root + 12 <= ch_high:
+                pitches.append(root + 12)
+            core_pcs = {p % 12 for p in pitches}
+
         # Altered dominant: on V / secondary dominant chords, substitute a b9, #9, or b13
-        if altered_dominant_prob > 0 and _is_dominant(roman) and allow_7th and should_trigger(altered_dominant_prob):
+        if altered_dominant_prob > 0 and not power_chords and _is_dominant(roman) and allow_7th and should_trigger(altered_dominant_prob):
             chord_root = pitches[0]
             alt_interval = random.choice([13, 15, 20])  # b9, #9, b13
             # Remove natural 9th if present, then add the alteration
             pitches = [p for p in pitches if p != chord_root + 14]
             pitches.append(chord_root + alt_interval)
 
-        if prev_pitches:
+        if prev_pitches and not power_chords:
             pitches = _voice_lead(pitches, prev_pitches)
         else:
             pitches = sorted(pitches)
@@ -501,6 +537,10 @@ def generate_chords(
                     rest_boost = 7 if _in_melody_rest(beat_of_hit) else 0
                     hit_start = _swing(beat_of_hit) + timing_jitter(style_jitter(style))
                     hit_vel = vel + kick_boost + rest_boost - random.randint(0, 10 - min(6, rest_boost))
+                    # Driving guitar comps accent the quarter notes — flat 8ths
+                    # sound like a machine, accented ones like a wrist.
+                    if comp_style in ("rock_drive", "palm_mute") and (s * step) % 1.0 > 0.01:
+                        hit_vel -= 7
                     sorted_pitches_hit = sorted(pitches)
                     n_hit = len(sorted_pitches_hit)
                     for note_idx, pitch in enumerate(sorted_pitches_hit):

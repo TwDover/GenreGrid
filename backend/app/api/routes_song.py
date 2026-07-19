@@ -265,6 +265,7 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
         sec_req = GenerateRequest.model_construct(
             style_id=req.style_id, key=sec_key, scale=req.scale, bpm=bpm,
             bars=sec_bars, complexity=req.complexity, variation=req.variation,
+            dynamics=req.dynamics,
             parts=sec_parts, mode="loop", seed=sec_seed, section_type=sec_type,
             next_section_type=next_sec_type,
             song_parts=list(req.parts),   # full song part list — keeps register decisions consistent in sections that drop parts
@@ -457,7 +458,8 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     # ── Arrangement dynamics ──────────────────────────────────────────────────
     # Dropouts and breakdowns (pre-chorus drop, bridge breakdown, thinned
     # verse 2) — applied before the ending bar so the final cadence survives.
-    apply_arrangement_dynamics(song_events, section_results, base_seed)
+    apply_arrangement_dynamics(song_events, section_results, base_seed,
+                               dynamics=req.dynamics)
     # Pickups run AFTER dynamics so they lead into melody that survived the
     # dropouts (and can sing across a full-band stop).
     apply_melodic_pickups(song_events, section_results, base_seed, req.scale, style)
@@ -677,6 +679,7 @@ def _do_build_song(req: BuildSongRequest, user_progression: list[str] | None = N
     (output_dir / "song_meta.json").write_text(_jmeta.dumps({
         "style_id": req.style_id, "key": req.key, "scale": req.scale,
         "bpm": bpm, "complexity": req.complexity, "variation": req.variation,
+        "dynamics": req.dynamics,
         "humanize": req.humanize, "parts": list(req.parts), "template": req.template,
         "use_priors": req.use_priors, "chorus_key_shift": chorus_key_shift,
         "bridge_key_shift": bridge_key_shift, "base_seed": base_seed,
@@ -755,6 +758,7 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
     song_req = BuildSongRequest.model_construct(
         style_id=meta["style_id"], key=meta["key"], scale=meta["scale"], bpm=meta["bpm"],
         complexity=meta["complexity"], variation=meta["variation"], humanize=meta["humanize"],
+        dynamics=meta.get("dynamics", 0.5),
         parts=gen_parts, template=meta["template"], use_priors=meta["use_priors"],
         seed=meta["base_seed"], chorus_key_shift=meta["chorus_key_shift"],
     )
@@ -1201,6 +1205,7 @@ def regenerate_song_section(req: RegenerateSongSectionRequest):
     song_req = BuildSongRequest.model_construct(
         style_id=meta["style_id"], key=meta["key"], scale=meta["scale"], bpm=meta["bpm"],
         complexity=meta["complexity"], variation=meta["variation"], humanize=meta["humanize"],
+        dynamics=meta.get("dynamics", 0.5),
         parts=meta["parts"], template=meta["template"], use_priors=meta["use_priors"],
         seed=meta["base_seed"], chorus_key_shift=meta["chorus_key_shift"],
     )
