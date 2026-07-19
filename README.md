@@ -202,6 +202,23 @@ Every platform is a one-command build. Each script creates a Python venv if need
 
 **Output** — Linux: `frontend/release/GenreGrid-x.x.x.AppImage` and `genregrid_x.x.x_amd64.deb` · macOS: `frontend/release/GenreGrid-x.x.x-<arch>.dmg` and `.zip` (unsigned; the script sets `CSC_IDENTITY_AUTO_DISCOVERY=false` for you)
 
+<details>
+<summary><strong>Arch / CachyOS / Manjaro prerequisites</strong></summary>
+
+Everything installs into a project-local venv and `node_modules`, so nothing conflicts with `pacman`:
+
+```bash
+sudo pacman -S --needed python nodejs npm base-devel
+sudo pacman -S upx fuse2      # optional: upx shrinks the backend; fuse2 runs the AppImage
+```
+
+- **PEP 668 is not a problem** — the build uses a venv, so pip never touches system Python.
+- **`.deb` needs no `dpkg`/`fakeroot`** — electron-builder bundles its own packaging tools (it downloads them to `~/.cache/electron-builder` on first run, so the build needs network access).
+- **Python 3.13 is the tested floor.** Arch currently ships 3.13; if a rolling update has already moved you to a newer Python that lacks binary wheels for pydantic-core / PyInstaller, install `python313` (AUR) and create the venv with it.
+- **glibc floor:** an artifact built on a rolling-release distro runs on that distro and newer, but not on older ones (e.g. Ubuntu 22.04). Fine for your own machine — for portable builds, use the CI releases.
+
+</details>
+
 ### Build (Windows — one command)
 
 ```powershell
@@ -221,6 +238,7 @@ Launch `frontend/release/win-unpacked/GenreGrid.exe` directly, or run the NSIS i
 chmod +x "frontend/release/GenreGrid-x.x.x.AppImage"
 ./frontend/release/GenreGrid-x.x.x.AppImage
 ```
+> AppImages need FUSE 2 to mount. On Arch/CachyOS install it with `sudo pacman -S fuse2`, or run without FUSE via `./GenreGrid-x.x.x.AppImage --appimage-extract-and-run`.
 
 **Debian/Ubuntu package**:
 ```bash
