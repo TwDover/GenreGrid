@@ -318,9 +318,31 @@ _SONG_TEMPLATES: dict[str, list[dict]] = {
 }
 
 
+def scaled_profile(section_type: str | None, dynamics: float = 0.5) -> dict:
+    """Section profile with its contrast spread scaled by the dynamics macro.
+
+    Every ``*_scale`` value moves away from (or toward) 1.0 and
+    ``harmonic_boost`` scales directly, so one knob widens or flattens the
+    whole verse/chorus contrast. 0.5 reproduces SECTION_PROFILES exactly;
+    0 flattens sections toward uniform loops, 1 exaggerates the arc.
+    """
+    prof = SECTION_PROFILES.get(section_type or "", {})
+    if not prof or dynamics == 0.5:
+        return prof
+    f = 0.5 + max(0.0, min(1.0, dynamics))
+    out = dict(prof)
+    for k, v in prof.items():
+        if k.endswith("_scale"):
+            out[k] = max(0.1, 1.0 + (v - 1.0) * f)
+        elif k == "harmonic_boost":
+            out[k] = v * f
+    return out
+
+
 def apply_arrangement_dynamics(song_events: dict[str, list],
                                section_results: list[dict],
-                               base_seed: int) -> None:
+                               base_seed: int,
+                               dynamics: float = 0.5) -> None:
     """Classic arrangement dropouts, applied in place to the assembled song.
 
     Real records breathe: instruments drop out so others lead. Section
@@ -352,6 +374,14 @@ def apply_arrangement_dynamics(song_events: dict[str, list],
     stripped.
     """
     rng = random.Random(_part_seed(base_seed, 911, "dynamics"))
+    # Dynamics macro scales every device's odds around the historical values
+    # (0.5 = exactly the old probabilities). Threshold-only scaling: the number
+    # of rng draws never changes, so seed replay stays stable per version.
+    _f = 0.4 + 1.2 * max(0.0, min(1.0, dynamics))
+
+    def _p(base: float) -> float:
+        return min(0.95, base * _f)
+
     # Kick + closed/open hats survive verse-2 thinning (GM pitches)
     _KICK_HATS = {35, 36, 42, 44, 46}
 
@@ -377,15 +407,15 @@ def apply_arrangement_dynamics(song_events: dict[str, list],
             _dropped = False
             # (When the drop fires it REPLACES any boundary drum fill living in
             # the same two beats — fill or drop, never both, by construction.)
-            if start_beat >= 8.0 and rng.random() < 0.6:
+            if start_beat >= 8.0 and rng.random() < _p(0.6):
                 _dropped = True
                 _strip("drums", start_beat - 2.0, start_beat)
-                if rng.random() < 0.5:
+                if rng.random() < _p(0.5):
                     _strip("bass", start_beat - 2.0, start_beat)
                     # Full-band stop: everything but the melody cuts — the most
                     # "rehearsed" moment an arrangement can have. Only when the
                     # bass already dropped, so the stop is all-or-nothing.
-                    if rng.random() < 0.5:
+                    if rng.random() < _p(0.5):
                         _strip("chords", start_beat - 2.0, start_beat)
                         _strip("pads", start_beat - 2.0, start_beat)
                         _strip("arpeggio", start_beat - 2.0, start_beat)
@@ -394,7 +424,7 @@ def apply_arrangement_dynamics(song_events: dict[str, list],
             # then hit"), so the two are mutually exclusive.
             _roll = rng.random()
             if (chorus_occurrence == n_choruses and n_choruses > 1 and not _dropped
-                    and start_beat >= 16.0 and _roll < 0.5 and song_events.get("drums")):
+                    and start_beat >= 16.0 and _roll < _p(0.5) and song_events.get("drums")):
                 t = start_beat - 3.0
                 while t < start_beat - 0.2:
                     vel = int(50 + (t - (start_beat - 3.0)) / 2.8 * 60)
@@ -406,7 +436,7 @@ def apply_arrangement_dynamics(song_events: dict[str, list],
             # full band returns at the midpoint, making the back half enormous.
             _breakdown_roll = rng.random()
             if (chorus_occurrence == n_choruses and n_choruses > 1 and bars >= 8
-                    and _breakdown_roll < 0.3):
+                    and _breakdown_roll < _p(0.3)):
                 half = start_beat + (bars // 2) * 4.0
                 _strip("chords", start_beat, half)
                 _strip("pads", start_beat, half)
@@ -414,17 +444,17 @@ def apply_arrangement_dynamics(song_events: dict[str, list],
                 _strip("bass", start_beat, half)
                 _strip("drums", start_beat, half, keep=_KICK_HATS | {39})
             # Arp growth: only when a LATER chorus exists to be the bigger one
-            if chorus_occurrence == 1 and n_choruses > 1 and bars >= 4 and rng.random() < 0.5:
+            if chorus_occurrence == 1 and n_choruses > 1 and bars >= 4 and rng.random() < _p(0.5):
                 _strip("arpeggio", start_beat, start_beat + (bars // 2) * 4.0)
 
-        elif stype == "bridge" and bars >= 4 and rng.random() < 0.75:
+        elif stype == "bridge" and bars >= 4 and rng.random() < _p(0.75):
             _strip("drums", start_beat, start_beat + (bars // 2) * 4.0)
-            if rng.random() < 0.4:
+            if rng.random() < _p(0.4):
                 _strip("bass", start_beat, start_beat + (bars // 2) * 4.0)
 
         elif stype == "verse":
             verse_occurrence += 1
-            if verse_occurrence == 1 and bars >= 4 and rng.random() < 0.5:
+            if verse_occurrence == 1 and bars >= 4 and rng.random() < _p(0.5):
                 # A late vocal entrance only works over a groove-only lead-in. If
                 # the intro already carried a melody (its own line or the chorus
                 # hook tease), stripping the verse's opening bars turns one clean
@@ -436,11 +466,18 @@ def apply_arrangement_dynamics(song_events: dict[str, list],
                 if not intro_had_melody:
                     entry_bars = min(4, max(2, bars // 4))
                     _strip("melody", start_beat, start_beat + entry_bars * 4.0)
-            elif verse_occurrence == 2 and rng.random() < 0.5:
-                thin_bars = min(4, max(2, bars // 4))
-                _strip("drums", start_beat, start_beat + thin_bars * 4.0, keep=_KICK_HATS)
-                if rng.random() < 0.5:
-                    _strip("chords", start_beat, start_beat + thin_bars * 4.0)
+            elif verse_occurrence == 2:
+                if rng.random() < _p(0.5):
+                    thin_bars = min(4, max(2, bars // 4))
+                    _strip("drums", start_beat, start_beat + thin_bars * 4.0, keep=_KICK_HATS)
+                    if rng.random() < _p(0.5):
+                        _strip("chords", start_beat, start_beat + thin_bars * 4.0)
+                # Arp holds back through verse 2's first half — mirrors the
+                # chorus's arp growth, so a full-length arp doesn't flatten the
+                # verse/chorus contrast (measured: verse-2 arp ran wall-to-wall
+                # at chorus density, making the chorus entry read no bigger).
+                if bars >= 4 and rng.random() < _p(0.5):
+                    _strip("arpeggio", start_beat, start_beat + (bars // 2) * 4.0)
 
 
 def apply_melodic_pickups(song_events: dict[str, list],

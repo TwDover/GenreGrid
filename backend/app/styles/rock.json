@@ -1,0 +1,92 @@
+{
+  "id": "rock",
+  "name": "Rock",
+  "bpm_range": [
+    110,
+    145
+  ],
+  "default_scale": "major",
+  "instrumentation": {
+    "chords": "overdriven_guitar",
+    "bass": "picked_bass",
+    "melody": "distortion_guitar",
+    "arpeggio": "clean_electric_guitar",
+    "pads": "rock_organ",
+    "counter_melody": "string_ensemble"
+  },
+  "preferred_keys": [
+    "E",
+    "A",
+    "D",
+    "G",
+    "C"
+  ],
+  "progression_templates": [
+    ["I", "IV", "V", "IV"],
+    ["I", "V", "vi", "IV"],
+    ["vi", "IV", "I", "V"],
+    ["I", "bVII", "IV", "I"],
+    ["I", "IV", "I", "V"],
+    ["I", "bIII", "IV", "I"],
+    ["I", "V", "IV", "IV"],
+    ["i", "bVII", "bVI", "bVII"],
+    ["i", "bVI", "bIII", "bVII"],
+    ["i", "iv", "i", "v"]
+  ],
+  "chord_extensions": {
+    "allow_7th": 0.0,
+    "allow_9th": 0.0
+  },
+  "power_chords": true,
+  "comp_style": "rock_drive",
+  "comp_section_variants": {
+    "intro": "pad_hold",
+    "verse": "rock_verse",
+    "bridge": "rock_verse",
+    "outro": "pad_hold"
+  },
+  "chord_register": [
+    40,
+    59
+  ],
+  "strum_speed": 0.006,
+  "blue_notes": true,
+  "velocity_base": 88,
+  "vel_arc_start": 0.85,
+  "bass": {
+    "pattern_density": 0.8,
+    "octave_jumps": 0.15,
+    "sustain_bias": 0.3
+  },
+  "melody": {
+    "density": 0.5,
+    "stepwise_motion": 0.6,
+    "leap_probability": 0.2,
+    "rest_probability": 0.35,
+    "range": [
+      59,
+      81
+    ]
+  },
+  "drums": {
+    "kick_pattern": [
+      1, 0, 0, 0,
+      0, 0, 1, 0,
+      1, 0, 0, 0,
+      0, 0, 0, 0
+    ],
+    "hat_density": 0.5,
+    "triplet_probability": 0.0,
+    "snare_standard_beats": [
+      2,
+      4
+    ],
+    "swing": 0.0,
+    "crash_on_bar_1": true,
+    "tom_fills": true,
+    "flam_prob": 0.1,
+    "ghost_note_prob": 0.0,
+    "use_ride": false
+  },
+  "groove_push": 0.004
+}

@@ -116,6 +116,7 @@ export interface BuildSongRequest {
   bpm: number
   complexity: number
   variation: number
+  dynamics?: number
   humanize: number
   parts: string[]
   template: string
