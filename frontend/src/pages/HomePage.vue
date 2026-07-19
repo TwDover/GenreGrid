@@ -118,7 +118,7 @@
                 </div>
               </div>
             </div>
-            <SongResult :result="songResult" :label="songLabel" />
+            <SongResult :result="songResult" :label="songLabel" @rebuilt="onSongBuilt" />
           </template>
         </section>
       </div>

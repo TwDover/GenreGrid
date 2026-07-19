@@ -6,6 +6,7 @@
     145
   ],
   "default_scale": "major",
+  "bridge_escape_prob": 0.5,
   "instrumentation": {
     "chords": "overdriven_guitar",
     "bass": "picked_bass",
@@ -38,7 +39,7 @@
     "allow_9th": 0.0
   },
   "power_chords": true,
-  "comp_style": "rock_drive",
+  "comp_style": "riff",
   "comp_section_variants": {
     "intro": "pad_hold",
     "verse": "rock_verse",

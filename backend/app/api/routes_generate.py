@@ -35,7 +35,7 @@ from app.generators.counter_melody import generate_counter_melody
 from app.generators.answer import melody_cell
 from app.core.config import EXPORTS_DIR
 from app.core.constants import DRUM_MAP
-from app.services.humanize import apply_groove_pocket
+from app.services.humanize import apply_groove_pocket, apply_feel
 from app.services.quality import score_generation, extract_rhythm_patterns
 from app.services.priors import load_prior, sample_progression, melody_prior_for, groove_fields_for
 from app.services.library import save_generation as lib_save, is_saved, build_scoring_style
@@ -386,6 +386,15 @@ def _choose_progression(style: dict, use_priors: bool, seed: int, scale: str = "
     hrb = style.get("harmonic_rhythm_bars", 1)
     if hrb > 1:
         progression = [chord for chord in progression for _ in range(hrb)]
+    # Chromatic color: season the diatonic progression with borrowed chords and
+    # secondary dominants (roadmap-2 item 4). Gated by the style's chromatic_color
+    # (default 0 = byte-identical). Applied once here so every section and the
+    # scorer share the identical colored progression.
+    _color = style.get("chromatic_color", 0.0)
+    if _color:
+        from app.generators.chords import apply_chromatic_color
+        progression = apply_chromatic_color(progression, scale, _color,
+                                            random.Random(seed ^ 0x00C010A))
     return progression
 
 
@@ -454,6 +463,7 @@ def _run_attempt(
 
     all_events: dict[str, list[NoteEvent]] = {part: [] for part in req.parts}
     _chords_prev = list(chords_prev_voicing) if chords_prev_voicing else None
+    chorus_spans: list[tuple[float, float]] = []   # (start_beat, end_beat) per chorus, for the hook scorer
 
     for section_i, section in enumerate(sections):
         s_bars  = section["bars"]
@@ -476,6 +486,9 @@ def _run_attempt(
             s_sec_type  = _auto_arc_section_type(sections, section_i)
             s_next_type = (_auto_arc_section_type(sections, section_i + 1)
                            if section_i + 1 < len(sections) else None)
+
+        if s_sec_type == "chorus":
+            chorus_spans.append((float(s_off), float(s_off) + s_bars * 4.0))
 
         # A section only gets the "final cadence" static-root bass treatment if
         # it's genuinely the song's last section. In loop mode (song builder)
@@ -538,9 +551,18 @@ def _run_attempt(
         _song_parts = getattr(req, "song_parts", None) or req.parts
         melody_ceiling = mel_range[0] if (has_melody or "melody" in _song_parts) else None
 
+        # Riff mode: the sung melody stands down in riff verses (the riff IS the
+        # part) and returns for choruses, bridges, and lead/solo sections.
+        from app.generators.riff import riff_section_comp
+        _melody_tacet = (
+            riff_section_comp(style, s_sec_type)
+            and s_sec_type not in ("chorus", "post_chorus", "pre_chorus",
+                                    "bridge", "instrumental_solo")
+        )
+
         mel_rests: list = []
         mel_evts: list = []
-        if has_melody and "melody" in req.parts:
+        if has_melody and "melody" in req.parts and not _melody_tacet:
             random.seed(_pseed(section_i, "melody"))
             mel_evts = generate_melody(style, s_key, req.scale, s_bars, mel_cplx,
                                        eff_var, s_resolved, is_loop=is_loop,
@@ -612,7 +634,8 @@ def _run_attempt(
                                      harmony_complexity=harmony_cplx,
                                      push_windows=push_windows,
                                      rhythm_cell=rhythm_cell,
-                                     cell_contour=_answer_cell)
+                                     cell_contour=_answer_cell,
+                                     section_type=s_sec_type)
             elif part == "arpeggio":
                 arp_octave = 6 if has_melody else 5
                 # When melody is active, pull arpeggio back so it supports rather than competes.
@@ -635,10 +658,16 @@ def _run_attempt(
             if gp_part in all_events and all_events[gp_part]:
                 all_events[gp_part] = _apply_groove_push(all_events[gp_part], groove_push)
 
-    # Shared groove pocket: every part shifts onto the same per-16th-slot
+    # Systematic feel first (styles with a feel profile): drums get per-class
+    # microtiming + velocity contour, bass sits behind the kick. Those parts are
+    # then excluded from the generic pocket so the two don't stack. Styles with
+    # no feel profile skip this entirely and fall through unchanged.
+    _feel_parts = apply_feel(all_events, style)
+
+    # Shared groove pocket: every remaining part shifts onto the same per-16th-slot
     # micro-offsets (style-seeded, deterministic) so the band plays TOGETHER —
     # independent per-note jitter alone made the composite subtly smear.
-    apply_groove_pocket(all_events, style)
+    apply_groove_pocket(all_events, style, skip=_feel_parts)
 
     if all_events.get("melody"):
         # Per-section scale pcs (sections can sit in shifted keys — chorus lift)
@@ -706,7 +735,8 @@ def _run_attempt(
     try:
         quality_raw = score_generation(
             _scored_events, scoring_style or style,
-            req.key, req.scale, req.bars, progression, req.complexity
+            req.key, req.scale, req.bars, progression, req.complexity,
+            chorus_spans=chorus_spans,
         )
     except Exception as exc:
         logger.error("Quality scoring failed (seed=%s): %s", seed, exc, exc_info=True)
@@ -797,6 +827,13 @@ def generate(req: GenerateRequest):
 
     # Write patterns.json so the frontend's manual-save can retrieve them later
     (output_dir / "patterns.json").write_text(_json.dumps(patterns or {}))
+    # meta.json lets a later download/thumbs-up record a library keep without the
+    # frontend re-sending the generation parameters (roadmap-2 item 9).
+    (output_dir / "meta.json").write_text(_json.dumps({
+        "style_id": req.style_id, "key": req.key, "scale": req.scale,
+        "bpm": bpm, "bars": req.bars, "seed": seed,
+        "quality": quality_raw or {},
+    }))
 
     # Auto-save to library when all dimensions are green
     if quality_raw and _all_green(quality_raw):
@@ -1172,6 +1209,9 @@ def download_bundle(gen_id: str):
     mid_files = list(output_dir.glob("*.mid"))
     if not mid_files:
         raise HTTPException(status_code=404, detail="No MIDI files found")
+    # Downloading the bundle is a deliberate keep — feed it to the library.
+    from app.api.routes_library import record_export_keep
+    record_export_keep(gen_id)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for f in sorted(mid_files):

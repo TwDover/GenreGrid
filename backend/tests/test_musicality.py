@@ -198,6 +198,159 @@ def test_sections_carry_quality(song_vc):
     assert all(s.quality is not None and 0.0 <= s.quality <= 1.0 for s in non_ending)
 
 
+def test_hook_score_rewards_catchy_chorus():
+    """A repeating rhythmic figure with a small pitch vocabulary must outscore a
+    high-entropy wandering line, and a too-short chorus is left unscored."""
+    from app.services.quality import _hook_score
+    from app.services.midi_writer import NoteEvent
+
+    figure = [60, 62, 64, 60]
+    catchy = [NoteEvent(figure[i % 4], i * 0.5, 0.5, 90, 2) for i in range(16)]
+    s_catchy, _ = _hook_score(catchy)
+
+    random.seed(7)
+    wander = [NoteEvent(random.randint(55, 79), i * 0.5, 0.5, 90, 2) for i in range(16)]
+    s_wander, _ = _hook_score(wander)
+
+    assert s_catchy is not None and s_wander is not None
+    assert s_catchy > s_wander
+    assert _hook_score(catchy[:5]) == (None, [])   # too few notes → unscored
+
+
+def test_hook_dimension_only_scored_with_chorus_spans():
+    """score_generation adds the hook dimension exactly when chorus_spans cover
+    melody; without spans the payload's hook stays 0 and total is unaffected."""
+    from app.services.quality import score_generation
+    from app.services.midi_writer import NoteEvent
+
+    figure = [60, 62, 64, 60]
+    melody = [NoteEvent(figure[i % 4], i * 0.5, 0.5, 90, 2) for i in range(16)]
+    events = {"melody": melody, "chords": [], "bass": [], "drums": []}
+    prog = ["i", "VI", "III", "VII"]
+
+    no_span = score_generation(events, _style(), "C", "minor", 4, prog, 0.5)
+    with_span = score_generation(events, _style(), "C", "minor", 4, prog, 0.5,
+                                 chorus_spans=[(0.0, 8.0)])
+
+    assert no_span["hook"] == 0.0
+    assert with_span["hook"] > 0.0
+    assert no_span["total"] != with_span["total"]
+
+
+def test_riff_mode_locks_bass_to_guitar_in_unison():
+    """Riff styles play a low-register figure with guitar and bass in unison:
+    identical onsets, bass an octave below the guitar's pedal."""
+    from app.generators.chords import generate_chords
+    from app.generators.bass import generate_bass
+
+    style = _style("metal")
+    prog = ["i", "bVI", "bVII", "i"]
+
+    random.seed(3)
+    guitar = generate_chords(style, "E", "minor", bars=4, complexity=0.5, variation=0.3,
+                             progression=prog, resolved_progression=prog, section_type="verse")
+    random.seed(3)
+    bass = generate_bass(style, "E", "minor", bars=4, complexity=0.5, variation=0.3,
+                         progression=prog, section_type="verse")
+
+    assert guitar and bass
+    # Every bass onset coincides with a guitar onset (unison lock).
+    g_onsets = sorted({round(e.start, 1) for e in guitar})
+    b_onsets = sorted({round(e.start, 1) for e in bass})
+    matched = sum(1 for b in b_onsets if any(abs(b - g) < 0.06 for g in g_onsets))
+    assert matched / len(b_onsets) > 0.9
+    # Bass sits below the guitar pedal.
+    assert min(e.pitch for e in bass) < min(e.pitch for e in guitar)
+    # Guitar carries power-chord stabs (a fifth above some root) — no comped triads with a 3rd.
+    assert any(e2.pitch - e1.pitch == 7
+               for e1 in guitar for e2 in guitar
+               if abs(e1.start - e2.start) < 0.06 and e2.pitch > e1.pitch)
+
+
+def test_dj_edit_adds_beat_only_bookends():
+    """dj_edit prepends/appends an 8-bar drums+bass section outside the arc."""
+    import json
+    req = BuildSongRequest(style_id="house", key="C", scale="minor", bpm=124,
+                           complexity=0.6, variation=0.5,
+                           parts=["chords", "bass", "melody", "drums"],
+                           template="verse_chorus", seed=1, dj_edit=True)
+    r = build_song(req)
+    struct = json.loads((EXPORTS_DIR / r.generation_id / "song_structure.json").read_text())
+    types = [s.get("section_type") for s in struct]
+    assert types[0] == "dj_intro"
+    assert "dj_outro" in types
+    dj = next(s for s in struct if s["section_type"] == "dj_intro")
+    assert dj["bars"] == 8
+
+    # DJ intro carries only drums (ch 9) and bass (ch 1) — no melodic content.
+    mid = mido.MidiFile(str(EXPORTS_DIR / r.generation_id / "song.mid"))
+    lo, hi = dj["start_bar"] * 4, (dj["start_bar"] + dj["bars"]) * 4
+    chans = set()
+    for tr in mid.tracks:
+        t = 0
+        for m in tr:
+            t += m.time
+            if m.type == "note_on" and m.velocity > 0 and lo <= t / mid.ticks_per_beat < hi:
+                chans.add(m.channel)
+    assert chans <= {1, 9} and chans, chans
+
+    # A song built without the toggle keeps its original first section (unchanged).
+    plain = build_song(BuildSongRequest(style_id="house", key="C", scale="minor", bpm=124,
+                                        complexity=0.6, variation=0.5,
+                                        parts=["chords", "bass", "melody", "drums"],
+                                        template="verse_chorus", seed=1))
+    plain_struct = json.loads((EXPORTS_DIR / plain.generation_id / "song_structure.json").read_text())
+    assert plain_struct[0]["section_type"] != "dj_intro"
+
+
+def test_bridge_escape_opens_off_path_and_walks_home():
+    from app.api.routes_song import _bridge_escape_progression
+
+    # I-heavy major song → bridge opens on vi (unused), ends on a dominant pedal.
+    prog, opener = _bridge_escape_progression(["I", "IV", "V", "I"], "major")
+    assert opener == "vi" and opener not in {"I", "IV", "V"}
+    assert prog[-1] == "V" and prog[-2] == "V"
+
+    # Minor → ♭VI deceptive opener.
+    prog_m, opener_m = _bridge_escape_progression(["i", "iv", "v", "i"], "minor")
+    assert opener_m == "bVI"
+    assert prog_m[-1] == "V"
+
+    # When the first-choice opener is already in the loop, fall through to the next.
+    _, opener2 = _bridge_escape_progression(["I", "vi", "IV", "V"], "major")
+    assert opener2 not in {"I", "vi", "IV", "V"}
+
+
+def test_chromatic_color_is_gated_resolution_aware_and_protects_cadence():
+    from app.generators.chords import apply_chromatic_color, _SEC_DOM_MAJOR
+
+    prog = ["ii", "V", "I", "vi", "IV", "V", "I", "I"]
+    # prob 0 → untouched (byte-identical for styles that don't opt in)
+    assert apply_chromatic_color(prog, "major", 0.0) == prog
+    # Deterministic given the same rng seed
+    assert (apply_chromatic_color(prog, "major", 0.8, random.Random(1))
+            == apply_chromatic_color(prog, "major", 0.8, random.Random(1)))
+
+    for seed in range(30):
+        out = apply_chromatic_color(prog, "major", 1.0, random.Random(seed))
+        assert len(out) == len(prog)
+        assert out[-1] == "I"                       # final cadence never touched
+        # Any secondary dominant sits immediately before the chord it resolves to.
+        for i in range(len(out) - 1):
+            if out[i] in _SEC_DOM_MAJOR.values() and prog[i] not in _SEC_DOM_MAJOR.values():
+                target = out[i + 1]
+                assert _SEC_DOM_MAJOR.get(target) == out[i], (seed, i, out)
+
+
+def test_riff_mode_is_opt_in_only():
+    """A non-riff style never enters riff rendering — byte-identical path."""
+    from app.generators.riff import riff_section_comp, is_riff_style
+    assert not is_riff_style(_style("lofi"))
+    assert not riff_section_comp(_style("lofi"), "verse")
+    assert is_riff_style(_style("metal"))
+    assert riff_section_comp(_style("metal"), "verse")
+
+
 def test_custom_template_build_and_regen():
     custom = [
         SongSectionDef(section_type="verse", bars=4, parts_mode="no_arp"),

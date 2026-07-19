@@ -57,6 +57,16 @@ _FILL_PITCH_TO_KEY: dict[int, str] = {
 }
 
 
+# Drum voices grouped into the four feel classes the humanizer applies. Mirrors
+# app.core.feel.drum_class, but expressed over this module's mined voice names.
+_FEEL_CLASS_VOICES = {
+    "kick":  ["kick"],
+    "snare": ["snare", "clap", "side_stick"],
+    "hat":   ["closed_hat", "open_hat", "ride"],
+    "other": ["crash", "tom"],
+}
+
+
 def empty_groove(genre: str) -> dict:
     return {
         "genre": genre,
@@ -64,6 +74,10 @@ def empty_groove(genre: str) -> dict:
         "bars": 0.0,
         "hits": {v: [0.0] * _STEPS for v in VOICES},      # hit count per step
         "vel_sum": {v: [0.0] * _STEPS for v in VOICES},   # velocity sum per step
+        # Feel: per-voice, per-step Σ of the hit's signed offset from its grid
+        # line (beats) — the systematic microtiming a real drummer plays.
+        "time_off_sum": {v: [0.0] * _STEPS for v in VOICES},
+        "time_off_n": {v: [0.0] * _STEPS for v in VOICES},
         "swing_delay_sum": 0.0,                            # Σ offbeat delay (beats)
         "swing_n": 0,
         "fills": [],                                       # list of mined fill patterns
@@ -122,13 +136,17 @@ def analyze_drum_song(song: MidiSong, groove: dict) -> bool:
         step = int(round(beat_in_bar / _STEP)) % _STEPS
         groove["hits"][voice][step] += 1.0
         groove["vel_sum"][voice][step] += n.velocity
+        # Feel: signed offset of this hit from its own grid line (ignore fill
+        # slop beyond a 32nd either side, which would poison the median).
+        grid = bar * 4 + step * _STEP
+        delay = n.start - grid
+        if -0.125 < delay < 0.125:
+            groove["time_off_sum"][voice][step] += delay
+            groove["time_off_n"][voice][step] += 1.0
         # Swing: measure how late the offbeat hits land vs the exact grid.
-        if step in _OFFBEAT_STEPS:
-            grid = bar * 4 + step * _STEP
-            delay = n.start - grid
-            if -0.12 < delay < 0.2:        # ignore gross outliers / fills
-                groove["swing_delay_sum"] += delay
-                groove["swing_n"] += 1
+        if step in _OFFBEAT_STEPS and -0.12 < delay < 0.2:   # ignore gross outliers / fills
+            groove["swing_delay_sum"] += delay
+            groove["swing_n"] += 1
 
     groove["bars"] += n_bars
     groove["songs"] += 1
@@ -160,6 +178,7 @@ def finalize_groove(groove: dict) -> dict:
         "swing_est": round(swing, 3),
         "fills": groove.get("fills", []),
         "derived": derive_drum_fields(prob, vel, swing),
+        "feel": derive_feel(groove),
     }
 
 
@@ -197,3 +216,34 @@ def derive_drum_fields(prob: dict, vel: dict, swing: float) -> dict:
         "swing": round(swing, 3),
         "use_ride": use_ride,
     }
+
+
+def derive_feel(groove: dict) -> dict:
+    """Turn the accumulated per-voice microtiming and velocity into the style
+    ``feel`` block the humanizer applies (app.core.feel): per instrument class, a
+    16-slot timing offset (median-ish signed offset from the grid, beats) and a
+    16-slot velocity factor (each step's mean velocity / the class's peak).
+
+    Only slots with enough support carry an offset; sparse slots stay 0.0 so a
+    thin corpus doesn't invent feel it never observed."""
+    hits = groove["hits"]
+    vel_sum = groove["vel_sum"]
+    toff_sum = groove["time_off_sum"]
+    toff_n = groove["time_off_n"]
+
+    feel: dict = {}
+    for cls, voices in _FEEL_CLASS_VOICES.items():
+        timing = [0.0] * _STEPS
+        vel_step = [0.0] * _STEPS
+        for s in range(_STEPS):
+            n_off = sum(toff_n[v][s] for v in voices)
+            if n_off >= 3:                       # need a few observations to trust it
+                timing[s] = round(sum(toff_sum[v][s] for v in voices) / n_off, 5)
+            n_hit = sum(hits[v][s] for v in voices)
+            if n_hit > 0:
+                vel_step[s] = sum(vel_sum[v][s] for v in voices) / n_hit
+        peak = max(vel_step) or 1.0
+        velocity = [round(vel_step[s] / peak, 3) if vel_step[s] > 0 else 1.0
+                    for s in range(_STEPS)]
+        feel[cls] = {"timing": timing, "velocity": velocity}
+    return feel

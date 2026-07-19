@@ -160,9 +160,10 @@ def _onset_positions(events) -> set[float]:
 
 
 def test_comp_section_variants_change_the_rhythm():
-    """Rock's guitar must NOT chug the same 8ths through every section: verses
-    are sparser than choruses and intros ring instead of driving (measured
-    before the fix: one identical rhythm fingerprint across all 81 bars)."""
+    """Rock's guitar must NOT play the same rhythm through every section: the
+    rock_verse comp, the riff-mode chorus stabs, and the ringing pad_hold intro
+    must each read differently (measured before the section-variant fix: one
+    identical rhythm fingerprint across all 81 bars)."""
     style = _load("rock")
     prog = ["I", "IV", "V", "IV"]
 
@@ -172,13 +173,18 @@ def test_comp_section_variants_change_the_rhythm():
                                variation=0.3, progression=prog,
                                resolved_progression=prog, section_type=section_type)
 
-    chorus_pos = _onset_positions(gen("chorus"))
-    verse_pos = _onset_positions(gen("verse"))
-    intro_pos = _onset_positions(gen("intro"))
-    assert len(verse_pos) < len(chorus_pos), (verse_pos, chorus_pos)
-    assert len(intro_pos) <= 2, intro_pos          # pad_hold: bar-start rings only
-    # No section context (plain loop) keeps the style's base comp
-    assert _onset_positions(gen(None)) == chorus_pos
+    chorus_pos = _onset_positions(gen("chorus"))    # riff-mode: quarter-note power stabs
+    verse_pos = _onset_positions(gen("verse"))      # rock_verse comp: damped syncopation
+    intro_pos = _onset_positions(gen("intro"))      # pad_hold: bar-start rings
+    # Three sections, three distinct rhythmic fingerprints.
+    assert chorus_pos != verse_pos
+    assert intro_pos != verse_pos
+    assert len(intro_pos) <= 2, intro_pos           # pad_hold rings, doesn't drive
+    # No section context (plain loop) uses the base comp — the riff drive gallop,
+    # denser than the chorus's opened-up stabs and distinct from the verse comp.
+    base_pos = _onset_positions(gen(None))
+    assert len(base_pos) > len(chorus_pos)
+    assert base_pos != verse_pos
 
 
 def test_comp_variants_ignored_without_style_knob():

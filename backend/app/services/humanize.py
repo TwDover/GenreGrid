@@ -135,19 +135,23 @@ def groove_pocket_table(style: dict) -> list[float]:
     return table
 
 
-def apply_groove_pocket(parts_events: dict, style: dict) -> None:
+def apply_groove_pocket(parts_events: dict, style: dict, skip: set | None = None) -> None:
     """Shift every part onto the style's shared groove pocket, in place.
 
     Each note takes the offset of its nearest 16th slot, scaled by the part's
     tightness — so a bass note and the kick it locks to move together, which
     per-note independent jitter could never guarantee. Existing swing and
     anticipation offsets survive untouched (the pocket ADDS to the start, it
-    doesn't re-quantize)."""
+    doesn't re-quantize).
+
+    ``skip`` names parts already placed by a systematic feel profile
+    (apply_feel); they must not also take the generic random pocket."""
     from app.services.midi_writer import NoteEvent
 
+    skip = skip or set()
     table = groove_pocket_table(style)
     for part, events in parts_events.items():
-        if not events:
+        if not events or part in skip:
             continue
         tightness = _POCKET_TIGHTNESS.get(part, 0.7)
         parts_events[part] = [
@@ -156,6 +160,59 @@ def apply_groove_pocket(parts_events: dict, style: dict) -> None:
                       e.duration, e.velocity, e.channel)
             for e in events
         ]
+
+
+def apply_feel(parts_events: dict, style: dict) -> set:
+    """Apply the style's systematic groove feel to drums and bass, in place.
+
+    Drums take a per-instrument-class timing offset and velocity factor for
+    their 16th slot (the backbeat drags, the hats push, the hat contour repeats);
+    the bass takes a lag constant so it sits behind the kick. The timing amount
+    tracks the same humanize scale as the pocket, the velocity contour a gentler
+    one (dialled from flat at humanize=0 to full at humanize=1).
+
+    Returns the set of parts it placed so the caller can skip them in
+    apply_groove_pocket. A style with no feel profile is handled by neither: this
+    returns an empty set and leaves ``parts_events`` untouched (byte-identical)."""
+    from app.services.midi_writer import NoteEvent
+    from app.core.feel import feel_for, drum_class
+
+    feel = feel_for(style)
+    if not feel:
+        return set()
+
+    hs      = _humanize_scale(style)
+    t_scale = 0.25 + hs * 1.5        # timing: matches the pocket's scaling
+    v_scale = 0.5 + hs * 0.5         # velocity: flat→full, never over-driven
+    handled: set = set()
+
+    drums = parts_events.get("drums")
+    if drums:
+        placed = []
+        for e in drums:
+            cls  = drum_class(e.pitch)
+            slot = int(round(e.start / 0.25)) % 16
+            cf   = feel.get(cls) or {}
+            toff = (cf.get("timing")   or [0.0] * 16)[slot] * t_scale
+            vf   = (cf.get("velocity") or [1.0] * 16)[slot]
+            vf   = 1.0 + (vf - 1.0) * v_scale
+            placed.append(NoteEvent(
+                e.pitch, max(0.0, e.start + toff), e.duration,
+                max(1, min(127, int(round(e.velocity * vf)))), e.channel))
+        parts_events["drums"] = placed
+        handled.add("drums")
+
+    bass = parts_events.get("bass")
+    bass_lag = feel.get("bass_lag", 0.0)
+    if bass and bass_lag:
+        lag = bass_lag * t_scale
+        parts_events["bass"] = [
+            NoteEvent(e.pitch, max(0.0, e.start + lag), e.duration, e.velocity, e.channel)
+            for e in bass
+        ]
+        handled.add("bass")
+
+    return handled
 
 
 def style_velocity_variation(style: dict) -> int:

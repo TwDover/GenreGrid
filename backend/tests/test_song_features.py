@@ -18,7 +18,7 @@ from app.models.schemas import (BuildSongRequest, SongSectionDef,
                                 RegenerateSongPartRequest, RestoreSongVersionRequest)
 from app.api.routes_song import (build_song, regenerate_song_part,
                                      list_song_versions, restore_song_version,
-                                     build_song_from_melody)
+                                     regenerate_song_section, build_song_from_melody)
 from app.services.midi_writer import NoteEvent, write_midi
 from app.services.melody_import import parse_melody_midi, detect_key, derive_progression, fit_melody_to_bars
 
@@ -28,6 +28,79 @@ def _song(seed=61, **kw):
                 parts=["chords", "bass", "melody", "drums"], seed=seed, use_priors=False)
     args.update(kw)
     return build_song(BuildSongRequest(**args))
+
+
+def test_section_reroll_keeps_locked_parts_byte_identical():
+    """A section re-roll regenerates only the unlocked parts; locked stems stay
+    byte-for-byte, and the response omits them (roadmap-2 item 8)."""
+    import hashlib
+    from app.models.schemas import RegenerateSongSectionRequest
+
+    r = _song(seed=77)
+    d = EXPORTS_DIR / r.generation_id
+
+    def h(part):
+        return hashlib.md5((d / f"{part}.mid").read_bytes()).hexdigest()
+
+    before = {p: h(p) for p in ("chords", "bass", "melody", "drums")}
+    files = regenerate_song_section(RegenerateSongSectionRequest(
+        generation_id=r.generation_id, section_index=1, locked_parts=["melody", "bass"]))
+    after = {p: h(p) for p in ("chords", "bass", "melody", "drums")}
+
+    assert before["melody"] == after["melody"]   # locked → untouched
+    assert before["bass"] == after["bass"]
+    assert before["chords"] != after["chords"]   # unlocked → re-rolled
+    returned = {f.part for f in files}
+    assert "melody" not in returned and "bass" not in returned
+    assert "chords" in returned
+
+
+def test_roll_and_keep_song_part_candidates():
+    """Rolling candidates writes distinct throwaway stems without touching the
+    live stem; keeping one promotes it and clears the rest (roadmap-2 item 7)."""
+    import hashlib
+    from app.api.routes_song import roll_song_part_candidates, keep_song_part_candidate
+    from app.models.schemas import RollSongPartRequest, KeepSongPartCandidateRequest
+
+    r = _song(seed=88)
+    d = EXPORTS_DIR / r.generation_id
+
+    def h(name):
+        return hashlib.md5((d / name).read_bytes()).hexdigest()
+
+    live_before = h("melody.mid")
+    cands = roll_song_part_candidates(RollSongPartRequest(
+        generation_id=r.generation_id, part="melody", count=3))
+    assert len(cands) == 3
+    assert h("melody.mid") == live_before          # live stem untouched by rolling
+    hashes = [h(c.filename) for c in cands]
+    assert len(set(hashes)) == 3                    # candidates differ from each other
+
+    keep_song_part_candidate(KeepSongPartCandidateRequest(
+        generation_id=r.generation_id, part="melody", index=2))
+    assert h("melody.mid") == hashes[2]             # kept candidate is now live
+    assert not list(d.glob("melody.cand*.mid"))     # candidates cleared
+    assert (d / "melody.prev").exists()             # one-level undo preserved
+
+
+def test_rebuild_song_progression_edits_harmony_and_validates():
+    """Editing the progression rebuilds the song (new id) with the chosen chords;
+    a typo is rejected before any regeneration (roadmap-2 item 6)."""
+    import pytest
+    from fastapi import HTTPException
+    from app.api.routes_song import rebuild_song_progression
+    from app.models.schemas import RebuildSongProgressionRequest
+
+    r = _song(seed=91)
+    out = rebuild_song_progression(RebuildSongProgressionRequest(
+        generation_id=r.generation_id, progression=["i", "iv", "v", "i"]))
+    assert out.progression == ["i", "iv", "v", "i"]
+    assert out.generation_id != r.generation_id     # a fresh song; the original stays on disk
+
+    with pytest.raises(HTTPException) as exc:
+        rebuild_song_progression(RebuildSongProgressionRequest(
+            generation_id=r.generation_id, progression=["i", "zzz", "v", "i"]))
+    assert exc.value.status_code == 400
 
 
 # ── MIDI markers + key signature ─────────────────────────────────────────────

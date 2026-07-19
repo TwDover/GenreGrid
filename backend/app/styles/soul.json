@@ -6,6 +6,8 @@
         95
     ],
     "default_scale": "major",
+  "chromatic_color": 0.25,
+  "bridge_escape_prob": 0.5,
     "instrumentation": {
         "chords": "wurlitzer_ep",
         "bass": "electric_bass",

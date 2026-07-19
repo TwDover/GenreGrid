@@ -125,6 +125,7 @@ export interface BuildSongRequest {
   chorus_key_shift?: number
   final_chorus_lift?: number
   custom_template?: SongSectionDef[]
+  progression_override?: string[]   // pin an explicit roman-numeral progression
 }
 
 export interface SongSectionResult {
@@ -146,6 +147,7 @@ export interface BuildSongResponse {
   sections: SongSectionResult[]
   bpm: number
   key: string
+  progression?: string[] | null   // resolved roman-numeral progression (shown + lockable)
   mixer?: Record<string, number> | null   // per-part gain, 1.0 = generated balance
 }
 

@@ -36,10 +36,8 @@
     "allow_9th": 0.0
   },
   "power_chords": true,
-  "comp_style": "doom_crush",
-  "comp_section_variants": {
-    "chorus": "rock_drive"
-  },
+  "comp_style": "riff",
+  "comp_section_variants": {},
   "chord_register": [
     36,
     54

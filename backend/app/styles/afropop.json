@@ -6,6 +6,7 @@
     116
   ],
   "default_scale": "major",
+  "bridge_escape_prob": 0.5,
   "instrumentation": {
     "chords": "clean_electric_guitar",
     "bass": "electric_bass",

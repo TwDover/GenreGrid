@@ -73,26 +73,97 @@
         <div v-if="playheadPct !== null" class="sr-playhead" :style="{ left: `${playheadPct}%` }" />
       </div>
 
+      <!-- Progression strip: roman numerals + concrete chords per bar, pinned
+           across section re-rolls. Doubles as a theory-learning surface. -->
+      <div v-if="progressionChips.length" class="sr-prog">
+        <div class="sr-prog-head">
+          <span class="sr-prog-title">Progression</span>
+          <span class="sr-prog-lock" title="Pinned — every section and re-roll uses this progression">🔒 locked</span>
+          <button v-if="!editingProg" class="sr-prog-edit" @click="startEditProg" title="Edit the progression and rebuild the song">✎ edit</button>
+        </div>
+
+        <!-- Read-only view: roman + concrete chord + cadence/color labels -->
+        <div v-if="!editingProg" class="sr-prog-strip">
+          <div
+            v-for="(c, i) in progressionChips"
+            :key="i"
+            class="sr-prog-chip"
+            :class="{ 'sr-prog-cadence': c.cadence, 'sr-prog-color': c.color }"
+            :title="c.title"
+          >
+            <span class="sr-prog-roman">{{ c.roman }}</span>
+            <span class="sr-prog-chord">{{ c.chord }}</span>
+            <span v-if="c.cadence" class="sr-prog-cad-label">{{ c.cadence }}</span>
+          </div>
+        </div>
+
+        <!-- Edit mode: one roman input per bar (datalist-suggested), then rebuild -->
+        <div v-else class="sr-prog-editor">
+          <div class="sr-prog-inputs">
+            <div v-for="(_, i) in editProg" :key="i" class="sr-prog-input-cell">
+              <input
+                class="sr-prog-input"
+                :class="{ invalid: !isValidRoman(editProg[i]) }"
+                v-model="editProg[i]"
+                list="sr-prog-suggest"
+                :placeholder="`bar ${i + 1}`"
+                @keyup.enter="applyProg"
+              />
+              <span class="sr-prog-input-chord">{{ editChord(i) }}</span>
+            </div>
+            <button class="sr-prog-len" title="Add a bar" @click="editProg.push('I')">＋</button>
+            <button v-if="editProg.length > 2" class="sr-prog-len" title="Remove last bar" @click="editProg.pop()">－</button>
+          </div>
+          <datalist id="sr-prog-suggest">
+            <option v-for="s in ROMAN_SUGGESTIONS" :key="s" :value="s" />
+          </datalist>
+          <div v-if="progError" class="sr-prog-err">{{ progError }}</div>
+          <div class="sr-prog-editor-actions">
+            <button class="sr-prog-apply" :disabled="progBusy || !editValid" @click="applyProg">
+              {{ progBusy ? 'Rebuilding…' : 'Apply & rebuild' }}
+            </button>
+            <button class="sr-prog-cancel" :disabled="progBusy" @click="editingProg = false">Cancel</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Draggable per-part stems -->
-      <div class="sr-parts-label">Parts <span class="sr-hint">⟳ re-roll · drag ⠿ into your DAW · ↓ to save</span></div>
+      <div class="sr-parts-label">Parts <span class="sr-hint">🔒 lock to keep a part through section re-rolls · ⟳ re-roll · drag ⠿ into your DAW</span></div>
       <div v-if="regenError" class="sr-error">{{ regenError }}</div>
       <div class="sr-stems">
-        <PartCard
-          v-for="file in bustedStems"
-          :key="file.part"
-          :file="file"
-          :styleId="result.style"
-          :keyRoot="keyRoot"
-          :scale="scale"
-          :regenLoading="regenLoading === file.part"
-          :hasUndo="undoable.has(file.part)"
-          :simple="true"
-          :editable="true"
-          :gain="partGains[file.part] ?? 1.0"
-          @regen="onRegen"
-          @undo="onUndo(file.part)"
-          @gain="onGain"
-        />
+        <template v-for="file in bustedStems" :key="file.part">
+          <PartCard
+            :file="file"
+            :styleId="result.style"
+            :keyRoot="keyRoot"
+            :scale="scale"
+            :regenLoading="regenLoading === file.part"
+            :hasUndo="undoable.has(file.part)"
+            :simple="true"
+            :lockable="true"
+            :rollable="true"
+            :locked="locked.has(file.part)"
+            :editable="true"
+            :gain="partGains[file.part] ?? 1.0"
+            @regen="onRegen"
+            @roll="onRoll"
+            @toggle-lock="onToggleLock"
+            @edited="onEdited"
+            @undo="onUndo(file.part)"
+            @gain="onGain"
+          />
+          <CandidatePicker
+            v-if="candidatePart === file.part && candidates.length"
+            :candidates="candidates"
+            :part="file.part"
+            :styleId="result.style"
+            :keyRoot="keyRoot"
+            :scale="scale"
+            :keeping="keepingIndex"
+            @keep="onKeepCandidate"
+            @cancel="closeCandidates"
+          />
+        </template>
       </div>
 
       <!-- Parts not in this build — one click generates and adds the stem -->
@@ -117,7 +188,9 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import type { BuildSongResponse, FileInfo } from '../types/midi'
-import { downloadUrl, regenerateSongPart, regenerateSongSection, undoSongPart, listSongVersions, restoreSongVersion, setPartGain, type SongVersion } from '../services/api'
+import { downloadUrl, regenerateSongPart, regenerateSongSection, undoSongPart, listSongVersions, restoreSongVersion, setPartGain, rollSongPartCandidates, keepSongPartCandidate, rebuildSongProgression, type SongVersion, type SongPartCandidate } from '../services/api'
+import { resolveProgression } from '../utils/chordResolver'
+import CandidatePicker from './CandidatePicker.vue'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 import { useToasts } from '../composables/useToasts'
 import { logError } from '../composables/useErrorLog'
@@ -126,6 +199,7 @@ import { useRenderQueue } from '../composables/useRenderQueue'
 import PartCard from './PartCard.vue'
 
 const props = defineProps<{ result: BuildSongResponse | null; label: string }>()
+const emit = defineEmits<{ (e: 'rebuilt', result: BuildSongResponse, label: string): void }>()
 
 const { toggle, stop: stopPlayer, currentlyPlaying, seek, positionSeconds, offlineRender } = useMidiPlayer()
 const { toast } = useToasts()
@@ -141,6 +215,70 @@ const versions = reactive<Record<string, number>>({})
 const regenLoading = ref<string | null>(null)
 const regenError = ref<string | null>(null)
 const undoable = reactive(new Set<string>())
+
+// Part locks: locked stems are held byte-identical through a section re-roll
+// (the backend restores them). Hand-edited parts auto-lock so an accidental
+// section re-roll can't discard the user's note edits. Reset on a new song.
+const locked = reactive(new Set<string>())
+watch(() => props.result?.generation_id, () => locked.clear())
+function onToggleLock(part: string) {
+  locked.has(part) ? locked.delete(part) : locked.add(part)
+}
+function onEdited(part: string) {
+  locked.add(part)
+  toast(`${part.replace('_', ' ')} locked — edits protected from section re-rolls`)
+}
+
+// ── Compare-and-keep (roll ×N candidates) ────────────────────────────────────
+const candidatePart = ref<string | null>(null)
+const candidates = ref<SongPartCandidate[]>([])
+const keepingIndex = ref<number | null>(null)
+watch(() => props.result?.generation_id, () => closeCandidates())
+
+function closeCandidates() {
+  candidatePart.value = null
+  candidates.value = []
+  keepingIndex.value = null
+}
+
+async function onRoll(part: string) {
+  if (!props.result || regenLoading.value) return
+  regenLoading.value = part
+  regenError.value = null
+  closeCandidates()
+  try {
+    const list = await rollSongPartCandidates({ generation_id: props.result.generation_id, part, count: 3 })
+    candidatePart.value = part
+    candidates.value = list.map(c => ({ ...c, url: `${c.url}?v=${Date.now()}` }))
+  } catch (e: any) {
+    regenError.value = e.message ?? 'Rolling candidates failed'
+    logError('Roll song part candidates', e)
+    toast(regenError.value ?? 'Rolling candidates failed', 'error')
+  } finally {
+    regenLoading.value = null
+  }
+}
+
+async function onKeepCandidate(index: number) {
+  if (!props.result || !candidatePart.value || keepingIndex.value !== null) return
+  const part = candidatePart.value
+  keepingIndex.value = index
+  regenError.value = null
+  try {
+    await keepSongPartCandidate({ generation_id: props.result.generation_id, part, index })
+    const v = Date.now()
+    versions[part] = v
+    versions.song = v
+    undoable.add(part)
+    closeCandidates()
+    toast(`Kept ${part.replace('_', ' ')} variation ${index + 1}`)
+  } catch (e: any) {
+    regenError.value = e.message ?? 'Keeping candidate failed'
+    logError('Keep song part candidate', e)
+    toast(regenError.value ?? 'Keeping candidate failed', 'error')
+    keepingIndex.value = null
+  }
+}
 
 // Every part the song builder can produce — parts absent from the build are
 // offered as one-click "add" buttons under the stems.
@@ -163,6 +301,90 @@ const bustedStems = computed(() => stemFiles.value.map(f =>
   versions[f.part] ? { ...f, url: `${f.url}?v=${versions[f.part]}` } : f))
 const keyRoot = computed(() => (props.result?.key ?? 'C').split(' ')[0])
 const scale = computed(() => (props.result?.key ?? 'C minor').split(' ')[1] ?? 'minor')
+
+// ── Progression strip ────────────────────────────────────────────────────────
+// Roman numerals → concrete chords, with cadence labels at phrase ends and a
+// flag on chromatic-color chords (secondary dominants / borrowed chords).
+// Expected (non-exotic) romans per mode — anything else reads as chromatic color
+// (a secondary dominant or a borrowed chord). V is included in minor since the
+// raised dominant is idiomatic, not exotic.
+const DIATONIC_MINOR = new Set(['i', 'ii', 'iidim', 'iio', 'III', 'iv', 'v', 'V', 'VI', 'VII'])
+const DIATONIC_MAJOR = new Set(['I', 'ii', 'iii', 'IV', 'V', 'vi', 'viidim', 'viio'])
+// Strip chord-quality suffixes to the bare roman (V7 → V, iim7b5 → ii).
+const baseRoman = (r: string) => r.replace(/(maj7|m7b5|dim7|sus[24]|add\d+|maj|dim|aug|\d+)/gi, '')
+function cadenceLabel(roman: string, next: string | null): string {
+  const nextIsTonic = /^(I|i)(?![IVX])/.test(next ?? '')
+  if (/^V(?![IVX])/i.test(roman)) return nextIsTonic ? 'authentic' : 'half'
+  if (/^(iv|IV)(?![IVX])/.test(roman) && nextIsTonic) return 'plagal'
+  return ''
+}
+const progressionChips = computed(() => {
+  const prog = props.result?.progression
+  if (!prog || !prog.length) return []
+  const chords = resolveProgression(prog, keyRoot.value, scale.value)
+  const diatonic = scale.value.startsWith('major') ? DIATONIC_MAJOR : DIATONIC_MINOR
+  return prog.map((roman, i) => {
+    const phraseEnd = i % 4 === 3 || i === prog.length - 1
+    const cadence = phraseEnd ? cadenceLabel(roman, prog[i + 1] ?? null) : ''
+    const color = !diatonic.has(baseRoman(roman))
+    return {
+      roman,
+      chord: chords[i],
+      cadence,
+      color,
+      title: `Bar ${i + 1}: ${roman} = ${chords[i]}${cadence ? ` · ${cadence} cadence` : ''}${color ? ' · chromatic color chord' : ''}`,
+    }
+  })
+})
+
+// ── Progression editing ──────────────────────────────────────────────────────
+const ROMAN_SUGGESTIONS = [
+  'I', 'ii', 'iii', 'IV', 'V', 'vi', 'viidim',        // major diatonic
+  'i', 'iidim', 'III', 'iv', 'v', 'VI', 'VII',        // minor diatonic
+  'II', 'VII', 'bVI', 'bVII', 'bII', 'bIII',          // secondary dominants / borrowed
+  'V7', 'IV7', 'i7', 'IVmaj7', 'iim7b5',              // sevenths
+]
+const ROMAN_RE = /^[b#]?(VII|VI|IV|V|III|II|I|vii|vi|iv|v|iii|ii|i)(maj7|m7b5|dim7|dim|aug|sus[24]|add\d+|m?6|m?7|m?9|\+)?$/
+const isValidRoman = (r: string) => ROMAN_RE.test((r ?? '').trim())
+
+const editingProg = ref(false)
+const editProg = ref<string[]>([])
+const progBusy = ref(false)
+const progError = ref('')
+watch(() => props.result?.generation_id, () => { editingProg.value = false })
+
+const editValid = computed(() =>
+  editProg.value.length >= 2 && editProg.value.every(r => isValidRoman(r)))
+
+function startEditProg() {
+  editProg.value = [...(props.result?.progression ?? [])]
+  progError.value = ''
+  editingProg.value = true
+}
+function editChord(i: number): string {
+  const r = editProg.value[i]
+  if (!isValidRoman(r)) return '—'
+  return resolveProgression([r.trim()], keyRoot.value, scale.value)[0]
+}
+async function applyProg() {
+  if (!props.result || progBusy.value || !editValid.value) return
+  progBusy.value = true
+  progError.value = ''
+  try {
+    const result = await rebuildSongProgression({
+      generation_id: props.result.generation_id,
+      progression: editProg.value.map(r => r.trim()),
+    })
+    editingProg.value = false
+    emit('rebuilt', result, `${props.label} (edited harmony)`)
+    toast('Song rebuilt with your progression')
+  } catch (e: any) {
+    progError.value = e.message ?? 'Rebuild failed'
+    logError('Rebuild song progression', e)
+  } finally {
+    progBusy.value = false
+  }
+}
 
 const songFile = computed(() => props.result?.files.find(f => f.part === 'song') ?? null)
 const songUrl = computed(() => {
@@ -297,13 +519,16 @@ async function onRegenSection(index: number) {
   try {
     const files = await regenerateSongSection({
       generation_id: props.result.generation_id, section_index: index,
+      locked_parts: [...locked],
     })
-    // Every stem may have been rewritten (theme/motif ripple) — bust them all.
+    // Only the returned (unlocked) stems changed — bust those; locked stems are
+    // held byte-identical by the backend and must not be reloaded.
     const v = Date.now()
     for (const f of files) versions[f.part] = v
     versions.song = v
     for (const f of files) if (f.part !== 'song') undoable.add(f.part)
-    toast(`Re-rolled ${props.result.sections[index]?.name ?? 'section'}`)
+    const lockNote = locked.size ? ` (kept ${[...locked].join(', ')})` : ''
+    toast(`Re-rolled ${props.result.sections[index]?.name ?? 'section'}${lockNote}`)
   } catch (e: any) {
     regenError.value = e.message ?? 'Section regeneration failed'
     logError('Regenerate song section', e)
@@ -497,6 +722,65 @@ async function exportSongWav() {
 .sr-tl-block:hover .sr-tl-regen { opacity: 1; }
 .sr-tl-regen:hover:not(:disabled) { color: var(--seg-text); }
 .sr-tl-regen:disabled { cursor: wait; }
+
+/* Progression strip */
+.sr-prog { display: flex; flex-direction: column; gap: 0.3rem; }
+.sr-prog-head { display: flex; align-items: baseline; gap: 0.5rem; }
+.sr-prog-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); }
+.sr-prog-lock { font-size: 0.62rem; color: var(--text-faint); }
+.sr-prog-strip { display: flex; gap: 3px; overflow-x: auto; padding-bottom: 2px; }
+.sr-prog-chip {
+  position: relative; flex: 1 0 auto; min-width: 46px;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 0.3rem 0.4rem 0.5rem; border-radius: 5px;
+  background: var(--panel-deep); border: 1px solid var(--surface);
+}
+.sr-prog-chip.sr-prog-color { border-color: color-mix(in srgb, var(--gold) 45%, transparent); background: color-mix(in srgb, var(--gold) 8%, var(--panel-deep)); }
+.sr-prog-chip.sr-prog-cadence { border-right-width: 2px; border-right-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.sr-prog-roman { font-size: 0.72rem; font-weight: 700; color: var(--accent); font-family: monospace; }
+.sr-prog-chord { font-size: 0.6rem; color: var(--text-dim); }
+.sr-prog-cad-label {
+  position: absolute; bottom: 1px; font-size: 0.48rem; letter-spacing: 0.02em;
+  color: var(--text-faint); text-transform: uppercase;
+}
+.sr-prog-edit {
+  margin-left: auto; font-size: 0.62rem; background: transparent; border: none;
+  color: var(--text-dim); cursor: pointer;
+}
+.sr-prog-edit:hover { color: var(--accent); }
+
+/* Progression editor */
+.sr-prog-editor { display: flex; flex-direction: column; gap: 0.4rem; }
+.sr-prog-inputs { display: flex; flex-wrap: wrap; gap: 4px; align-items: stretch; }
+.sr-prog-input-cell { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.sr-prog-input {
+  width: 52px; text-align: center; font-family: monospace; font-size: 0.72rem; font-weight: 700;
+  color: var(--accent); background: var(--panel-deep); border: 1px solid var(--surface);
+  border-radius: 5px; padding: 0.3rem 0.2rem;
+}
+.sr-prog-input:focus { outline: none; border-color: var(--accent); }
+.sr-prog-input.invalid { border-color: var(--error); color: var(--error); }
+.sr-prog-input-chord { font-size: 0.58rem; color: var(--text-dim); }
+.sr-prog-len {
+  width: 26px; font-size: 0.9rem; line-height: 1; color: var(--text-dim);
+  background: var(--panel-deep); border: 1px dashed var(--surface); border-radius: 5px; cursor: pointer;
+}
+.sr-prog-len:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.sr-prog-err { font-size: 0.68rem; color: var(--error); }
+.sr-prog-editor-actions { display: flex; gap: 0.4rem; }
+.sr-prog-apply {
+  font-size: 0.72rem; padding: 0.35rem 0.8rem; border-radius: 5px; cursor: pointer;
+  background: var(--accent-surface-strong); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent);
+}
+.sr-prog-apply:hover:not(:disabled) { background: var(--accent-surface); }
+.sr-prog-apply:disabled { opacity: 0.5; cursor: not-allowed; }
+.sr-prog-cancel {
+  font-size: 0.72rem; padding: 0.35rem 0.7rem; border-radius: 5px; cursor: pointer;
+  background: var(--panel-deep); border: 1px solid var(--surface); color: var(--text-dim);
+}
+.sr-prog-cancel:hover:not(:disabled) { background: var(--surface); color: var(--text); }
+.sr-prog-cancel:disabled { opacity: 0.5; }
 
 .sr-parts-label {
   font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim);

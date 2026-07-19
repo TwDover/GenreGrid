@@ -312,6 +312,98 @@ def _motif_recurrence(melody: list, bass: list) -> float:
     return sum(x * y for x, y in zip(a, b)) / (na * nb)
 
 
+def _riff_unison(tracks: dict[str, list], sections: list[dict], style: dict | None) -> dict:
+    """Riff-mode verification (roadmap-2 item 2): in riff sections the bass
+    doubles the guitar (high onset correlation) and the sung melody stands down
+    (empty melody register). Both 0/blank for non-riff styles."""
+    import math
+    if style is None:
+        return {"onset_corr": 0.0, "melody_empty": 0.0}
+    from app.generators.riff import riff_section_comp, is_riff_style
+    if not is_riff_style(style):
+        return {"onset_corr": 0.0, "melody_empty": 0.0}
+
+    guitar = tracks.get("chords", [])
+    bass   = tracks.get("bass", [])
+    melody = tracks.get("melody", [])
+
+    corrs, empty_flags = [], []
+    for sec in sections:
+        if not riff_section_comp(style, sec.get("section_type")):
+            continue
+        lo = sec.get("start_bar", 0) * 4.0
+        hi = lo + sec.get("bars", 0) * 4.0
+
+        def _onsets(notes):
+            h = [0.0] * 16
+            for s, _, _ in notes:
+                if lo <= s < hi:
+                    h[int(round((s - lo) / 0.25)) % 16] += 1
+            return h
+
+        g, b = _onsets(guitar), _onsets(bass)
+        ng, nb = math.sqrt(sum(x * x for x in g)), math.sqrt(sum(x * x for x in b))
+        if ng and nb:
+            corrs.append(sum(x * y for x, y in zip(g, b)) / (ng * nb))
+        mel_time = sum(d for s, _, d in melody if lo <= s < hi)
+        empty_flags.append(1.0 if mel_time < 0.5 else 0.0)
+
+    return {
+        "onset_corr":   round(sum(corrs) / len(corrs), 3) if corrs else 0.0,
+        "melody_empty": round(100.0 * sum(empty_flags) / len(empty_flags), 1) if empty_flags else 0.0,
+    }
+
+
+def _feel_signature(tracks: dict[str, list]) -> dict:
+    """Systematic microtiming left by a style's feel profile (roadmap-2 item 1),
+    in milli-beats (beats × 1000; + = behind the grid, − = pushed ahead). For a
+    style WITH a feel profile these are stable and non-zero (backbeat drags, hats
+    push); for a style without one they hover near the random-pocket noise floor.
+
+    Measured as each drum hit's offset from its nearest 16th-note grid line,
+    averaged per instrument class over the whole song."""
+    from app.core.feel import drum_class
+
+    drums = tracks.get("drums", [])
+
+    def _mean_off(want_class: str, backbeat_only: bool = False) -> float:
+        offs = []
+        for s, p, _ in drums:
+            if drum_class(p) != want_class:
+                continue
+            slot = int(round(s / 0.25))
+            if backbeat_only and slot % 16 not in (4, 12):
+                continue
+            offs.append(s - slot * 0.25)
+        return round(1000.0 * sum(offs) / len(offs), 1) if offs else 0.0
+
+    return {
+        "backbeat_drag": _mean_off("snare", backbeat_only=True),
+        "hat_push":      _mean_off("hat"),
+    }
+
+
+def _hook_score(melody: list, sections: list[dict]) -> float:
+    """Mean chorus hook score (0..1) — how *memorable* the chorus melodies are.
+    Reuses the generation scorer's `_hook_score` so the survey measures the
+    same thing the multi-attempt search optimises. 0.0 when there's no chorus
+    with enough melody to judge."""
+    from app.services.quality import _hook_score as _score_hook
+    from app.services.midi_writer import NoteEvent
+
+    scores: list[float] = []
+    for sec in sections:
+        if sec.get("section_type") != "chorus":
+            continue
+        lo = sec.get("start_bar", 0) * 4.0
+        hi = lo + sec.get("bars", 0) * 4.0
+        chorus_mel = [NoteEvent(p, s, d, 90, 2) for s, p, d in melody if lo <= s < hi]
+        s, _ = _score_hook(chorus_mel)
+        if s is not None:
+            scores.append(s)
+    return sum(scores) / len(scores) if scores else 0.0
+
+
 def _load_sections(song_path: Path) -> list[dict]:
     struct = song_path.parent / "song_structure.json"
     if not struct.exists():
@@ -414,6 +506,9 @@ def analyze_song(song_path: Path, key: str, scale: str, style: dict | None = Non
         "motif_recurrence":      round(_motif_recurrence(melody, bass), 3),
         "layer_regressions":     _layer_regressions(tracks, _load_sections(song_path)),
         "transition_coverage":   round(_transition_coverage(tracks, _load_sections(song_path)), 1),
+        "hook_score":            round(_hook_score(melody, _load_sections(song_path)), 3),
+        **{f"feel_{k}": v for k, v in _feel_signature(tracks).items()},
+        **{f"riff_{k}": v for k, v in _riff_unison(tracks, _load_sections(song_path), style).items()},
     }
 
 

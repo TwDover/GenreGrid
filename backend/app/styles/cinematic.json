@@ -6,6 +6,8 @@
         90
     ],
     "default_scale": "minor",
+  "chromatic_color": 0.3,
+  "bridge_escape_prob": 0.5,
     "instrumentation": {
         "chords": "string_ensemble",
         "bass": "contrabass",
