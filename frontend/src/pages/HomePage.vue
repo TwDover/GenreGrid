@@ -135,6 +135,16 @@
             <tr><td class="shortcut-key">Space</td><td class="shortcut-desc">Stop playback</td></tr>
             <tr><td class="shortcut-key">Ctrl+S</td><td class="shortcut-desc">Save session</td></tr>
             <tr><td class="shortcut-key">?</td><td class="shortcut-desc">Show shortcuts</td></tr>
+            <tr><td colspan="2" class="shortcut-section">Developer / Debug</td></tr>
+            <tr><td class="shortcut-key">Ctrl/Cmd+Shift+D</td><td class="shortcut-desc">Toggle on-screen debug HUD (mirrors console)</td></tr>
+            <tr><td class="shortcut-key">F12 / Ctrl+Shift+I</td><td class="shortcut-desc">Toggle DevTools</td></tr>
+            <tr><td class="shortcut-key">Ctrl/Cmd+R</td><td class="shortcut-desc">Reload</td></tr>
+            <tr><td class="shortcut-key">Ctrl/Cmd+Shift+R</td><td class="shortcut-desc">Hard reload (ignore cache)</td></tr>
+            <tr><td class="shortcut-key">Ctrl/Cmd + = / -</td><td class="shortcut-desc">Zoom in / out</td></tr>
+            <tr><td class="shortcut-key">Ctrl/Cmd+0</td><td class="shortcut-desc">Reset zoom</td></tr>
+            <tr><td class="shortcut-key">F11</td><td class="shortcut-desc">Toggle fullscreen</td></tr>
+            <tr><td class="shortcut-key">Ctrl/Cmd+M</td><td class="shortcut-desc">Minimize window</td></tr>
+            <tr><td class="shortcut-key">Ctrl/Cmd+W / Q</td><td class="shortcut-desc">Quit</td></tr>
           </tbody>
         </table>
       </div>
@@ -825,6 +835,17 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
   font-size: 0.8rem;
   color: var(--accent-bright);
   padding-left: 1rem;
+}
+
+.shortcut-section {
+  padding: 0.55rem 0 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  opacity: 0.75;
+  border-bottom: 1px solid var(--surface);
 }
 
 .shortcuts-table tr { height: 2rem; }

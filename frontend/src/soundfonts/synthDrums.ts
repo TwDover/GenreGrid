@@ -93,7 +93,13 @@ export interface SynthKit {
 // hold up under dense/fast patterns), each drum piece round-robins across a small pool
 // of instances so no single underlying source is ever retriggered as often as the
 // pattern itself calls trigger() for that piece.
-const POOL_SIZE = 4
+//
+// Kept small (2, not 4): the four MetalSynth voices (closed/open hat, crash, ride) are
+// heavy FM synths, and POOL_SIZE * 4 of them overwhelmed the audio render thread on Linux
+// packaged Electron — it rendered one buffer then the whole output stream died (silent).
+// 8 total is safely under that limit; scheduleVoice() below still guarantees retrigger
+// safety when a piece is hit faster than its pool can recover.
+const POOL_SIZE = 2
 
 function makePool<T extends Tone.ToneAudioNode>(factory: () => T): () => T {
   const instances = Array.from({ length: POOL_SIZE }, factory)

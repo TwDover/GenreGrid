@@ -11,6 +11,7 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, protocol, net as electronNet } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import nodeNet from 'net'
+import http from 'http'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -18,6 +19,14 @@ import { fileURLToPath } from 'url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const RENDERER_DIST = path.join(__dirname, '../dist')
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
+
+// On Linux, Chromium's out-of-process (sandboxed) audio service stalls after the first
+// buffer on some PipeWire/PulseAudio setups — the Web Audio graph keeps running (meters
+// show signal, notes fire) but the hardware stream renders one blip then silence. Running
+// the audio service in-process fixes it. Windows/macOS are unaffected, so limit to Linux.
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess,AudioServiceSandbox')
+}
 
 // Register app:// as a privileged scheme so absolute paths (/samples/...) resolve correctly
 // in the packaged app (file:// breaks absolute URL resolution)
@@ -119,10 +128,60 @@ async function startBackend(): Promise<void> {
   backendReady = true
 }
 
+// ── Renderer static server ────────────────────────────────────────────────────
+// The renderer is served over http://127.0.0.1:<port> rather than the app:// custom
+// scheme. On Linux packaged Electron, the app:// origin breaks the Web Audio output path
+// (the master DynamicsCompressor — and even a plain AudioContext destination — render
+// digital silence to the speakers, while meters still show signal); an http origin plays
+// correctly, exactly as it does in dev (Vite) and in a browser. Windows/macOS were fine
+// with app://, but http works there too, so it's used on every platform for consistency.
+const RENDERER_MIME: Record<string, string> = {
+  '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
+  '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm',
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+  '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.webp': 'image/webp',
+  '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf',
+  '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.map': 'application/json',
+}
+
+function startRendererServer(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      try {
+        const urlPath = decodeURIComponent((req.url || '/').split('?')[0])
+        const rel = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '')
+        let filePath = path.join(RENDERER_DIST, rel)
+        // Block path traversal, and fall back to index.html for unknown paths (SPA).
+        if (!filePath.startsWith(RENDERER_DIST) || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+          filePath = path.join(RENDERER_DIST, 'index.html')
+        }
+        res.setHeader('Content-Type', RENDERER_MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream')
+        fs.createReadStream(filePath).pipe(res)
+      } catch {
+        res.statusCode = 500
+        res.end('Internal error')
+      }
+    })
+    server.on('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const port = (server.address() as nodeNet.AddressInfo).port
+      resolve(`http://127.0.0.1:${port}/index.html`)
+    })
+  })
+}
+
 // ── Window ───────────────────────────────────────────────────────────────────
 
 async function createWindow(): Promise<void> {
-  await startBackend()
+  console.log('[main] === GenreGrid starting ===')
+  console.log('[main] isPackaged=', app.isPackaged, 'platform=', process.platform, 'resourcesPath=', process.resourcesPath)
+  console.log('[main] RENDERER_DIST=', RENDERER_DIST, 'exists=', fs.existsSync(RENDERER_DIST))
+  try {
+    await startBackend()
+    console.log('[main] backend ready on port', backendPort)
+  } catch (e) {
+    console.error('[main] backend start FAILED:', e)
+  }
 
   const win = new BrowserWindow({
     width: 1280,
@@ -135,15 +194,73 @@ async function createWindow(): Promise<void> {
       preload: path.join(__dirname, 'preload.mjs'),
       contextIsolation: true,
       nodeIntegration: false,
+      // Never throttle the renderer when the window is unfocused/occluded — Electron's
+      // default throttling suspends the audio render thread when the window loses focus
+      // (e.g. clicking the terminal or DevTools), which stops playback after it starts.
+      backgroundThrottling: false,
     },
   })
 
-  if (VITE_DEV_SERVER_URL) {
-    win.loadURL(VITE_DEV_SERVER_URL)
-  } else {
-    win.loadURL('app://./index.html')
-  }
+  // ── DEBUG: mirror the whole renderer console into the main-process stdout, so the full
+  // renderer log (audio setup, errors, everything) shows in the terminal without DevTools.
+  win.webContents.on('console-message', (_e, level, message) => {
+    const tag = ['LOG', 'WARN', 'ERR', 'INFO'][level] ?? 'LOG'
+    console.log(`[renderer:${tag}] ${message}`)
+  })
+  win.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    console.error(`[main] renderer FAILED to load: code=${code} "${desc}" url=${url}`)
+  })
+  win.webContents.on('did-finish-load', () => console.log('[main] renderer finished loading'))
+  win.webContents.on('render-process-gone', (_e, d) => console.error('[main] render process gone:', d))
 
+  // ── Developer keyboard shortcuts ────────────────────────────────────────────
+  // Full list, documented so any dev knows what's available. Handled in the main
+  // process (except the HUD toggle, which the renderer owns) so they work regardless
+  // of focus. Ctrl also matches Cmd (meta) on macOS.
+  const wc = win.webContents
+  const SHORTCUTS: Array<[string, string]> = [
+    ['Ctrl/Cmd + R', 'Reload the app'],
+    ['Ctrl/Cmd + Shift + R', 'Hard reload (ignore cache)'],
+    ['F12  /  Ctrl/Cmd + Shift + I', 'Toggle DevTools'],
+    ['Ctrl/Cmd + Shift + D', 'Toggle the on-screen debug HUD (renderer)'],
+    ['Ctrl/Cmd + =  /  + ', 'Zoom in'],
+    ['Ctrl/Cmd + -', 'Zoom out'],
+    ['Ctrl/Cmd + 0', 'Reset zoom'],
+    ['F11', 'Toggle fullscreen'],
+    ['Ctrl/Cmd + M', 'Minimize window'],
+    ['Ctrl/Cmd + W  /  Ctrl/Cmd + Q', 'Quit the app'],
+  ]
+  console.log('[main] ── Keyboard shortcuts ──')
+  for (const [combo, desc] of SHORTCUTS) console.log(`[main]   ${combo.padEnd(30)} ${desc}`)
+
+  wc.on('before-input-event', (_e, input) => {
+    if (input.type !== 'keyDown') return
+    const k = input.key.toLowerCase()
+    const mod = input.control || input.meta      // Ctrl on Win/Linux, Cmd on macOS
+    if (k === 'f12' || (mod && input.shift && k === 'i')) wc.toggleDevTools()
+    else if (mod && input.shift && k === 'r') wc.reloadIgnoringCache()
+    else if (mod && k === 'r') wc.reload()
+    // Ctrl+Shift+D (HUD) is intentionally NOT handled here — it falls through to the
+    // renderer, which owns the HUD and toggles its own visibility.
+    else if (mod && (k === '=' || k === '+')) wc.setZoomLevel(wc.getZoomLevel() + 0.5)
+    else if (mod && k === '-') wc.setZoomLevel(wc.getZoomLevel() - 0.5)
+    else if (mod && k === '0') wc.setZoomLevel(0)
+    else if (k === 'f11') win.setFullScreen(!win.isFullScreen())
+    else if (mod && k === 'm') win.minimize()
+    else if (mod && (k === 'w' || k === 'q')) app.quit()
+  })
+
+  let rendererUrl: string
+  if (VITE_DEV_SERVER_URL) {
+    rendererUrl = VITE_DEV_SERVER_URL
+  } else {
+    rendererUrl = await startRendererServer()
+    console.log('[main] renderer static server:', rendererUrl)
+  }
+  console.log('[main] loading renderer URL:', rendererUrl)
+  win.loadURL(rendererUrl)
+  // DevTools NOT auto-opened — a detached DevTools window steals focus and (with default
+  // throttling) can suspend the audio window. Open it yourself with F12 if needed.
 }
 
 // ── Auto-update ──────────────────────────────────────────────────────────────
