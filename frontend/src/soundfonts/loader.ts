@@ -25,15 +25,22 @@ const SAMPLE_MAP: Record<string, string> = {
 }
 
 // Module-level singletons — created once, reused across all plays
-let compressor: Tone.Compressor | null = null
+let masterOut: Tone.Gain | null = null
 let reverb: Tone.Reverb | null = null
 let piano: Tone.Sampler | null = null
 let loadPromise: Promise<Tone.Sampler> | null = null
 
-export function getMasterCompressor(): Tone.Compressor {
-  if (compressor) return compressor
-  compressor = new Tone.Compressor({ threshold: -18, ratio: 4, attack: 0.003, release: 0.1 }).toDestination()
-  return compressor
+// Master output node. This used to be a Tone.Compressor for mix glue, but a
+// DynamicsCompressorNode renders SILENCE to the hardware on Linux packaged Electron —
+// signal enters it (meters read it fine) yet nothing reaches the speakers, and since the
+// entire mix routes through this one node, the whole app was silent on Linux (Win/Mac were
+// unaffected). A plain Gain works on every platform, so the master is now a unity gain
+// straight to the destination. (Kept the name to avoid touching every call site.)
+export function getMasterCompressor(): Tone.Gain {
+  if (masterOut) return masterOut
+  masterOut = new Tone.Gain(1).toDestination()
+  console.log(`[audio] master gain created (ctx=${Tone.getContext().state}, sr=${Tone.getContext().rawContext.sampleRate}) → toDestination`)
+  return masterOut
 }
 
 // ── Submix buses ───────────────────────────────────────────────────────────
@@ -49,6 +56,8 @@ const MELODIC_BUS_DB = 0
 let drumBus: Tone.Gain<'decibels'> | null = null
 let bassBus: Tone.Gain<'decibels'> | null = null
 let melodicBus: Tone.Gain<'decibels'> | null = null
+let melodicChorus: Tone.Chorus | null = null
+let melodicDelay: Tone.FeedbackDelay | null = null
 
 export function getDrumBus(): Tone.Gain<'decibels'> {
   if (!drumBus) drumBus = new Tone.Gain(DRUM_BUS_DB, 'decibels').connect(getMasterCompressor())
@@ -60,8 +69,18 @@ export function getBassBus(): Tone.Gain<'decibels'> {
   return bassBus
 }
 
+// The melodic bus carries ONE shared Chorus + FeedbackDelay for all harmonic voices
+// (chords, melody, arp, pads, strings), instead of each voice building its own pair. That
+// per-voice duplication was the biggest render cost after the drums; sharing it frees the
+// audio thread so it doesn't underrun/glitch under a full arrangement's load.
+//   voices → melodicBus(Gain) → chorus → delay → master
 export function getMelodicBus(): Tone.Gain<'decibels'> {
-  if (!melodicBus) melodicBus = new Tone.Gain(MELODIC_BUS_DB, 'decibels').connect(getMasterCompressor())
+  if (!melodicBus) {
+    melodicDelay = new Tone.FeedbackDelay({ delayTime: '8n.', feedback: 0.22, wet: 0.12 }).connect(getMasterCompressor())
+    melodicChorus = new Tone.Chorus({ frequency: 1.5, depth: 0.3, wet: 0.18 }).connect(melodicDelay)
+    melodicChorus.start()
+    melodicBus = new Tone.Gain(MELODIC_BUS_DB, 'decibels').connect(melodicChorus)
+  }
   return melodicBus
 }
 

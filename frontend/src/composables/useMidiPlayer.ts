@@ -137,10 +137,8 @@ function cleanup() {
 // and only a whisper of chorus so it stays in tune. `soft` warms it and adds
 // space for ambient/cinematic styles.
 function makeMelodyLead(soft: boolean, output: Tone.ToneAudioNode = getMelodicBus()): Tone.PolySynth {
-  const delay = new Tone.FeedbackDelay({ delayTime: '8n.', feedback: 0.22, wet: soft ? 0.22 : 0.14 }).connect(output)
-  const chorus = new Tone.Chorus({ frequency: 1.8, depth: 0.12, wet: 0.14 }).connect(delay)
-  chorus.start()
-  const filter = new Tone.Filter({ frequency: soft ? 3000 : 3800, type: 'lowpass', rolloff: -12, Q: 0.8 }).connect(chorus)
+  // Chorus + delay now live once on the shared melodic bus (see getMelodicBus).
+  const filter = new Tone.Filter({ frequency: soft ? 3000 : 3800, type: 'lowpass', rolloff: -12, Q: 0.8 }).connect(output)
   const synth = new Tone.PolySynth(Tone.Synth, {
     oscillator: soft ? { type: 'triangle' } : { type: 'sawtooth' },
     envelope: soft
@@ -148,7 +146,7 @@ function makeMelodyLead(soft: boolean, output: Tone.ToneAudioNode = getMelodicBu
       : { attack: 0.008, decay: 0.15, sustain: 0.65, release: 0.3 },
     volume: soft ? -9 : -10,
   }).connect(filter)
-  disposables.push(delay, chorus, filter, synth)
+  disposables.push(filter, synth)
   return synth
 }
 
@@ -157,40 +155,36 @@ function makeMelodyLead(soft: boolean, output: Tone.ToneAudioNode = getMelodicBu
 // timbre on electronic styles (previously both used the same sawtooth lead).
 function makeSynthChords(output: Tone.ToneAudioNode = getMelodicBus()): Tone.PolySynth {
   const lp = new Tone.Filter({ frequency: 2600, type: 'lowpass', rolloff: -12 }).connect(output)
-  const chorus = new Tone.Chorus({ frequency: 1.4, depth: 0.5, wet: 0.35 }).connect(lp)
-  chorus.start()
   const synth = new Tone.PolySynth(Tone.Synth, {
     oscillator: { type: 'fatsawtooth', count: 3, spread: 22 },
     envelope: { attack: 0.06, decay: 0.25, sustain: 0.65, release: 0.6 },
     volume: -15,
-  }).connect(chorus)
-  disposables.push(lp, chorus, synth)
+  }).connect(lp)
+  disposables.push(lp, synth)
   return synth
 }
 
 // Arp pluck: short, bright, decaying voice with a synced delay tail. Gives the
 // arpeggio part its own identity instead of doubling the chord/lead timbre.
 function makeArpPluck(output: Tone.ToneAudioNode = getMelodicBus()): Tone.PolySynth {
-  const delay = new Tone.FeedbackDelay({ delayTime: '8n.', feedback: 0.28, wet: 0.18 }).connect(output)
-  const lp = new Tone.Filter({ frequency: 4200, type: 'lowpass', rolloff: -12 }).connect(delay)
+  const lp = new Tone.Filter({ frequency: 4200, type: 'lowpass', rolloff: -12 }).connect(output)
   const synth = new Tone.PolySynth(Tone.Synth, {
     oscillator: { type: 'triangle' },
     envelope: { attack: 0.004, decay: 0.18, sustain: 0.0, release: 0.25 },
     volume: -12,
   }).connect(lp)
-  disposables.push(delay, lp, synth)
+  disposables.push(lp, synth)
   return synth
 }
 
 // Pad: slow-attack triangle + long feedback delay (ambient, cinematic, etc.)
 function makePad(output: Tone.ToneAudioNode = getMelodicBus()): Tone.PolySynth {
-  const delay = new Tone.FeedbackDelay({ delayTime: '4n', feedback: 0.4, wet: 0.3 }).connect(output)
   const synth = new Tone.PolySynth(Tone.Synth, {
     oscillator: { type: 'triangle' },
     envelope: { attack: 0.8, decay: 0.3, sustain: 0.7, release: 2.0 },
     volume: -10,
-  }).connect(delay)
-  disposables.push(delay, synth)
+  }).connect(output)
+  disposables.push(synth)
   return synth
 }
 
@@ -199,14 +193,12 @@ function makePad(output: Tone.ToneAudioNode = getMelodicBus()): Tone.PolySynth {
 // the lead instead of competing with it.
 function makeStrings(output: Tone.ToneAudioNode = getMelodicBus()): Tone.PolySynth {
   const lp = new Tone.Filter({ frequency: 2400, type: 'lowpass', rolloff: -12 }).connect(output)
-  const chorus = new Tone.Chorus({ frequency: 0.8, depth: 0.35, wet: 0.3 }).connect(lp)
-  chorus.start()
   const synth = new Tone.PolySynth(Tone.Synth, {
     oscillator: { type: 'fatsawtooth', count: 3, spread: 14 },
     envelope: { attack: 0.12, decay: 0.3, sustain: 0.8, release: 1.2 },
     volume: -14,
-  }).connect(chorus)
-  disposables.push(lp, chorus, synth)
+  }).connect(lp)
+  disposables.push(lp, synth)
   return synth
 }
 
@@ -283,8 +275,10 @@ export function useMidiPlayer() {
     try {
       await Tone.start()
       if (token !== _playToken) return
+      console.log(`[play] Tone.start OK — ctx=${Tone.getContext().state} rate=${Tone.getContext().rawContext.sampleRate} style=${styleId ?? 'none'}`)
 
       applyVolume(volume.value)
+      console.log(`[play] volume applied: destVol=${Tone.getDestination().volume.value.toFixed(1)}dB`)
 
       const isSynth        = styleId ? SYNTH_STYLES.has(styleId) : false
       const isMelodicSynth = styleId ? MELODIC_SYNTH_STYLES.has(styleId) : false
@@ -483,6 +477,8 @@ export function useMidiPlayer() {
         }
       }
 
+      console.log(`[play] built graph — tracks=${midi.tracks.length} parts=${scheduledParts.length} disposables=${disposables.length} duration=${midi.duration.toFixed(2)}s bpm=${Tone.getTransport().bpm.value}`)
+
       durationSeconds.value = midi.duration
       currentlyPlaying.value = url
 
@@ -495,6 +491,7 @@ export function useMidiPlayer() {
       }
 
       Tone.getTransport().start()
+      console.log(`[play] transport started — state=${Tone.getTransport().state} seconds=${Tone.getTransport().seconds.toFixed(2)} loop=${looping.value}`)
       startPositionPolling()
 
       if (!looping.value) {
@@ -623,7 +620,10 @@ export function useMidiPlayer() {
       const renderPromise = renderOfflineFast(async (context) => {
         const dest = context.destination
         dest.volume.value = 0
-        const comp = new Tone.Compressor({ context, threshold: -8, ratio: 3, knee: 10, attack: 0.003, release: 0.15 }).connect(dest)
+        // Plain gain, not a Tone.Compressor — a DynamicsCompressorNode renders silence on
+        // Linux packaged Electron (see getMasterCompressor in loader.ts), which would make
+        // WAV exports silent there too.
+        const comp = new Tone.Gain({ context, gain: 1 }).connect(dest)
 
         // Only needed so Transport-relative delay-time notation ('8n', '4n', …)
         // in the effects below resolves against the song's real tempo — no note
