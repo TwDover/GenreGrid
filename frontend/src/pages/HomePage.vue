@@ -195,6 +195,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import GenerateForm from '../components/GenerateForm.vue'
+import { errorMessage } from '../utils/errors'
 import ExportPanel from '../components/ExportPanel.vue'
 import LibraryPanel from '../components/LibraryPanel.vue'
 import TransportBar from '../components/TransportBar.vue'
@@ -229,7 +230,7 @@ function openSetup() { drawer.value = 'setup' }
 function closeDrawer() { drawer.value = null }
 
 // ── Manual update check (desktop app only) ───────────────────────────────────
-const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI
+const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 const updateChecking = ref(false)
 const updateLabel = ref('Updates')
 const updateMessage = ref('')
@@ -240,7 +241,7 @@ async function checkForUpdates() {
   updateLabel.value = 'Checking…'
   updateMessage.value = ''
   try {
-    const r = await (window as any).electronAPI.checkForUpdates()
+    const r = await window.electronAPI!.checkForUpdates()
     switch (r.status) {
       case 'downloading':
         updateLabel.value = `↓ v${r.latest}`
@@ -524,8 +525,8 @@ async function handleGenerate(form: GenerateRequest) {
       mode: result.summary.mode,
     })
     window.history.replaceState({}, '', `?${params}`)
-  } catch (e: any) {
-    error.value = e.message ?? 'Unknown error'
+  } catch (e) {
+    error.value = errorMessage(e) ?? 'Unknown error'
   } finally {
     loading.value = false
     genProgress.value = null
@@ -593,8 +594,8 @@ async function handleBatch(form: GenerateRequest, count: number) {
     }
     prefetchSamplers(form.style_id)
     closeDrawer()
-  } catch (e: any) {
-    error.value = e.message ?? 'Batch generation failed'
+  } catch (e) {
+    error.value = errorMessage(e) ?? 'Batch generation failed'
   } finally {
     batchLoading.value = false
   }

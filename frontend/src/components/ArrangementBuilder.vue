@@ -71,6 +71,7 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted } from 'vue'
 import type { GenerateResponse } from '../types/midi'
+import { errorMessage } from '../utils/errors'
 import { arrangeDownload } from '../services/api'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 
@@ -157,8 +158,8 @@ async function togglePlayback() {
     if (arrangeBlobUrl) URL.revokeObjectURL(arrangeBlobUrl)
     arrangeBlobUrl = URL.createObjectURL(blob)
     await toggle(arrangeBlobUrl, undefined, 'Arrangement')
-  } catch (e: any) {
-    error.value = e.message ?? 'Playback failed'
+  } catch (e) {
+    error.value = errorMessage(e) ?? 'Playback failed'
   } finally {
     building.value = false
   }
@@ -175,8 +176,8 @@ async function downloadArrangement() {
     a.download = 'arrangement.mid'
     a.click()
     URL.revokeObjectURL(url)
-  } catch (e: any) {
-    error.value = e.message ?? 'Export failed'
+  } catch (e) {
+    error.value = errorMessage(e) ?? 'Export failed'
   } finally {
     downloading.value = false
   }

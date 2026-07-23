@@ -190,6 +190,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onUnmounted } from 'vue'
 import type { BuildSongResponse, FileInfo } from '../types/midi'
+import { errorMessage } from '../utils/errors'
 import { downloadUrl, regenerateSongPart, regenerateSongSection, undoSongPart, listSongVersions, restoreSongVersion, setPartGain, rollSongPartCandidates, keepSongPartCandidate, rebuildSongProgression, type SongVersion, type SongPartCandidate } from '../services/api'
 import { resolveProgression } from '../utils/chordResolver'
 import CandidatePicker from './CandidatePicker.vue'
@@ -257,8 +258,8 @@ async function onRoll(part: string) {
     const list = await rollSongPartCandidates({ generation_id: props.result.generation_id, part, count: 3 })
     candidatePart.value = part
     candidates.value = list.map(c => ({ ...c, url: `${c.url}?v=${Date.now()}` }))
-  } catch (e: any) {
-    regenError.value = e.message ?? 'Rolling candidates failed'
+  } catch (e) {
+    regenError.value = errorMessage(e) ?? 'Rolling candidates failed'
     logError('Roll song part candidates', e)
     toast(regenError.value ?? 'Rolling candidates failed', 'error')
   } finally {
@@ -279,8 +280,8 @@ async function onKeepCandidate(index: number) {
     undoable.add(part)
     closeCandidates()
     toast(`Kept ${part.replace('_', ' ')} variation ${index + 1}`)
-  } catch (e: any) {
-    regenError.value = e.message ?? 'Keeping candidate failed'
+  } catch (e) {
+    regenError.value = errorMessage(e) ?? 'Keeping candidate failed'
     logError('Keep song part candidate', e)
     toast(regenError.value ?? 'Keeping candidate failed', 'error')
     keepingIndex.value = null
@@ -396,8 +397,8 @@ async function applyProg() {
     editingProg.value = false
     emit('rebuilt', result, `${props.label} (edited harmony)`)
     toast('Song rebuilt with your progression')
-  } catch (e: any) {
-    progError.value = e.message ?? 'Rebuild failed'
+  } catch (e) {
+    progError.value = errorMessage(e) ?? 'Rebuild failed'
     logError('Rebuild song progression', e)
   } finally {
     progBusy.value = false
@@ -453,8 +454,8 @@ async function onRegen(part: string) {
     versions.song = v       // and the whole-song playback
     undoable.add(part)
     toast(`Re-rolled ${part.replace('_', ' ')}`)
-  } catch (e: any) {
-    regenError.value = e.message ?? 'Regeneration failed'
+  } catch (e) {
+    regenError.value = errorMessage(e) ?? 'Regeneration failed'
     logError('Regenerate part', e)
     toast(regenError.value ?? 'Regeneration failed', 'error')
   } finally {
@@ -488,9 +489,9 @@ async function onGain(part: string, gain: number) {
     versions.song = v
     if (wasPlaying) { stopPlayer(); await loadAndPlay(resumeAt) }
     toast(`${part.replace('_', ' ')} volume applied`)
-  } catch (e: any) {
+  } catch (e) {
     partGains[part] = prev
-    regenError.value = e.message ?? 'Volume change failed'
+    regenError.value = errorMessage(e) ?? 'Volume change failed'
     logError('Set part gain', e)
     toast(regenError.value ?? 'Volume change failed', 'error')
   }
@@ -525,8 +526,8 @@ async function onRestore(versionId: string) {
     historyOpen.value = false
     songVersions.value = await listSongVersions(props.result.generation_id)
     toast('Version restored')
-  } catch (e: any) {
-    regenError.value = e.message ?? 'Restore failed'
+  } catch (e) {
+    regenError.value = errorMessage(e) ?? 'Restore failed'
     logError('Restore song version', e)
     toast(regenError.value ?? 'Restore failed', 'error')
   } finally {
@@ -553,8 +554,8 @@ async function onRegenSection(index: number) {
     for (const f of files) if (f.part !== 'song') undoable.add(f.part)
     const lockNote = locked.size ? ` (kept ${[...locked].join(', ')})` : ''
     toast(`Re-rolled ${props.result.sections[index]?.name ?? 'section'}${lockNote}`)
-  } catch (e: any) {
-    regenError.value = e.message ?? 'Section regeneration failed'
+  } catch (e) {
+    regenError.value = errorMessage(e) ?? 'Section regeneration failed'
     logError('Regenerate song section', e)
     toast(regenError.value ?? 'Section regeneration failed', 'error')
   } finally {
@@ -588,8 +589,8 @@ async function onAdd(part: string) {
     versions[part] = v
     versions.song = v   // song.mid was rebuilt with the new stem
     toast(`Added ${part.replace('_', ' ')}`)
-  } catch (e: any) {
-    regenError.value = e.message ?? `Could not add ${part}`
+  } catch (e) {
+    regenError.value = errorMessage(e) ?? `Could not add ${part}`
     logError('Add song part', e)
     toast(regenError.value ?? `Could not add ${part}`, 'error')
   } finally {
@@ -606,8 +607,8 @@ async function onUndo(part: string) {
     versions[part] = v
     versions.song = v
     undoable.delete(part)   // one level of undo
-  } catch (e: any) {
-    regenError.value = e.message ?? 'Undo failed'
+  } catch (e) {
+    regenError.value = errorMessage(e) ?? 'Undo failed'
     logError('Undo song part', e)
   }
 }
@@ -675,8 +676,8 @@ async function exportSongWav() {
     })
     completeJob(jobId, blob)
     toast('Song exported as WAV')
-  } catch (e: any) {
-    wavError.value = e?.message ?? 'WAV export failed'
+  } catch (e) {
+    wavError.value = errorMessage(e) ?? 'WAV export failed'
     failJob(jobId, wavError.value)
     logError('Song WAV export', e)
     toast(wavError.value, 'error')

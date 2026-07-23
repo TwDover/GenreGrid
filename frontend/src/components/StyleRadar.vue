@@ -65,15 +65,16 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import type { StyleConfig } from '../types/midi'
 
 const props = defineProps<{
-  style: Record<string, any>
+  style: StyleConfig
   size?: number
   editable?: boolean
 }>()
 
 const emit = defineEmits<{
-  (e: 'update:style', style: Record<string, any>): void
+  (e: 'update:style', style: StyleConfig): void
 }>()
 
 const size = computed(() => props.size ?? 120)
@@ -116,7 +117,7 @@ const dataPoints = computed(() =>
 const draggingIdx = ref(-1)
 
 // Map each metric index to a setter that writes into a style clone
-const SETTERS: Array<(s: Record<string, any>, v: number) => void> = [
+const SETTERS: Array<(s: StyleConfig, v: number) => void> = [
   (s, v) => { s.drums = { ...s.drums, swing: 0.5 + v * 0.25 } },
   (s, v) => { s.drums = { ...s.drums, hat_density: v } },
   (s, v) => { s.melody = { ...s.melody, density: v } },

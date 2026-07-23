@@ -42,7 +42,7 @@ const { entries, isOpen, close, clear: clearLog } = useErrorLog()
 const expanded = ref<Set<number>>(new Set())
 const copied = ref(false)
 
-const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI
+const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 const logFileHint = isElectron
   ? 'Also written to logs/renderer-errors.log next to backend.log, in case the app closes before you copy this.'
   : ''

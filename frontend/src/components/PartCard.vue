@@ -109,6 +109,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { Midi } from '@tonejs/midi'
 import type { Header } from '@tonejs/midi'
 import type { FileInfo } from '../types/midi'
+import { errorMessage } from '../utils/errors'
 import { downloadUrl, editPart } from '../services/api'
 import { useMidiPlayer, type ParsedNote, type PlayerPart } from '../composables/useMidiPlayer'
 import { useDownloadPrompt } from '../composables/useDownloadPrompt'
@@ -147,7 +148,7 @@ const saved = ref(false)
 const tempFilePath = ref<string | null>(null)
 const expired = ref(false)   // backend export was cleaned up — file no longer on disk
 
-const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI
+const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
 // File System Access API — available in Chrome/Edge, not in Firefox/Safari
 const hasPicker = typeof window !== 'undefined' && 'showSaveFilePicker' in window
@@ -216,9 +217,9 @@ async function saveEdits() {
     rollRef.value?.markSaved()
     emit('edited', props.file.part)   // hand-edited parts auto-lock so a section re-roll won't discard them
     await cacheTempFile(props.file.url)   // re-verify + refresh caches / drag temp file
-  } catch (e: any) {
+  } catch (e) {
     // Keep the edits on screen; surface the failure via the button title.
-    editError.value = e?.message ?? 'Save failed'
+    editError.value = errorMessage(e) ?? 'Save failed'
     logError('Save note edits', e)
   } finally {
     savingEdits.value = false
@@ -257,7 +258,7 @@ async function cacheTempFile(url: string) {
   if (!isElectron || !buf) return
   try {
     const data = Array.from(new Uint8Array(buf))
-    tempFilePath.value = await (window as any).electronAPI.saveTempFile(props.file.filename, data)
+    tempFilePath.value = await window.electronAPI!.saveTempFile(props.file.filename, data)
   } catch {
     tempFilePath.value = null
   }
@@ -269,13 +270,13 @@ watch(() => props.file.url, url => { tempFilePath.value = null; cacheTempFile(ur
 function onMouseDown(e: MouseEvent) {
   if (!isElectron || e.button !== 0 || !tempFilePath.value) return
   e.preventDefault()
-  ;(window as any).electronAPI.startDrag(tempFilePath.value)
+  window.electronAPI!.startDrag(tempFilePath.value)
 }
 
 function onDragStart(e: DragEvent) {
   if (isElectron) {
     e.preventDefault()
-    if (tempFilePath.value) (window as any).electronAPI.startDrag(tempFilePath.value)
+    if (tempFilePath.value) window.electronAPI!.startDrag(tempFilePath.value)
     return
   }
   const url = downloadUrl(props.file.url)
@@ -294,7 +295,7 @@ async function saveTo() {
 
     if (hasPicker) {
       // Let the user pick the exact save location (e.g. their DAW project folder)
-      const handle = await (window as any).showSaveFilePicker({
+      const handle = await window.showSaveFilePicker!({
         suggestedName: filename,
         types: [{ description: 'MIDI File', accept: { 'audio/midi': ['.mid', '.midi'] } }],
       })
@@ -314,9 +315,9 @@ async function saveTo() {
 
     saved.value = true
     setTimeout(() => { saved.value = false }, 2000)
-  } catch (e: any) {
+  } catch (e) {
     // AbortError = user cancelled the picker — not an error
-    if (e?.name !== 'AbortError') logError('Save part to disk', e)
+    if ((e as { name?: string })?.name !== 'AbortError') logError('Save part to disk', e)
   } finally {
     saving.value = false
   }
@@ -349,8 +350,8 @@ async function exportWav() {
     })
     completeJob(jobId, blob)
     toast(`${props.file.part.replace('_', ' ')} exported as WAV`)
-  } catch (e: any) {
-    wavError.value = e?.message ?? 'WAV export failed'
+  } catch (e) {
+    wavError.value = errorMessage(e) ?? 'WAV export failed'
     failJob(jobId, wavError.value)
     logError('WAV export', e)
     toast(wavError.value, 'error')
