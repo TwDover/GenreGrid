@@ -2,6 +2,23 @@
 
 A style-based MIDI generator. Pick a genre, set your key, BPM, and complexity, and get back downloadable MIDI files for chords, bassline, melody, drums, arpeggio, pads, and counter-melody — all harmonically aligned to the same chord progression, as a single loop or a fully arranged song.
 
+![GenreGrid — a full song laid out on the section timeline, with per-part piano rolls and mixer](docs/images/hero-song.png)
+
+### A look around
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/setup-drawer.png" alt="The Setup drawer: pick what to make, then Sound / Form / Feel controls"><br><sub><b>Setup</b> — pick a mode (Loop · Arrangement · Full Song), then dial in Sound, Form, and Feel.</sub></td>
+    <td width="50%"><img src="docs/images/style-browser.png" alt="The Style Browser: cards for each style, filtered by category, with one-click audition"><br><sub><b>Style Browser</b> — 31 styles by category; pin favorites and audition any with one click.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/loop-result.png" alt="A loop result with progression, the six-dimension quality scorer, and per-part piano rolls"><br><sub><b>Loop result</b> — the progression, the quality scorer, and draggable per-part stems.</sub></td>
+    <td width="50%" valign="top"><br><b>Under the hood</b><br><sub>Every part is generated from a JSON style definition and scored across up to six musical dimensions. See the <a href="docs/frontend-architecture.md">frontend architecture doc</a> for how the UI is put together.</sub></td>
+  </tr>
+</table>
+
+> The interface follows your OS light/dark preference and ships three themes (Light · Dark · Sunset); the shots above are the Dark theme.
+
 ## Download
 
 Grab the latest desktop app from the **[Releases page](https://github.com/TwDover/GenreGrid/releases/latest)** — no Python, Node, or terminal required. Download the file for your system, and the backend starts automatically when you open the app:
@@ -112,6 +129,8 @@ Current assumptions: 4/4 time, and the hook is looped or trimmed to fit the chor
 - **Backend** — Python, FastAPI, [mido](https://mido.readthedocs.io/)
 - **Frontend** — Vue 3, TypeScript, Vite, [Tone.js](https://tonejs.github.io/), [@tonejs/midi](https://github.com/Tonejs/Midi)
 - **Desktop** — Electron (Windows, macOS & Linux), with auto-update via [electron-updater](https://www.electron.build/auto-update) on Windows/Linux
+
+> **Contributing to the UI?** [`docs/frontend-architecture.md`](docs/frontend-architecture.md) walks through the workspace shell, the design-token system, the component/composable/service layers, and how a click becomes MIDI on screen.
 
 ---
 
