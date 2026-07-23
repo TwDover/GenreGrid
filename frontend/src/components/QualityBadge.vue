@@ -9,12 +9,12 @@
 <template>
   <div class="quality-panel">
     <div class="quality-header">
-      <span class="quality-label">Quality</span>
-      <span class="quality-badge" :class="labelClass">{{ score.label }}</span>
-      <span class="quality-total">{{ pct(score.total) }}%</span>
+      <span class="quality-label" :title="SCORE_TIP">Quality</span>
+      <span class="quality-badge" :class="labelClass" :title="SCORE_TIP">{{ score.label }}</span>
+      <span class="quality-total" :title="SCORE_TIP">{{ pct(score.total) }}%</span>
     </div>
     <div class="quality-bars">
-      <div v-for="dim in dimensions" :key="dim.key" class="dim-row">
+      <div v-for="dim in dimensions" :key="dim.key" class="dim-row" :title="DIM_TIPS[dim.key]">
         <span class="dim-name">{{ dim.label }}</span>
         <div class="dim-bar-track">
           <div class="dim-bar-fill" :style="{ width: pct(score[dim.key] ?? 0) + '%', background: barColor(score[dim.key] ?? 0) }"></div>
@@ -36,6 +36,24 @@ import { computed } from 'vue'
 import type { QualityScore } from '../types/midi'
 
 const props = defineProps<{ score: QualityScore }>()
+
+// Overall score: an automatic estimate of how musical the result is. Higher is
+// always better; the label bands the total (Excellent ≥ 82 · Good ≥ 68 ·
+// Fair ≥ 52 · Weak below). It's a hint for triage, not a verdict.
+const SCORE_TIP =
+  'Automatic estimate of how musical this result is (higher is better). ' +
+  'Excellent ≥82 · Good ≥68 · Fair ≥52 · Weak below. A guide, not a verdict — trust your ears.'
+
+// What each dimension measures (all scored 0–100, higher is better).
+const DIM_TIPS: Record<string, string> = {
+  harmonic:   'Harmonic — how well the melody and voicings agree with the chords and scale. Low = clashing / off-key notes.',
+  rhythm:     'Rhythm — how well the groove matches the style’s expected feel and comping pattern.',
+  separation: 'Register — whether parts occupy distinct pitch ranges. Low = bass, chords and melody crowd the same octaves.',
+  contour:    'Contour — how shapely and singable the melodic line is, vs. aimless or static.',
+  density:    'Density — whether note counts fit the style. Low = too sparse or too busy for the genre.',
+  mix:        'Mix — velocity balance between parts. Low = one part drowns out the others.',
+  style_match:'Style — how closely the result matches patterns mined from your MIDI corpus for this style.',
+}
 
 const FLAG_TIPS: Record<string, string> = {
   'Melody clashes heavily with chords — many non-scale tones': 'Try a simpler scale (pentatonic minor) or lower complexity.',

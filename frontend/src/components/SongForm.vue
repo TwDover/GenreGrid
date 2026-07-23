@@ -103,6 +103,7 @@
             </select>
           </div>
         </div>
+        <p v-if="scaleMood" class="scale-mood">{{ scaleMood }}</p>
         <div class="field">
           <label>BPM <span v-if="selectedStyle" class="hint">{{ selectedStyle.bpm_range[0] }}–{{ selectedStyle.bpm_range[1] }}</span></label>
           <input type="number" v-model.number="form.bpm"
@@ -229,6 +230,19 @@ const emit = defineEmits<{
 const keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const allParts = ['chords', 'bass', 'melody', 'drums', 'arpeggio', 'pads', 'counter_melody']
 
+// One-line "sounds like" for each scale, so choosing one doesn't require theory.
+const SCALE_MOODS: Record<string, string> = {
+  major:            'Bright, happy, resolved — the default “pop” sound.',
+  minor:            'Dark, serious, emotional — the default for most modern genres.',
+  dorian:           'Minor but hopeful — jazzy, funky, a touch brighter than minor.',
+  phrygian:         'Tense and exotic — that flat-2nd Spanish/metal edge.',
+  mixolydian:       'Bluesy and relaxed — major with a dominant, rock/funk feel.',
+  pentatonic_minor: 'Safe and bluesy — five notes that rarely clash. Great for solos.',
+  pentatonic_major: 'Open and cheerful — easy, folk/country brightness.',
+  blues:            'Gritty and soulful — pentatonic minor plus the “blue” note.',
+  harmonic_minor:   'Dramatic and classical — that exotic raised-7th cadence.',
+}
+
 interface TemplateSection { name: string; bars: number; type: string }
 interface TemplateOption { id: string; label: string; totalBars: number; sections: TemplateSection[] }
 
@@ -321,6 +335,7 @@ const CUSTOM_PARTS_MODE: Record<string, string> = {
 }
 
 const selectedStyle = computed(() => props.styles.find(s => s.id === form.value.style_id))
+const scaleMood = computed(() => SCALE_MOODS[form.value.scale] ?? '')
 const templateLabel = computed(() => templates.find(t => t.id === form.value.template)?.label ?? form.value.template)
 
 // Selecting a style adopts its typical BPM (midpoint of its range) and its
@@ -416,6 +431,8 @@ async function generate() {
 
 .sb-spinner { animation: spin 1s linear infinite; display: inline-block; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.scale-mood { margin: 0; font-size: var(--t-meta); color: var(--ink-faint); line-height: 1.4; }
 
 .prior-toggle {
   display: flex; align-items: flex-start; gap: var(--s2);

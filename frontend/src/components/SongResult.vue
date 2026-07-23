@@ -23,7 +23,7 @@
         </button>
         <div class="sr-title-block">
           <span class="sr-title">{{ label }}</span>
-          <span class="sr-meta">{{ result.total_bars }} bars · {{ result.bpm }} BPM · {{ result.key }}</span>
+          <span class="sr-meta">{{ styleName }} · {{ result.total_bars }} bars · {{ result.bpm }} BPM · {{ result.key }}</span>
         </div>
         <div class="sr-actions">
           <button class="sr-dl-btn" @click="download">↓ .mid</button>
@@ -198,6 +198,7 @@ import { useToasts } from '../composables/useToasts'
 import { logError } from '../composables/useErrorLog'
 import { useDownloadPrompt } from '../composables/useDownloadPrompt'
 import { useRenderQueue } from '../composables/useRenderQueue'
+import { useStyleCatalog } from '../composables/useStyleCatalog'
 import PartCard from './PartCard.vue'
 
 const props = defineProps<{ result: BuildSongResponse | null; label: string }>()
@@ -306,6 +307,17 @@ const bustedStems = computed(() => stemFiles.value.map(f =>
   versions[f.part] ? { ...f, url: `${f.url}?v=${versions[f.part]}` } : f))
 const keyRoot = computed(() => (props.result?.key ?? 'C').split(' ')[0])
 const scale = computed(() => (props.result?.key ?? 'C minor').split(' ')[1] ?? 'minor')
+
+// Pretty style name from the shared catalog; fall back to de-slugging the id
+// (e.g. "dark_trap" → "Dark Trap") when the catalog hasn't loaded.
+const { catalog } = useStyleCatalog()
+const styleName = computed(() => {
+  const id = props.result?.style
+  if (!id) return ''
+  const known = catalog.value.get(id)?.name
+  if (known) return known
+  return id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+})
 
 // ── Progression strip ────────────────────────────────────────────────────────
 // Roman numerals → concrete chords, with cadence labels at phrase ends and a
