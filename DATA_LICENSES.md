@@ -56,6 +56,9 @@ artifacts derived from permissively-licensed (CC-BY, public-domain) sources, and
 
 - **Groove MIDI Dataset** — Gillick, Roberts, Engel, Eck, Bahdanau; Google Magenta,
   2019. Licensed CC-BY 4.0. https://magenta.tensorflow.org/datasets/groove
+- **Salamander Grand Piano** — Alexander Holm. Licensed CC-BY 3.0. The piano sample
+  set bundled at `frontend/public/samples/piano/` (the Tone.js-hosted subset) is
+  derived from this work. https://archive.org/details/SalamanderGrandPianoV3
 
 ## Note on the GPL and data
 

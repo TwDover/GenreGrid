@@ -14,6 +14,7 @@ import re
 import secrets
 import uuid
 import json as _json_module
+from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
@@ -1196,11 +1197,31 @@ def regenerate_part(req: RegeneratePartRequest):
     return FileInfo(part=req.part, filename=filename, url=f"/exports/{req.generation_id}/{filename}")
 
 
+# Generation ids are short uuid4 hex slices (see /generate); keep the check strict
+# but tolerant of any hex/underscore/hyphen id we've ever minted.
+_VALID_GEN_ID = re.compile(r'^[A-Za-z0-9_\-]{1,64}$')
+
+
+def _safe_export_dir(gen_id: str) -> Path:
+    """Resolve EXPORTS_DIR/<gen_id> and guarantee it stays inside EXPORTS_DIR.
+
+    Blocks path traversal via `..`/encoded separators in the id before any
+    filesystem access. Raises 422 for a malformed id, 404 if the dir is missing.
+    """
+    if not _VALID_GEN_ID.match(gen_id):
+        raise HTTPException(status_code=422, detail="Invalid generation id")
+    root = EXPORTS_DIR.resolve()
+    target = (root / gen_id).resolve()
+    if not target.is_relative_to(root):
+        raise HTTPException(status_code=404, detail="Generation not found")
+    return target
+
+
 @router.get("/exports/{gen_id}/bundle.zip")
 def download_bundle(gen_id: str):
     import zipfile
     import io
-    output_dir = EXPORTS_DIR / gen_id
+    output_dir = _safe_export_dir(gen_id)
     if not output_dir.exists():
         raise HTTPException(status_code=404, detail="Generation not found")
     mid_files = list(output_dir.glob("*.mid"))
@@ -1226,7 +1247,7 @@ def download_bundle(gen_id: str):
 def download_sections(gen_id: str):
     import zipfile
     import io
-    sec_dir = EXPORTS_DIR / gen_id / "sections"
+    sec_dir = _safe_export_dir(gen_id) / "sections"
     if not sec_dir.exists():
         raise HTTPException(status_code=404, detail="No section stems found — generate in Arrangement mode first")
     mid_files = list(sec_dir.glob("*.mid"))
@@ -1249,10 +1270,14 @@ def download_sections(gen_id: str):
 
 @router.get("/exports/{gen_id}/{filename}")
 def download_export(gen_id: str, filename: str):
-    file_path = EXPORTS_DIR / gen_id / filename
-    if not file_path.exists():
+    base = _safe_export_dir(gen_id).resolve()
+    file_path = (base / filename).resolve()
+    # Reject any filename that escapes the generation dir (e.g. `..%2f..%2fsecret`).
+    if not file_path.is_relative_to(base):
         raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(str(file_path), media_type="audio/midi", filename=filename)
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(str(file_path), media_type="audio/midi", filename=file_path.name)
 
 
 _SAFE_PATH = re.compile(r'^[a-zA-Z0-9_\-]{1,80}$')

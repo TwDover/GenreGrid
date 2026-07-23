@@ -6,8 +6,33 @@
 # Foundation, either version 3 of the License, or (at your option) any later
 # version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
 # <https://www.gnu.org/licenses/> for details.
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional
+
+
+class CustomStyleRequest(BaseModel):
+    """A user-authored style saved via POST /styles/custom.
+
+    Validates the fields the generators actually read (with bounds), while
+    `extra="allow"` keeps richer per-style config (drums, voices, feel …) that
+    the StyleEditor sends. The route also re-checks `id` against a strict
+    filename pattern before it becomes a path on disk.
+    """
+    model_config = {"extra": "allow"}
+
+    id: str = Field(min_length=1, max_length=40)
+    name: str = Field(min_length=1, max_length=80)
+    bpm_range: List[int] = Field(min_length=2, max_length=2)
+    default_scale: str = Field(min_length=1, max_length=40)
+    progression_templates: List[List[str]] = Field(min_length=1, max_length=64)
+
+    @field_validator("bpm_range")
+    @classmethod
+    def _bpm_range_sane(cls, v: List[int]) -> List[int]:
+        lo, hi = v[0], v[1]
+        if not (20 <= lo <= hi <= 300):
+            raise ValueError("bpm_range must be [low, high] within 20–300 and low ≤ high")
+        return v
 
 
 class GenerateRequest(BaseModel):

@@ -15,7 +15,7 @@ from functools import lru_cache
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from app.services.style_loader import list_styles, get_style_detail, save_custom_style, load_style
-from app.models.schemas import StyleInfo
+from app.models.schemas import StyleInfo, CustomStyleRequest
 
 router = APIRouter()
 
@@ -93,14 +93,9 @@ def _build_preview(style_id: str) -> bytes:
 
 
 @router.post("/styles/custom")
-def create_custom_style(body: dict):
-    style_id = body.get("id", "")
-    if not _VALID_ID.match(style_id):
+def create_custom_style(body: CustomStyleRequest):
+    # Pydantic validates the core fields + bounds; still re-check the id against
+    # the strict filename pattern, since it becomes a path on disk.
+    if not _VALID_ID.match(body.id):
         raise HTTPException(status_code=422, detail="Style id must be 1-40 lowercase alphanumeric/underscore chars")
-    if not body.get("name"):
-        raise HTTPException(status_code=422, detail="Style name is required")
-    required = ("bpm_range", "default_scale", "progression_templates")
-    for field in required:
-        if field not in body:
-            raise HTTPException(status_code=422, detail=f"Missing required field: {field}")
-    return save_custom_style(body)
+    return save_custom_style(body.model_dump())

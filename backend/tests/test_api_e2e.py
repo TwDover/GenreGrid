@@ -52,6 +52,40 @@ def test_generate_loop_over_http():
     assert stem.status_code == 200 and stem.content[:4] == b"MThd"
 
 
+def test_cors_allows_localhost_but_not_external_sites():
+    # A random-port renderer origin (as in the packaged app) is granted
+    r = client.options("/generate", headers={
+        "Origin": "http://127.0.0.1:53311", "Access-Control-Request-Method": "POST"})
+    assert r.headers.get("access-control-allow-origin") == "http://127.0.0.1:53311"
+
+    # An arbitrary website the user might visit is NOT granted access
+    r = client.options("/generate", headers={
+        "Origin": "https://evil.example", "Access-Control-Request-Method": "POST"})
+    assert r.headers.get("access-control-allow-origin") is None
+
+
+def test_export_download_rejects_path_traversal():
+    # A generation whose stems are genuinely downloadable
+    r = client.post("/generate", json={
+        "style_id": "lofi", "key": "C", "scale": "major", "bpm": 90, "bars": 4,
+        "parts": ["chords"], "mode": "loop", "seed": 9, "use_priors": False,
+    })
+    assert r.status_code == 200
+    gid = r.json()["generation_id"]
+
+    # A real stem still downloads (regression guard for the hardened route)
+    assert client.get(f"/exports/{gid}/chords.mid").status_code == 200
+
+    # Encoded traversal in the filename must not escape the generation dir
+    for evil in ("..%2f..%2fmeta.json", "..%2F..%2F..%2Fetc%2Fpasswd", "%2e%2e%2fchords.mid"):
+        resp = client.get(f"/exports/{gid}/{evil}")
+        assert resp.status_code in (404, 422), evil
+        assert b"root:" not in resp.content
+
+    # A malformed generation id is rejected before any filesystem access
+    assert client.get("/exports/..%2f..%2fetc/passwd").status_code in (404, 422)
+
+
 def test_song_lifecycle_over_http(song):
     gid = song["generation_id"]
     assert song["sections"][-1]["section_type"] == "ending"

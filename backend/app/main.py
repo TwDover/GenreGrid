@@ -27,14 +27,26 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="GenreGrid API", version="0.1.0", lifespan=lifespan)
 
-_cors_env = os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
-_cors_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+# A packaged renderer runs on a random 127.0.0.1:<port>, so we can't pin a fixed
+# origin — but the API must NOT be open to arbitrary websites (a page the user
+# visits in their browser could otherwise POST to the local backend). Allow any
+# localhost / 127.0.0.1 origin (any port) via regex: same-machine requests keep
+# working, while a browser blocks evil.com's cross-origin JSON POSTs at preflight.
+# `CORS_ORIGINS="*"` (the old packaged setting) now maps to this safe localhost
+# regex rather than a literal wildcard; an explicit comma-list is still honored.
+_LOCALHOST_ORIGIN_RE = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+_cors_env = os.environ.get("CORS_ORIGINS", "").strip()
+
+if _cors_env and _cors_env != "*":
+    _cors_kwargs = {"allow_origins": [o.strip() for o in _cors_env.split(",") if o.strip()]}
+else:
+    _cors_kwargs = {"allow_origin_regex": _LOCALHOST_ORIGIN_RE}
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
+    **_cors_kwargs,
 )
 
 app.include_router(health_router)

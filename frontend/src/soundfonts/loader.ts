@@ -10,8 +10,11 @@
  */
 import * as Tone from 'tone'
 
-// Salamander Grand Piano — same sample set used in Tone.js official examples
-const BASE_URL = 'https://tonejs.github.io/audio/salamander/'
+// Salamander Grand Piano — bundled locally under public/samples/piano/ (served by
+// the renderer's static server) so the flagship piano works fully offline and
+// doesn't fetch from a third-party host at runtime. Same sample set as the Tone.js
+// examples; served identically to the other instruments' /samples/... sets.
+const BASE_URL = '/samples/piano/'
 
 const SAMPLE_MAP: Record<string, string> = {
   A0: 'A0.mp3',   C1: 'C1.mp3',   'D#1': 'Ds1.mp3', 'F#1': 'Fs1.mp3',
