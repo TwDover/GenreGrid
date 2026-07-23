@@ -42,7 +42,8 @@
         :title="`${errorEntries.length} error${errorEntries.length === 1 ? '' : 's'} logged this session`"
       >🐛 {{ errorEntries.length }}</button>
       <button class="btn btn-quiet btn-icon" @click="cycleTheme" :title="`Theme: ${THEME_META[theme].label} — click to cycle`">{{ THEME_META[theme].icon }}</button>
-      <button class="btn btn-quiet btn-icon" @click="showShortcuts = !showShortcuts" title="Keyboard shortcuts">?</button>
+      <button class="btn btn-quiet btn-icon" @click="showHelp = true" title="How GenreGrid works">?</button>
+      <button class="btn btn-quiet btn-icon" @click="showShortcuts = !showShortcuts" title="Keyboard shortcuts">⌨</button>
     </header>
 
     <!-- ── Workspace: the only scroll region ──────────────────────────────── -->
@@ -166,7 +167,7 @@
             <tr><td class="shortcut-key">Space</td><td class="shortcut-desc">Stop playback</td></tr>
             <tr><td class="shortcut-key">Ctrl+S</td><td class="shortcut-desc">Save session</td></tr>
             <tr><td class="shortcut-key">Esc</td><td class="shortcut-desc">Close drawer / dialog</td></tr>
-            <tr><td class="shortcut-key">?</td><td class="shortcut-desc">Show shortcuts</td></tr>
+            <tr><td class="shortcut-key">?</td><td class="shortcut-desc">How GenreGrid works</td></tr>
             <tr><td colspan="2" class="shortcut-section">Developer / Debug</td></tr>
             <tr><td class="shortcut-key">Ctrl/Cmd+Shift+D</td><td class="shortcut-desc">Toggle on-screen debug HUD (mirrors console)</td></tr>
             <tr><td class="shortcut-key">F12 / Ctrl+Shift+I</td><td class="shortcut-desc">Toggle DevTools</td></tr>
@@ -181,6 +182,8 @@
         </table>
       </div>
     </div>
+
+    <HelpPanel v-if="showHelp" @close="showHelp = false" />
 
     <ToastHost />
     <DownloadNamePrompt />
@@ -197,6 +200,7 @@ import LibraryPanel from '../components/LibraryPanel.vue'
 import TransportBar from '../components/TransportBar.vue'
 import SongForm from '../components/SongForm.vue'
 import SongResult from '../components/SongResult.vue'
+import HelpPanel from '../components/HelpPanel.vue'
 import ToastHost from '../components/ToastHost.vue'
 import DownloadNamePrompt from '../components/DownloadNamePrompt.vue'
 import ErrorLogPanel from '../components/ErrorLogPanel.vue'
@@ -216,6 +220,7 @@ const { jobs: renderJobs, open: openRenderQueue } = useRenderQueue()
 const activeRenderCount = computed(() => renderJobs.value.filter(j => j.status === 'rendering').length)
 
 const showShortcuts = ref(false)
+const showHelp = ref(false)
 
 // Which drawer is open, if any. Setup (top) holds the form; library (right)
 // holds recent songs / the saved-styles library.
@@ -439,6 +444,7 @@ function loadSession(e: Event) {
 function onKeyDown(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     if (drawer.value) { closeDrawer(); return }
+    if (showHelp.value) { showHelp.value = false; return }
     if (showShortcuts.value) { showShortcuts.value = false; return }
   }
   const tag = (e.target as HTMLElement).tagName
@@ -453,7 +459,7 @@ function onKeyDown(e: KeyboardEvent) {
   }
   if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
     e.preventDefault()
-    showShortcuts.value = !showShortcuts.value
+    showHelp.value = !showHelp.value
   }
 }
 onMounted(() => {

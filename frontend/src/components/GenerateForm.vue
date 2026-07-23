@@ -71,6 +71,7 @@
         <div class="scale-notes">
           <span v-for="note in scaleNotes" :key="note" class="scale-note">{{ note }}</span>
         </div>
+        <p v-if="scaleMood" class="scale-mood">{{ scaleMood }}</p>
 
         <div class="field">
           <label>BPM <span v-if="selectedStyle" class="hint">{{ selectedStyle.bpm_range[0] }}–{{ selectedStyle.bpm_range[1] }}</span></label>
@@ -182,6 +183,20 @@
               @blur="parseProgression"
             />
             <div v-if="progressionError" class="field-error">{{ progressionError }}</div>
+            <details class="roman-legend">
+              <summary>What's this notation?</summary>
+              <p>
+                Roman numerals name chords by their position in the key, so the
+                progression follows whatever <strong>Key</strong> you pick.
+              </p>
+              <ul>
+                <li><code>I II … VII</code> — uppercase = major chord</li>
+                <li><code>i ii … vii</code> — lowercase = minor chord</li>
+                <li><code>b</code> prefix — flatten the root, e.g. <code>bVII</code></li>
+                <li>suffixes — <code>7</code>, <code>maj7</code>, <code>m7</code>, <code>dim</code>, <code>aug</code>, <code>sus2/4</code></li>
+              </ul>
+              <p class="rl-ex">Try: <code>i bVII bVI V</code> · <code>ii7 V7 Imaj7</code> · <code>I V vi IV</code></p>
+            </details>
           </div>
           <div class="field">
             <label>Seed <span class="hint">blank = random</span></label>
@@ -252,6 +267,22 @@ const SCALE_INTERVALS: Record<string, number[]> = {
   harmonic_minor:    [0,2,3,5,7,8,11],
   phrygian_dominant: [0,1,4,5,7,8,10],
   whole_tone:        [0,2,4,6,8,10],
+}
+// One-line "sounds like" for each scale, so choosing one doesn't require theory.
+const SCALE_MOODS: Record<string, string> = {
+  major:             'Bright, happy, resolved — the default “pop” sound.',
+  minor:             'Dark, serious, emotional — the default for most modern genres.',
+  dorian:            'Minor but hopeful — jazzy, funky, a touch brighter than minor.',
+  phrygian:          'Tense and exotic — that flat-2nd Spanish/metal edge.',
+  lydian:            'Dreamy and floaty — bright with a magical lift.',
+  mixolydian:        'Bluesy and relaxed — major with a dominant, rock/funk feel.',
+  locrian:           'Unstable and dissonant — rare, very tense.',
+  pentatonic_minor:  'Safe and bluesy — five notes that rarely clash. Great for solos.',
+  pentatonic_major:  'Open and cheerful — easy, folk/country brightness.',
+  blues:             'Gritty and soulful — pentatonic minor plus the “blue” note.',
+  harmonic_minor:    'Dramatic and classical — that exotic raised-7th cadence.',
+  phrygian_dominant: 'Middle-Eastern / flamenco — exotic and intense.',
+  whole_tone:        'Dreamlike and ambiguous — no home note, very impressionistic.',
 }
 import StyleBrowser from './StyleBrowser.vue'
 import StyleEditor from './StyleEditor.vue'
@@ -361,6 +392,8 @@ const scaleNotes = computed(() => {
   if (rootIdx === -1) return []
   return intervals.map(iv => CHROMATIC[(rootIdx + iv) % 12])
 })
+
+const scaleMood = computed(() => SCALE_MOODS[form.scale] ?? '')
 
 const showBrowser = ref(false)
 const showEditor = ref(false)
@@ -500,6 +533,25 @@ function randomize() {
 .progression-input { font-family: var(--f-mono); letter-spacing: 0.04em; }
 .field-error { font-size: var(--t-meta); color: var(--bad); margin-top: var(--s1); }
 
+.roman-legend { margin-top: var(--s2); }
+.roman-legend summary {
+  font-size: var(--t-meta); color: var(--ink-faint); cursor: pointer;
+  list-style: none; width: fit-content;
+}
+.roman-legend summary::-webkit-details-marker { display: none; }
+.roman-legend summary::before { content: '›'; margin-right: 0.35rem; display: inline-block; transition: transform 0.14s; }
+.roman-legend[open] summary::before { transform: rotate(90deg); }
+.roman-legend summary:hover { color: var(--ink-dim); }
+.roman-legend p { font-size: var(--t-meta); color: var(--ink-dim); line-height: 1.5; margin: var(--s2) 0 0; }
+.roman-legend ul { margin: var(--s1) 0 0; padding-left: var(--s4); display: flex; flex-direction: column; gap: 1px; }
+.roman-legend li { font-size: var(--t-meta); color: var(--ink-dim); line-height: 1.5; }
+.roman-legend code {
+  font-family: var(--f-mono); font-size: var(--t-micro);
+  color: var(--accent); background: var(--accent-wash);
+  border-radius: var(--r-sm); padding: 0.02rem 0.28rem;
+}
+.roman-legend .rl-ex { color: var(--ink-faint); }
+
 /* Inline captions on labels — normal case, no uppercase inheritance. */
 .hint {
   font-size: var(--t-meta);
@@ -524,6 +576,7 @@ function randomize() {
   border-radius: var(--r-sm);
   padding: 0.05rem 0.4rem;
 }
+.scale-mood { margin: var(--s1) 0 0; font-size: var(--t-meta); color: var(--ink-faint); line-height: 1.4; }
 
 /* Section profile grid — compact chips (label + bar range). */
 .section-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(66px, 1fr)); gap: var(--s1); }
