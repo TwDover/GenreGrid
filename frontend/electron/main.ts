@@ -8,7 +8,7 @@
  * version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
  * <https://www.gnu.org/licenses/> for details.
  */
-import { app, BrowserWindow, dialog, ipcMain, nativeImage, protocol, net as electronNet } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, protocol, shell, net as electronNet } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import nodeNet from 'net'
 import http from 'http'
@@ -100,7 +100,10 @@ async function startBackend(): Promise<void> {
   const logFile = fs.openSync(path.join(logDir, 'backend.log'), 'w')
 
   backendProcess = spawn(exePath, [String(backendPort)], {
-    env: { ...process.env, GENREGRID_DATA_DIR: dataDir, CORS_ORIGINS: '*' },
+    // No CORS_ORIGINS override: the backend defaults to a localhost-only origin
+    // regex, which covers the renderer's random 127.0.0.1 port while keeping the
+    // local API closed to arbitrary websites.
+    env: { ...process.env, GENREGRID_DATA_DIR: dataDir },
     stdio: ['ignore', logFile, logFile],
     // The backend is a console-subsystem exe (so devs can run it standalone
     // and see output); CREATE_NO_WINDOW keeps its blank console from popping
@@ -199,6 +202,30 @@ async function createWindow(): Promise<void> {
       // (e.g. clicking the terminal or DevTools), which stops playback after it starts.
       backgroundThrottling: false,
     },
+  })
+
+  // ── Navigation hardening ──────────────────────────────────────────────────
+  // The renderer only ever needs to live at its own origin (the Vite dev server
+  // or the local static server). Anything that tries to navigate the window
+  // elsewhere, or open a new window/popup, is either a bug or a compromised
+  // renderer — block in-app navigation and hand external URLs to the OS browser.
+  const rendererOrigin = () => {
+    try { return new URL(VITE_DEV_SERVER_URL || 'http://127.0.0.1').origin } catch { return '' }
+  }
+  win.webContents.on('will-navigate', (e, url) => {
+    // Allow same-origin (reloads, SPA); deny everything else.
+    let sameOrigin = false
+    try { sameOrigin = new URL(url).origin === new URL(win.webContents.getURL()).origin } catch { /* deny */ }
+    if (!sameOrigin) {
+      e.preventDefault()
+      if (/^https?:/.test(url)) shell.openExternal(url)
+      console.warn('[main] blocked in-app navigation to', url)
+    }
+  })
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    // Never spawn Electron child windows; open real web links in the OS browser.
+    if (/^https?:/.test(url) && new URL(url).origin !== rendererOrigin()) shell.openExternal(url)
+    return { action: 'deny' }
   })
 
   // ── DEBUG: mirror the whole renderer console into the main-process stdout, so the full
@@ -352,7 +379,10 @@ ipcMain.on('get-api-port', (event) => {
 ipcMain.handle('save-temp-file', async (_, { filename, data }: { filename: string; data: number[] }) => {
   const dir = path.join(app.getPath('temp'), 'genregrid')
   await fs.promises.mkdir(dir, { recursive: true })
-  const filePath = path.join(dir, filename)
+  // Strip any directory components — the renderer supplies this name, and a
+  // value like `../../evil` must not let a write escape the temp dir.
+  const safeName = path.basename(filename) || 'stem.mid'
+  const filePath = path.join(dir, safeName)
   await fs.promises.writeFile(filePath, Buffer.from(data))
   return filePath
 })
