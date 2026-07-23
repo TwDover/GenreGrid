@@ -10,6 +10,7 @@
  */
 import * as Tone from 'tone'
 import { getBassBus } from './loader'
+import { LayeredSampler, loadLayeredSampler } from './layeredSampler'
 
 // The per-style bass sample set now comes from the instrument registry: each
 // style's `instrumentation.bass` resolves to an instrument whose `playback_voice`
@@ -17,6 +18,13 @@ import { getBassBus } from './loader'
 // voiceFor()). This module just loads the sample set it's handed — the registry
 // is the single source of truth (see docs/instrument-identity-design.md).
 const DEFAULT_INSTRUMENT = 'electric_bass_finger'
+
+// Bass voices with a confirmed-license sample set on disk. The MusyngKite-derived
+// bass sets (electric/acoustic/fretless/slap/synth) were removed for licensing
+// reasons — see docs/LICENSE_AUDIT.md — and no confirmed-CC0 bass-guitar library
+// covers them, so this is empty and all bass currently plays through the synth bass.
+// Drop a re-sourced CC0/CC-BY voice id here (and its samples) to re-enable sampling.
+export const SAMPLED_BASS_VOICES = new Set<string>()
 
 const BASS_SAMPLE_MAP: Record<string, string> = {
   A1: 'A1.mp3', C2: 'C2.mp3', E2: 'E2.mp3', G2: 'G2.mp3',
@@ -34,22 +42,21 @@ function buildBassFx(inst: string, out: Tone.ToneAudioNode): Tone.ToneAudioNode 
   return out
 }
 
-const bassCache = new Map<string, Promise<Tone.Sampler>>()
+const bassCache = new Map<string, Promise<LayeredSampler>>()
 
-export function getBassSampler(voice?: string | null): Promise<Tone.Sampler> {
+export function getBassSampler(voice?: string | null): Promise<LayeredSampler> {
   const inst = voice ?? DEFAULT_INSTRUMENT
   if (bassCache.has(inst)) return bassCache.get(inst)!
 
   const fxInput = buildBassFx(inst, getBassBus())
 
-  const promise = new Promise<Tone.Sampler>((resolve, reject) => {
-    const sampler = new Tone.Sampler({
-      urls: BASS_SAMPLE_MAP,
-      baseUrl: `/samples/bass/${inst}/`,
-      volume: -4,
-      onload: () => resolve(sampler),
-      onerror: reject,
-    }).connect(fxInput)
+  const promise = loadLayeredSampler({
+    baseUrl: `/samples/bass/${inst}/`,
+    legacyUrls: BASS_SAMPLE_MAP,
+    volume: -4,
+  }).then((sampler) => {
+    sampler.connect(fxInput)
+    return sampler
   })
 
   bassCache.set(inst, promise)

@@ -10,6 +10,7 @@
  */
 import * as Tone from 'tone'
 import { getMelodicBus } from './loader'
+import { LayeredSampler, loadLayeredSampler } from './layeredSampler'
 
 // Per-part melodic voices come from the instrument registry (served via
 // /styles → voices.{chords,melody,arpeggio}, read with voiceFor()). This module
@@ -23,15 +24,12 @@ const MELODIC_SAMPLE_MAP: Record<string, string> = {
   A5: 'A5.mp3',
 }
 
+// Voices with a confirmed-license (CC0 / CC-BY) sample set on disk. Only these load
+// a sampler; every other voice is synthesized. The old MusyngKite-derived sets
+// (electric pianos, clavinet, accordion, organ, nylon guitar, strings) were removed
+// for licensing reasons — see docs/LICENSE_AUDIT.md — so they fall back to synths.
 const INSTRUMENT_VOLUME: Record<string, number> = {
-  vibraphone:            -3,
-  acoustic_guitar_nylon: -2,
-  clavinet:              -8,
-  accordion:             -5,
-  string_ensemble_1:     -3,
-  electric_piano_1:      -5,
-  electric_piano_2:      -6,
-  drawbar_organ:         -7,
+  vibraphone: -6,   // VCSL CC0, velocity-layered (peak-normalised → quieter than the old set)
 }
 const DEFAULT_VOLUME = -6
 
@@ -44,14 +42,6 @@ const DEFAULT_VOLUME = -6
 async function buildFxChain(inst: string, out: Tone.ToneAudioNode): Promise<Tone.ToneAudioNode> {
   switch (inst) {
 
-    case 'string_ensemble_1': {
-      // Long hall reverb — lush orchestral pad sound
-      const reverb = new Tone.Reverb({ decay: 2.8, wet: 0.38 })
-      await reverb.generate()
-      reverb.connect(out)
-      return reverb
-    }
-
     case 'vibraphone': {
       // Short room reverb + light chorus for shimmer
       const reverb = new Tone.Reverb({ decay: 1.2, wet: 0.28 })
@@ -60,53 +50,6 @@ async function buildFxChain(inst: string, out: Tone.ToneAudioNode): Promise<Tone
       const chorus = new Tone.Chorus({ frequency: 2, depth: 0.25, wet: 0.18 }).connect(reverb)
       chorus.start()
       return chorus
-    }
-
-    case 'acoustic_guitar_nylon': {
-      // Warm room reverb — adds natural space without washing out the attack
-      const reverb = new Tone.Reverb({ decay: 1.5, wet: 0.22 })
-      await reverb.generate()
-      reverb.connect(out)
-      return reverb
-    }
-
-    case 'electric_piano_1': {
-      // Classic Rhodes treatment: chorus for movement + short verb for bloom
-      const reverb = new Tone.Reverb({ decay: 1.4, wet: 0.20 })
-      await reverb.generate()
-      reverb.connect(out)
-      const chorus = new Tone.Chorus({ frequency: 3, depth: 0.35, wet: 0.22 }).connect(reverb)
-      chorus.start()
-      return chorus
-    }
-
-    case 'electric_piano_2': {
-      // DX7 is naturally bright — minimal verb, no chorus
-      const reverb = new Tone.Reverb({ decay: 0.9, wet: 0.14 })
-      await reverb.generate()
-      reverb.connect(out)
-      return reverb
-    }
-
-    case 'clavinet': {
-      // Phaser for that wah-funk movement; stays dry and punchy (no reverb)
-      const phaser = new Tone.Phaser({ frequency: 2.5, octaves: 3, wet: 0.45 }).connect(out)
-      return phaser
-    }
-
-    case 'drawbar_organ': {
-      // Rotary / Leslie simulator via chorus
-      const chorus = new Tone.Chorus({ frequency: 3.5, depth: 0.55, wet: 0.5 }).connect(out)
-      chorus.start()
-      return chorus
-    }
-
-    case 'accordion': {
-      // Light room verb — keeps the attack crisp
-      const reverb = new Tone.Reverb({ decay: 1.0, wet: 0.16 })
-      await reverb.generate()
-      reverb.connect(out)
-      return reverb
     }
 
     default: {
@@ -119,8 +62,8 @@ async function buildFxChain(inst: string, out: Tone.ToneAudioNode): Promise<Tone
   }
 }
 
-// Cache: instrument name → promise resolving to the loaded Tone.Sampler
-const melodicCache = new Map<string, Promise<Tone.Sampler>>()
+// Cache: instrument name → promise resolving to the loaded sampler
+const melodicCache = new Map<string, Promise<LayeredSampler>>()
 // Cache: instrument name → promise resolving to the fx input node
 const fxCache = new Map<string, Promise<Tone.ToneAudioNode>>()
 
@@ -131,7 +74,7 @@ export const SAMPLED_VOICES = new Set(Object.keys(INSTRUMENT_VOLUME))
 
 /** Load a melodic sampler by voice id (instrument-registry playback_voice).
  *  Returns null for non-sampled voices — callers fall back to synth voices. */
-export function getMelodicSamplerById(inst: string): Promise<Tone.Sampler> | null {
+export function getMelodicSamplerById(inst: string): Promise<LayeredSampler> | null {
   if (!SAMPLED_VOICES.has(inst)) return null
 
   if (melodicCache.has(inst)) return melodicCache.get(inst)!
@@ -141,18 +84,15 @@ export function getMelodicSamplerById(inst: string): Promise<Tone.Sampler> | nul
   }
   const fxPromise = fxCache.get(inst)!
 
-  const promise = fxPromise.then(
-    (fxInput) =>
-      new Promise<Tone.Sampler>((resolve, reject) => {
-        const sampler = new Tone.Sampler({
-          urls: MELODIC_SAMPLE_MAP,
-          baseUrl: `/samples/melodic/${inst}/`,
-          volume: INSTRUMENT_VOLUME[inst] ?? DEFAULT_VOLUME,
-          onload: () => resolve(sampler),
-          onerror: reject,
-        }).connect(fxInput)
-      }),
-  )
+  const promise = fxPromise.then(async (fxInput) => {
+    const sampler = await loadLayeredSampler({
+      baseUrl: `/samples/melodic/${inst}/`,
+      legacyUrls: MELODIC_SAMPLE_MAP,
+      volume: INSTRUMENT_VOLUME[inst] ?? DEFAULT_VOLUME,
+    })
+    sampler.connect(fxInput)
+    return sampler
+  })
 
   melodicCache.set(inst, promise)
   return promise

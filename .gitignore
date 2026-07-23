@@ -90,3 +90,7 @@ backend/app/priors/grooves/*.json
 # copyrighted; keep the repo data-free).
 *.mid
 *.midi
+
+# Source WAVs downloaded by scripts/build_velocity_samples.py. Only the converted
+# MP3s under frontend/public/samples/ are committed; the bulky source cache is not.
+.sample-cache/

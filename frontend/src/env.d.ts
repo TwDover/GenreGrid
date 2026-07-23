@@ -15,6 +15,23 @@ interface ElectronAPI {
   startDrag: (filePath: string) => void
   checkForUpdates: () => Promise<{ status: string; version: string; latest?: string; message?: string }>
   logRendererError: (entry: { timestamp: string; context: string; message: string; stack?: string }) => Promise<void>
+
+  /** User custom-instrument storage (see docs/custom-instruments-design.md). Audio
+   *  lives under userData/instruments/<id>/ and is served back over the gginstr://
+   *  protocol; only the index (with manifests) round-trips through these calls. */
+  instruments?: {
+    /** Read the library index (instruments without their audio bytes). */
+    list: () => Promise<import('./soundfonts/customInstruments').CustomInstrument[]>
+    /** Persist one instrument + its audio files (name may include a sub-path). */
+    save: (
+      inst: import('./soundfonts/customInstruments').CustomInstrument,
+      files: Array<{ name: string; data: number[] }>,
+    ) => Promise<void>
+    /** Delete an instrument and its audio. */
+    remove: (id: string) => Promise<void>
+    /** Read every audio file for an instrument (name may include a sub-path). */
+    read: (id: string) => Promise<Array<{ name: string; data: number[] }>>
+  }
 }
 
 /** Custom Vite env vars (merges with vite/client's ImportMetaEnv). */
