@@ -34,7 +34,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 // to be built inside vi.hoisted() rather than declared as normal top-level
 // classes — otherwise the factory below runs before they're initialized.
 const { createdInstances, FakeMembraneSynth, FakeSynth, FakeNoiseSynth, FakeMetalSynth, FakeFilter, FakeDistortion } = vi.hoisted(() => {
-  let createdInstances: any[] = []
+  const createdInstances: any[] = []
 
   class FakeVoice {
     static requiredArity = 4

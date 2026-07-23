@@ -6,7 +6,6 @@
 # Foundation, either version 3 of the License, or (at your option) any later
 # version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
 # <https://www.gnu.org/licenses/> for details.
-import pytest
 from app.theory.chords import roman_to_chord
 from app.generators.chords import generate_chords
 
@@ -46,7 +45,6 @@ def test_sparse_comp_rhythm_still_sounds_every_chord_window():
     second chord window silent — every other chord of the progression was
     dropped while the first rang through it. Every window must sound its chord."""
     import random
-    from app.theory.chords import roman_to_chord as r2c
 
     style = {"comp_style": "pad_hold"}
     prog = ["I", "vi", "I", "vi"]
@@ -104,7 +102,6 @@ def test_declutter_keeps_a_playable_chord_and_the_core_triad():
     """De-cluster must never strip a chord below its triad, and must keep the
     root/3rd/5th (it only drops tensions / an unspreadable maj7)."""
     import random
-    from app.theory.chords import roman_to_chord
     from app.services.style_loader import load_style
 
     style = load_style("cloud_rap")

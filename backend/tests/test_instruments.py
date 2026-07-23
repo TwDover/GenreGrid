@@ -8,10 +8,9 @@
 # <https://www.gnu.org/licenses/> for details.
 """Instrument registry + per-style instrumentation validation.
 
-Phase 1 of docs/instrument-identity-design.md: every built-in style binds all
-six part roles to registry instruments, the derived GM programs exactly match
-the legacy _STYLE_PROGRAMS behavior (proving the migration changed labels, not
-sound), and no monophonic instrument holds a chord-bearing role.
+docs/instrument-identity-design.md: every built-in style binds all six part
+roles to registry instruments, the registry is the single source of truth for
+GM programs, and no monophonic instrument holds a chord-bearing role.
 """
 import glob
 import json
@@ -19,7 +18,7 @@ from pathlib import Path
 
 from app.core.instruments import (INSTRUMENTS, PART_ROLES, POLYPHONIC_ROLES,
                                   gm_programs_for, instrumentation_for, track_display_name)
-from app.services.mixdown import _DEFAULT_PROGRAMS, _STYLE_PROGRAMS, part_midi_meta
+from app.services.mixdown import part_midi_meta
 
 STYLES_DIR = Path(__file__).parent.parent / "app" / "styles"
 
@@ -49,15 +48,13 @@ def test_every_builtin_style_binds_all_roles():
                 f"{style['id']}: unknown instrument {block[role]!r} for {role}"
 
 
-def test_instrumentation_programs_match_legacy_exactly():
-    """The migration must be inaudible: instrument-derived GM programs equal
-    what _STYLE_PROGRAMS/_DEFAULT_PROGRAMS produced before."""
+def test_every_bound_program_is_valid_gm():
+    """The registry drives GM programs for every built-in style; each must be a
+    legal 0-127 program (the registry is now the single source of truth — there
+    is no legacy map to reconcile against)."""
     for style in _all_styles():
-        legacy = {**_DEFAULT_PROGRAMS, **_STYLE_PROGRAMS.get(style["id"], {})}
-        derived = gm_programs_for(style)
-        for role in PART_ROLES:
-            assert derived[role] == legacy[role], \
-                f"{style['id']}/{role}: derived {derived[role]} != legacy {legacy[role]}"
+        for role, prog in gm_programs_for(style).items():
+            assert 0 <= prog <= 127, f"{style['id']}/{role}: GM program {prog} out of range"
 
 
 def test_no_monophonic_instrument_on_polyphonic_role():
@@ -80,6 +77,7 @@ def test_track_names_and_fallbacks():
     bad = {"id": "x", "instrumentation": {"melody": "no_such_instrument"}}
     assert track_display_name(bad, "melody") is None
 
-    # part_midi_meta keeps full legacy behavior for styles without a block
+    # A style dict with no instrumentation block falls back to _DEFAULT_PROGRAMS
+    # (custom-style path) and produces no instrument track names.
     programs, names = part_midi_meta({"id": "jazz"})
-    assert programs["melody"] == 65 and names == {}
+    assert programs["melody"] == 73 and names == {}   # 73 = default Flute

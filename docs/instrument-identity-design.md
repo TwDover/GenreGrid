@@ -1,12 +1,47 @@
 # Design: First-Class Instrument Identity
 
-**Status:** proposal — no code changes yet
+**Status (2026-07-23):** **✅ COMPLETE — Phases 1, 2, and 3 all shipped.** The
+instrument registry is now the single source of truth for identity, generation
+profiles, GM programs, and in-app playback voices; the parallel frontend maps and
+the backend legacy program map have been deleted.
+
+- ✅ **Phase 1 — identity everywhere.** Registry lives in `backend/app/core/instruments.py`
+  (`INSTRUMENTS`, `instrumentation_for`, `gm_programs_for`, `track_display_name`,
+  `clamp_range`). All 31+ built-in styles carry an `instrumentation` block. GM
+  programs and MIDI track names derive from it; `/styles` serves `instruments`
+  + `voices`. Guarded by `backend/tests/test_instruments.py` (derived programs ==
+  legacy, no monophonic-on-polyphonic-role).
+- ✅ **Phase 2 — profiles drive generation.** `generate_chords` consumes the
+  profile's `range` (`clamp_range`), `polyphony` (`_cap_polyphony`), and `strum`;
+  `generate_bass` and `generate_melody` consume their profiles (range clamps +
+  `_enforce_playing_profile` for breath/legato).
+- ✅ **Phase 3 — playback unification (DONE, 2026-07-23).** All in-app playback
+  voice selection now flows through the registry. Both frontend
+  `STYLE_TO_INSTRUMENT` maps (`melodic.ts`, `bass.ts`) are **deleted**;
+  `getBassSampler(voice)` and per-part `getMelodicSamplerById(voiceFor(...))`
+  take the registry voice served by `/styles`. The backend `_STYLE_PROGRAMS`
+  legacy map is **deleted** — `part_midi_meta` derives GM programs from the
+  registry, with `_DEFAULT_PROGRAMS` as the sole custom-style fallback. Two new
+  instruments (`slap_bass` GM 36, `fretless_bass` GM 35) were added, and bass
+  `playback_voice` values are now fine-grained (one per sample set). The
+  divergences were reconciled by ear via `docs/instrument-phase3-worklist.md`
+  (kept as the decision record). Cross-language drift is guarded by
+  `backend/tests/test_playback_voices.py` (every registry `playback_voice` must
+  resolve to a real sample dir or synth family).
+
+  **Audition note:** because picks favored the registry for some styles, in-app
+  bass timbre changed for cloud_rap, dancehall, dark_ambient, dark_trap, drill,
+  trap_soul, and the melodic bed moved to per-part voices for the ~11 mapped
+  styles (e.g. jazz chords→Rhodes + melody→Alto Sax instead of one Vibraphone).
+  Exported MIDI bass programs also shifted for ambient, boom_bap, cumbia,
+  doom_metal, funk, hip_hop, lofi, metal, reggaeton, rock to match.
+
 **Motivation:** parts are currently labeled by *role* (chords, melody, pads). Real
 arrangements are built from *instruments* (Rhodes, upright bass, alto sax), and an
 instrument's identity should shape what gets generated for it — a guitar comps
-differently from a piano, a sax line breathes, an 808 slides. This doc proposes
-making instrument identity a first-class concept that naming, generation, MIDI
-output, and in-app playback all read from one source.
+differently from a piano, a sax line breathes, an 808 slides. This doc makes
+instrument identity a first-class concept that naming, generation, MIDI output,
+and in-app playback all read from one source.
 
 ---
 

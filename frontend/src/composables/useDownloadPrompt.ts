@@ -25,6 +25,8 @@ let _resolve: ((name: string | null) => void) | null = null
 /** Characters invalid in Windows/macOS/Linux filenames, plus leading/trailing
  *  dots and spaces that some filesystems reject or silently strip. */
 function sanitizeFilename(name: string): string {
+  // Control chars (\x00-\x1f) are stripped on purpose — they're invalid in filenames.
+  // eslint-disable-next-line no-control-regex
   const cleaned = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').trim().replace(/\.+$/, '')
   return cleaned || 'export'
 }

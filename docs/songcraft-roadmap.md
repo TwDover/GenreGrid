@@ -1,11 +1,30 @@
 # Songcraft Roadmap: From Correct to Composed
 
-**Status:** plan — no code yet
+**Status:** ✅ **SHIPPED** (as of 2026-07-23) — every device below (A–K) landed,
+each seeded/deterministic, gated so untouched styles stay byte-identical, and
+measured in `scripts/survey_songs.py`. Item F was tried and deliberately
+reverted (see below); the only open gap is a deliberate one (intros are spacious
+by design). This doc is retained as the design record for the shipped work.
+
+| Item | Device | Status |
+|---|---|---|
+| A | Thematic unification (one cell → bass/arp/counter) | ✅ `generators/answer.py`, cell threaded into bass/counter-melody |
+| B | Antecedent/consequent phrase pairing | ✅ `generators/melody.py` (§ "Antecedent/consequent pairing") |
+| C | Layer accumulation on section repeats | ✅ `routes_song.py`, `core/arrangement.py` |
+| D | Transition polish (snare-roll build, fill-vs-drop, crash) | ✅ `generators/drums.py` (snare-roll build) |
+| E | Ending variety (ring / cold-stop / hook-echo) | ✅ `routes_song.py` `_ending_style` |
+| F | Cross-section register continuity | ⛔ tried, measured a regression, **reverted** (kept as a record) |
+| G | Breakdown final chorus | ✅ `core/arrangement.py` (double-chorus) |
+| H | Pre-chorus micro-accel | ✅ `core/arrangement.py` tempo map |
+| I | Mid-section micro-fills | ✅ (documented below) |
+| K | Inter-instrument call-and-response | ✅ `generators/answer.py` (documented below) |
+
 **Context:** the correctness era is done (harmony agreement, instrument physics,
 groove pocket, ensemble pushes, eight arrangement devices, pickups — all
-measured and tested). What remains between "correct" and "a real song" is
+measured and tested). What remained between "correct" and "a real song" is
 **compositional intent**: the sense that one mind wrote every part from a
-shared idea. This doc ranks the remaining gaps by how much song-ness each buys.
+shared idea. This doc ranked the gaps by how much song-ness each buys; all are
+now built.
 
 ---
 

@@ -8,13 +8,13 @@
 # <https://www.gnu.org/licenses/> for details.
 """Translate NoteEvent lists into .mid files using mido."""
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 
 import mido
 
-from app.core.constants import TICKS_PER_BEAT, DRUM_CHANNEL
+from app.core.constants import TICKS_PER_BEAT
 
 
 @dataclass

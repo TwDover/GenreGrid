@@ -1,0 +1,7 @@
+# Developer-only tooling — NOT bundled into the packaged app.
+# Install with:  pip install -r requirements-dev.txt
+-r requirements.txt
+
+# Linter (config in pyproject.toml). Pinned to a minor range so CI doesn't pick
+# up new rules on a patch bump; widen deliberately when adopting new rule families.
+ruff>=0.15,<0.16

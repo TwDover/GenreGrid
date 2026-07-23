@@ -39,12 +39,11 @@ BACKEND_DIR = REPO_ROOT / "backend"
 sys.path.insert(0, str(BACKEND_DIR))
 
 from app.services.style_loader  import load_style, list_styles
-from app.services.quality       import score_generation, extract_rhythm_patterns
 from app.services.library       import (
     save_generation as lib_save, is_saved, build_scoring_style, list_library,
 )
 from app.api.routes_generate    import (
-    _run_attempt, _VELOCITY_SCALE, _all_green, _GREEN_THRESHOLD,
+    _run_attempt, _all_green, _GREEN_THRESHOLD,
 )
 
 # ── constants ─────────────────────────────────────────────────────────────────
@@ -80,7 +79,7 @@ def _run_one(style_id: str, style: dict, key: str, scale: str,
             req, style, seed, is_loop, groove_push, sec_dom, tritone_sub,
             scoring_style=scoring_style,
         )
-    except Exception as exc:
+    except Exception:
         return None
 
     if quality_raw is None:
@@ -190,7 +189,7 @@ def print_report(all_stats: dict[str, StyleStats], elapsed: float, n_per_style: 
         print(row)
 
     # Worst dimensions overall
-    print(f"\n\033[1m  WEAKEST DIMENSIONS (mean across all styles)\033[0m")
+    print("\n\033[1m  WEAKEST DIMENSIONS (mean across all styles)\033[0m")
     dim_means = {
         d: sum(s.mean_dim(d) for s in all_stats.values()) / len(all_stats)
         for d in DIMS
@@ -201,7 +200,7 @@ def print_report(all_stats: dict[str, StyleStats], elapsed: float, n_per_style: 
 
     # Styles needing the most work
     worst_styles = sorted(all_stats.items(), key=lambda x: x[1].pass_rate())[:5]
-    print(f"\n\033[1m  STYLES WITH LOWEST ALL-GREEN PASS RATE\033[0m")
+    print("\n\033[1m  STYLES WITH LOWEST ALL-GREEN PASS RATE\033[0m")
     for sid, s in worst_styles:
         pct = s.pass_rate() * 100
         bar = _bar(s.pass_rate(), 20)
@@ -265,7 +264,7 @@ def main():
     complexity = args.complexity
     total_runs = n * len(run_styles)
 
-    print(f"\n\033[1m  GenreGrid batch benchmark\033[0m")
+    print("\n\033[1m  GenreGrid batch benchmark\033[0m")
     print(f"  {n} generations × {len(run_styles)} styles = {total_runs} total")
     print(f"  bars={bars}  complexity={complexity}  green≥{_GREEN_THRESHOLD}\n")
 

@@ -9,7 +9,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.services.library import save_generation, is_saved, list_library, exclude_generation
+from app.services.library import save_generation, list_library, exclude_generation
 from app.core.config import EXPORTS_DIR
 
 router = APIRouter(prefix="/library", tags=["library"])

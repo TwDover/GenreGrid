@@ -15,7 +15,7 @@ from app.core.instruments import instrumentation_for, clamp_range
 from app.theory.chords import roman_to_chord
 from app.theory.notes import note_name_to_midi
 from app.services.variation import should_trigger
-from app.services.humanize import beat_velocity, timing_jitter, velocity_arc, micro_jitter, phrase_breath_factor, style_jitter, style_velocity_variation
+from app.services.humanize import beat_velocity, timing_jitter, micro_jitter, phrase_breath_factor, style_jitter, style_velocity_variation
 from app.theory.rhythm import apply_swing
 from app.theory.phrase_plan import plan_phrases
 
@@ -210,7 +210,6 @@ def generate_melody(
     verse's opening phrase). When provided, this melody develops that motif instead of
     inventing an unrelated one, so a song's chorus feels like it grew out of its verse.
     """
-    events: List[NoteEvent] = []
     _mined_prev_iv: int | None = None
     if melody_model is not None:
         from app.services.priors import (

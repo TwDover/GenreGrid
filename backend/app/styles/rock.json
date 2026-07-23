@@ -9,7 +9,7 @@
   "bridge_escape_prob": 0.5,
   "instrumentation": {
     "chords": "overdriven_guitar",
-    "bass": "picked_bass",
+    "bass": "electric_bass",
     "melody": "distortion_guitar",
     "arpeggio": "clean_electric_guitar",
     "pads": "rock_organ",

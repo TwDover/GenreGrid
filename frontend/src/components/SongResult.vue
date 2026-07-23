@@ -228,7 +228,8 @@ const undoable = reactive(new Set<string>())
 const locked = reactive(new Set<string>())
 watch(() => props.result?.generation_id, () => locked.clear())
 function onToggleLock(part: string) {
-  locked.has(part) ? locked.delete(part) : locked.add(part)
+  if (locked.has(part)) locked.delete(part)
+  else locked.add(part)
 }
 function onEdited(part: string) {
   locked.add(part)
@@ -475,11 +476,17 @@ async function onGain(part: string, gain: number) {
   const prev = partGains[part] ?? 1.0
   partGains[part] = gain
   regenError.value = null
+  // If the song is playing, resume from here after the rebuild so the new
+  // balance is heard immediately (the gain is baked into song.mid, so live
+  // playback only reflects it once the rebuilt file is reloaded).
+  const resumeAt = isPlaying.value ? positionSeconds.value : 0
+  const wasPlaying = isPlaying.value
   try {
     await setPartGain({ generation_id: props.result.generation_id, part, gain })
     const v = Date.now()
     versions[part] = v
     versions.song = v
+    if (wasPlaying) { stopPlayer(); await loadAndPlay(resumeAt) }
     toast(`${part.replace('_', ' ')} volume applied`)
   } catch (e: any) {
     partGains[part] = prev
@@ -614,15 +621,23 @@ watch(() => props.result?.generation_id, () => {
 watch(() => props.label, l => { if (props.result) cue(l || 'Song', togglePlay) })
 onUnmounted(() => cue(null, null))
 
+// Fetch the current song.mid (cache-busted by versions.song) into a fresh blob
+// and play it, optionally resuming at a position. Reused by the play button and
+// by live mixer/edit changes so the just-rebuilt song.mid is actually heard.
+async function loadAndPlay(resumeAt = 0) {
+  if (!songUrl.value) return
+  const res = await fetch(downloadUrl(songUrl.value))
+  const blob = await res.blob()
+  if (songBlobUrl) URL.revokeObjectURL(songBlobUrl)
+  songBlobUrl = URL.createObjectURL(blob)
+  await toggle(songBlobUrl, props.result?.style, props.label)
+  if (resumeAt > 0) seek(resumeAt)
+}
+
 async function togglePlay() {
   if (isPlaying.value) { stopPlayer(); return }
-  if (!songUrl.value) return
   try {
-    const res = await fetch(downloadUrl(songUrl.value))
-    const blob = await res.blob()
-    if (songBlobUrl) URL.revokeObjectURL(songBlobUrl)
-    songBlobUrl = URL.createObjectURL(blob)
-    await toggle(songBlobUrl, props.result?.style, props.label)
+    await loadAndPlay()
   } catch { /* playback failure is non-fatal */ }
 }
 

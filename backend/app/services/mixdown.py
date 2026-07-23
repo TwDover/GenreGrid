@@ -15,8 +15,9 @@ endpoints and arrangement planning (see app/core/arrangement.py).
 from app.services.midi_writer import NoteEvent, ControlEvent, PitchBendEvent
 
 
-# General MIDI program numbers per part, keyed by style_id.
-# Parts not listed fall back to _DEFAULT_PROGRAMS.
+# Fallback GM program per part, for user-authored custom styles that ship no
+# instrumentation block. Built-in styles derive their programs from the registry
+# (app/core/instruments.py) via gm_programs_for — see part_midi_meta.
 # GM ref (0-indexed): 0=Grand Piano, 4=EP1(Rhodes), 5=EP2(Chorus EP), 7=Clavinet,
 #   11=Vibraphone, 12=Marimba, 16=Drawbar Organ, 18=Rock Organ,
 #   24=Nylon Guitar, 25=Steel Guitar, 26=Jazz Guitar, 27=Clean Electric Guitar,
@@ -34,231 +35,6 @@ _DEFAULT_PROGRAMS: dict[str, int] = {
     "pads":     89,  # Pad Warm — sustained glue layer above the comp
     "counter_melody": 48,  # String Ensemble — backing harmony line under the lead
 }
-_STYLE_PROGRAMS: dict[str, dict[str, int]] = {
-    # ── Jazz / Soul / Funk ───────────────────────────────────────────────────
-    "jazz": {
-        "chords":   4,   # EP 1 (Rhodes) — jazz piano closer to electric than grand
-        "bass":     32,  # Acoustic Bass — walking bass is upright
-        "melody":   65,  # Alto Sax — canonical jazz melodic voice
-        "arpeggio": 11,  # Vibraphone — Milt Jackson-style fills
-    },
-    "latin_jazz": {
-        "chords":   26,  # Jazz Guitar — Wes Montgomery comp tone
-        "bass":     32,  # Acoustic Bass
-        "melody":   65,  # Alto Sax
-        "arpeggio": 12,  # Marimba — percussive latin feel, separates from guitar chords
-    },
-    "bossa_nova": {
-        "chords":   25,  # Steel Guitar — fingerpicked bossa comp
-        "bass":     32,  # Acoustic Bass
-        "melody":   73,  # Flute — Jobim-era lead
-        "arpeggio": 25,  # Steel Guitar — guitar arp fills
-    },
-    "samba": {
-        "chords":   24,  # Nylon Guitar — cavaquinho proxy
-        "bass":     32,  # Acoustic Bass
-        "melody":   73,  # Flute — choro-influenced lead
-        "arpeggio": 12,  # Marimba — percussive fills, distinct from guitar
-    },
-    "soul": {
-        "chords":   5,   # EP 2 (Chorus EP) — Wurlitzer comp sound
-        "bass":     33,  # Electric Bass (finger)
-        "melody":   66,  # Tenor Sax — full, warm soul lead
-        "arpeggio": 5,   # EP 2 — same voice as chords for cohesion
-    },
-    "rnb": {
-        "chords":   5,   # EP 2
-        "bass":     33,  # Electric Bass (finger)
-        "melody":   66,  # Tenor Sax
-        "arpeggio": 5,   # EP 2
-    },
-    "funk": {
-        "chords":   5,   # EP 2 — punchy stab sound
-        "bass":     33,  # Electric Bass (finger)
-        "melody":   65,  # Alto Sax — punchy horn lead
-        "arpeggio": 7,   # Clavinet — Stevie Wonder-style clav riff, distinct from EP stabs
-    },
-    "lofi": {
-        "chords":   4,   # EP 1 (Rhodes) — lo-fi hip-hop IS Rhodes; grand piano is wrong here
-        "bass":     33,  # Electric Bass (finger)
-        "melody":   4,   # EP 1 — melodic lines on same Rhodes voice
-        "arpeggio": 11,  # Vibraphone — soft jazzy arpeggios
-    },
-    # ── Electronic / Dance ───────────────────────────────────────────────────
-    "synthwave": {
-        "chords":   90,  # Pad Polysynth — lush retro pad wall
-        "bass":     38,  # Synth Bass 1
-        "melody":   81,  # Lead Saw — driving retro lead
-        "arpeggio": 80,  # Lead Square — arpeggiated square wave, Blade Runner aesthetic
-    },
-    "house": {
-        "chords":   90,  # Pad Polysynth
-        "bass":     38,  # Synth Bass 1
-        "melody":   85,  # Lead Voice — vocal synth distinguishes house from synthwave
-        "arpeggio": 80,  # Lead Square
-    },
-    "techno": {
-        "chords":   91,  # Pad Choir — dark textural
-        "bass":     38,  # Synth Bass 1
-        "melody":   80,  # Lead Square — industrial
-        "arpeggio": 93,  # Pad Metallic — separates arp texture from lead
-    },
-    "drum_and_bass": {
-        "chords":   89,  # Pad Warm — DnB pads are rounder than synthwave
-        "bass":     38,  # Synth Bass 1
-        "melody":   84,  # Lead Charang — electric-guitar-ish synth lead
-        "arpeggio": 80,  # Lead Square — fast arpeggio
-    },
-    "future_bass": {
-        "chords":   88,  # Pad New Age — supersaw-adjacent (closest GM has)
-        "bass":     38,  # Synth Bass 1
-        "melody":   81,  # Lead Saw — bright emotional lead
-        "arpeggio": 95,  # Pad Sweep — sweeping texture distinct from New Age pad
-    },
-    "jersey_club": {
-        "chords":   90,  # Pad Polysynth
-        "bass":     38,  # Synth Bass 1
-        "melody":   85,  # Lead Voice — playful vocal synth hook
-        "arpeggio": 80,  # Lead Square
-    },
-    # ── Hip-hop / Trap ───────────────────────────────────────────────────────
-    "trap_soul": {
-        "chords":   88,  # Pad New Age — atmospheric
-        "bass":     38,  # Synth Bass 1 (808 via bass_style)
-        "melody":   89,  # Pad Warm — warm pad melody; not piano
-        "arpeggio": 94,  # Pad Halo — dreamy texture distinct from chords
-    },
-    "dark_trap": {
-        "chords":   92,  # Pad Bowed — darker than New Age
-        "bass":     38,  # Synth Bass 1
-        "melody":   80,  # Lead Square — hard lead
-        "arpeggio": 93,  # Pad Metallic — ominous texture
-    },
-    "cloud_rap": {
-        "chords":   88,  # Pad New Age — dreamy
-        "bass":     38,  # Synth Bass 1
-        "melody":   94,  # Pad Halo — floating, ethereal; not piano
-        "arpeggio": 95,  # Pad Sweep — behind the halo lead
-    },
-    "drill": {
-        "chords":   92,  # Pad Bowed — dark string-like pads
-        "bass":     38,  # Synth Bass 1 (808 via bass_style)
-        "melody":   80,  # Lead Square — angular drill stabs
-        "arpeggio": 93,  # Pad Metallic — dark texture
-    },
-    "boom_bap": {
-        "chords":   4,   # EP 1 (Rhodes) — SP-1200 sampled Rhodes is the boom bap sound
-        "bass":     33,  # Electric Bass (finger)
-        "melody":   65,  # Alto Sax — Pete Rock-era horn lines
-        "arpeggio": 11,  # Vibraphone — jazzy arp nods to the jazz-sample DNA
-    },
-    # ── Cinematic / Ambient ──────────────────────────────────────────────────
-    "cinematic": {
-        "chords":   48,  # String Ensemble 1
-        "bass":     43,  # Contrabass
-        "melody":   56,  # Trumpet — heroic brass melody
-        "arpeggio": 44,  # Tremolo Strings — tension and motion
-    },
-    "epic_orchestral": {
-        "chords":   61,  # Brass Section — full wall; bigger than string ensemble
-        "bass":     43,  # Contrabass
-        "melody":   60,  # French Horn — epic, warm (trumpet reads more fanfare)
-        "arpeggio": 48,  # String Ensemble 1 — rolling strings under brass chords
-    },
-    "ambient": {
-        "chords":   89,  # Pad Warm
-        "bass":     38,  # Synth Bass 1
-        "melody":   73,  # Flute — delicate, breathy
-        "arpeggio": 88,  # Pad New Age — shimmer behind warm pad
-    },
-    "dark_ambient": {
-        "chords":   92,  # Pad Bowed — eerie
-        "bass":     38,  # Synth Bass 1
-        "melody":   68,  # Oboe — haunting solo line
-        "arpeggio": 94,  # Pad Halo — distinct from bowed chord pad
-    },
-    # ── Afro / Latin ─────────────────────────────────────────────────────────
-    "afrobeats": {
-        "chords":   24,  # Nylon Guitar — fingerpicked Afrobeats comp
-        "bass":     33,  # Electric Bass (finger)
-        "melody":   12,  # Marimba — balafon/kora proxy; far more characteristic than trumpet
-        "arpeggio": 24,  # Nylon Guitar — guitar arp fill
-    },
-    "afropop": {
-        "chords":   27,  # Clean Electric Guitar — Afropop uses clean electric
-        "bass":     33,  # Electric Bass (finger)
-        "melody":   12,  # Marimba — same balafon logic as afrobeats
-        "arpeggio": 24,  # Nylon Guitar — nylon arp behind clean electric chords
-    },
-    "cumbia": {
-        "chords":   23,  # Tango Accordion — period-correct accordion sound
-        "bass":     33,  # Electric Bass (finger)
-        "melody":   73,  # Flute — iconic cumbia melody instrument
-        "arpeggio": 23,  # Tango Accordion — rhythmic stabs
-    },
-    "reggaeton": {
-        "chords":   27,  # Clean Electric Guitar — reggaeton guitar stabs
-        "bass":     38,  # Synth Bass 1 — dembow bass is synth
-        "melody":   81,  # Lead Saw — modern reggaeton synth hook
-        "arpeggio": 80,  # Lead Square — distinguishes from dancehall
-    },
-    "dancehall": {
-        "chords":   90,  # Pad Polysynth — digital riddim pad
-        "bass":     38,  # Synth Bass 1
-        "melody":   85,  # Lead Voice — vocal/deejay-style melodic hook
-        "arpeggio": 80,  # Lead Square — digital arp
-    },
-    # ── Newer styles ─────────────────────────────────────────────────────────
-    "grime": {
-        "chords":   91,  # Pad Choir — ominous grime pads
-        "bass":     38,  # Synth Bass 1 (808 via bass_style)
-        "melody":   80,  # Lead Square — angular grime stabs
-        "arpeggio": 93,  # Pad Metallic — dark texture
-    },
-    "hyperpop": {
-        "chords":   90,  # Pad Polysynth — hyper-bright
-        "bass":     38,  # Synth Bass 1 (808 via bass_style)
-        "melody":   81,  # Lead Saw — maximalist saw lead
-        "arpeggio": 95,  # Pad Sweep — chaotic sweep arp
-    },
-    "baile_funk": {
-        "chords":   5,   # EP 2 — melodic chord stabs
-        "bass":     33,  # Electric Bass (finger)
-        "melody":   80,  # Lead Square
-        "arpeggio": 80,  # Lead Square — busy synth layers
-    },
-    # ── Rock / Metal ─────────────────────────────────────────────────────────
-    "rock": {
-        "chords":   29,  # Overdriven Guitar — power-chord rhythm
-        "bass":     34,  # Picked Bass — pick attack drives with the kick
-        "melody":   30,  # Distortion Guitar — lead over the rhythm's crunch
-        "arpeggio": 27,  # Clean Electric Guitar — verse arpeggios
-        "pads":     18,  # Rock Organ — Hammond wash under choruses
-    },
-    "metal": {
-        "chords":   30,  # Distortion Guitar — palm-muted riffs
-        "bass":     34,  # Picked Bass
-        "melody":   29,  # Overdriven Guitar — lead, one gain stage under the riffs
-        "arpeggio": 29,  # Overdriven Guitar — fast picked lines
-        "pads":     91,  # Pad Choir — symphonic backdrop
-    },
-    "doom_metal": {
-        "chords":   30,  # Distortion Guitar — crushing sustained power chords
-        "bass":     34,  # Picked Bass
-        "melody":   29,  # Overdriven Guitar — mournful lead
-        "arpeggio": 27,  # Clean Electric Guitar — eerie clean picking
-        "pads":     91,  # Pad Choir — funeral-doom choir
-        "counter_melody": 44,  # Tremolo Strings — dread underneath
-    },
-    "hip_hop": {
-        "chords":   4,   # EP 1 (Rhodes) — classic West Coast keys
-        "bass":     38,  # Synth Bass 1 — Moog-style G-funk low end
-        "melody":   80,  # Lead Square — the G-funk whistle
-        "arpeggio": 7,   # Clavinet — funk DNA
-        "pads":     89,  # Pad Warm
-    },
-}
-
 _VELOCITY_DROP = 20  # notes quieter than this are inaudible — discard them
 
 
@@ -283,14 +59,14 @@ def part_midi_meta(style: dict) -> tuple[dict[str, int], dict[str, str]]:
 
     Instrumentation-first: parts bound in the style's ``instrumentation`` block
     take their program and display name from the instrument registry (the
-    single source of truth — see docs/instrument-identity-design.md). Parts a
-    style doesn't bind (and user-authored custom styles with no block at all)
-    fall back to the legacy _STYLE_PROGRAMS/_DEFAULT_PROGRAMS maps with plain
-    role names, which is exactly the pre-instrumentation behavior.
+    single source of truth — see docs/instrument-identity-design.md). Every
+    built-in style binds all six roles, so the registry fully determines their
+    programs; ``_DEFAULT_PROGRAMS`` only fills in for user-authored custom styles
+    that ship no instrumentation block.
     """
     from app.core.instruments import gm_programs_for, track_display_name
 
-    programs = {**_DEFAULT_PROGRAMS, **_STYLE_PROGRAMS.get(style.get("id", ""), {})}
+    programs = {**_DEFAULT_PROGRAMS}
     programs.update(gm_programs_for(style))
     track_names = {}
     for part in _PART_CHANNELS:
