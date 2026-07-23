@@ -1,0 +1,28 @@
+# Ruff linter configuration.
+#
+# Scope chosen for a high-signal, low-churn gate on an existing codebase:
+# pycodestyle errors (E), pyflakes (F), and warnings (W) — this catches unused
+# imports, undefined names, duplicate keys, and real mistakes without imposing a
+# large mechanical reformat. Line length (E501) is intentionally NOT enforced;
+# the codebase uses long descriptive comments and dense dict literals by choice.
+#
+# Later, higher-churn families can be adopted one at a time as their own commits:
+#   ruff check --select I  --fix   # import sorting
+#   ruff check --select UP --fix   # PEP 585/604 annotation modernization
+#   ruff check --select B          # flake8-bugbear (opinionated, mostly manual)
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = [
+    "E501",  # line-too-long — deliberate; long comments and dense style dicts
+    "E741",  # ambiguous var names (l/I/O) — used for music theory (e.g. interval l)
+    "E702",  # semicolon-joined statements — deliberate column-aligned section tables
+]
+# The CI gate lints `app` and `tests` (all shipped code + the suite). The
+# standalone dev scripts under ../scripts are intentionally out of scope: they
+# prepend the backend dir to sys.path before importing app.*, an E402 pattern
+# that is correct for a runnable script but noise to lint around.

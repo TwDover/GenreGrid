@@ -8,7 +8,7 @@
     "default_scale": "minor",
     "instrumentation": {
         "chords": "rhodes_ep",
-        "bass": "electric_bass",
+        "bass": "upright_bass",
         "melody": "alto_sax",
         "arpeggio": "vibraphone",
         "pads": "warm_pad",

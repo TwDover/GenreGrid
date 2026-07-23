@@ -109,7 +109,8 @@ def test_melody_import_over_http():
     ev = [NoteEvent(60 + sc[s], bar * 4 + q, 0.9, 90, 0)
           for bar, steps in enumerate([[0, 2, 4, 2], [0, 3, 5, 3], [4, 2, 1, 0], [0, 1, 2, 0]])
           for q, s in enumerate(steps)]
-    import tempfile, os
+    import tempfile
+    import os
     fd, path = tempfile.mkstemp(suffix=".mid")
     os.close(fd)
     write_midi(ev, path, bpm=100)

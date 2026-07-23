@@ -168,7 +168,8 @@ def _melody_bytes(key_root=60, minor=False) -> bytes:
     for bar, steps in enumerate(seqs):
         for q, s in enumerate(steps):
             ev.append(NoteEvent(key_root + sc[s], bar * 4 + q, 0.9, 90, 0))
-    import tempfile, os
+    import tempfile
+    import os
     fd, path = tempfile.mkstemp(suffix=".mid")
     os.close(fd)
     write_midi(ev, path, bpm=100)

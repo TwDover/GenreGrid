@@ -8,7 +8,7 @@
   "default_scale": "major",
   "instrumentation": {
     "chords": "warm_pad",
-    "bass": "synth_bass",
+    "bass": "fretless_bass",
     "melody": "flute",
     "arpeggio": "newage_pad",
     "pads": "warm_pad",

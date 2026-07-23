@@ -8,7 +8,7 @@
   "default_scale": "minor",
   "instrumentation": {
     "chords": "clean_electric_guitar",
-    "bass": "synth_bass",
+    "bass": "picked_bass",
     "melody": "saw_lead",
     "arpeggio": "square_lead",
     "pads": "warm_pad",

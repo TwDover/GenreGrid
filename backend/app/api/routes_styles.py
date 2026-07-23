@@ -6,7 +6,6 @@
 # Foundation, either version 3 of the License, or (at your option) any later
 # version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
 # <https://www.gnu.org/licenses/> for details.
-import io
 import random
 import re
 import tempfile

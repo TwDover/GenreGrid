@@ -1,13 +1,29 @@
 # Quality Roadmap 2: From Composed to Produced
 
-**Status:** plan — no code yet
+**Status:** ✅ **SHIPPED** (as of 2026-07-23) — all ten items below landed. This
+doc is retained as the design record. Each device is seeded/deterministic and
+gated so untouched styles stay byte-identical.
+
+| # | Item | Status |
+|---|---|---|
+| 1 | Groove realism: systematic feel profiles | ✅ `core/feel.py` (`_ARCHETYPES`, `_STYLE_FEEL`, `feel_for`) + `mining/drums.py` `derive_feel`; applied in `services/humanize.py`. Hand-authored archetypes ship; corpus mining is wired. |
+| 2 | Riff mode for guitar genres | ✅ `generators/riff.py` `build_riff`; rock/metal/doom_metal use it |
+| 3 | Hook memorability as a scored dimension | ✅ `services/quality.py` `_hook_score` (chorus-only) |
+| 4 | Harmonic color (borrowed / secondary dominants) | ✅ `theory/chords.py` + `chromatic_color` in 6 styles |
+| 5 | Bridge-escape device | ✅ `api/routes_song.py` |
+| 6 | Progression choose-and-lock | ✅ `progression_override` request field + `progression` in response |
+| 7 | Compare-and-keep re-rolls ("Roll ×N") | ✅ candidate `count`/`index` request fields |
+| 8 | Part locking | ✅ `locked_parts` request field + UI padlocks |
+| 9 | User taste feeds the library | ✅ `services/library.py` `keep` weight, `source` = score/export/thumbs_up |
+| 10 | DJ intro/outro option | ✅ `dj_edit` request field |
+
+**Remaining tail (not in this doc):** the one open cross-cutting item is
+**instrument-identity Phase 3** — see `docs/instrument-identity-design.md`.
+
 **Context:** the songcraft roadmap is complete (thematic cells, phrase pairing,
 layer accumulation, ending variety, call-and-response, micro-fills all landed
-and measured). Songs now hold together structurally. What remains splits into
-three axes: **feel** (the humanization layer is a generation behind everything
-above it), **idiom** (guitar genres need riff-first architecture; harmony needs
-chromatic color), and **workflow** (the user can steer everything except the
-harmony and can't protect parts they like). This doc ranks the work by payoff.
+and measured). Songs now hold together structurally. The work below split into
+three axes: **feel**, **idiom**, and **workflow** — all now built.
 
 Conventions carried over from roadmap 1: every new device is seeded and
 deterministic per song, gated so untouched styles produce byte-identical

@@ -9,7 +9,7 @@
   "bridge_escape_prob": 0.5,
     "instrumentation": {
         "chords": "wurlitzer_ep",
-        "bass": "electric_bass",
+        "bass": "slap_bass",
         "melody": "alto_sax",
         "arpeggio": "clavinet",
         "pads": "warm_pad",

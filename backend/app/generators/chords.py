@@ -12,7 +12,7 @@ from typing import List
 from app.services.midi_writer import NoteEvent
 from app.theory.chords import roman_to_chord
 from app.services.variation import should_trigger
-from app.services.humanize import timing_jitter, velocity_arc, phrase_breath_factor, style_jitter
+from app.services.humanize import timing_jitter, phrase_breath_factor, style_jitter
 from app.theory.rhythm import apply_swing
 from app.core.instruments import instrumentation_for, clamp_range
 

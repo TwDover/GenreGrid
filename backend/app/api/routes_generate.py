@@ -7,7 +7,6 @@
 # version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
 # <https://www.gnu.org/licenses/> for details.
 import concurrent.futures
-import shutil
 import io
 import logging
 import random
@@ -15,16 +14,14 @@ import re
 import secrets
 import uuid
 import json as _json_module
-from fastapi import APIRouter, HTTPException, UploadFile, Form
-from fastapi import File as FastAPIFile
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
-from app.models.schemas import GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, GenerateSummary, QualityScore, BatchGenerateRequest, BuildSongRequest, BuildSongResponse, SongSectionResult, RegenerateSongPartRequest, RegenerateSongSectionRequest, RestoreSongVersionRequest
+from app.models.schemas import GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, GenerateSummary, QualityScore, BatchGenerateRequest
 from app.services.style_loader import load_style
-from app.services.midi_writer import NoteEvent, ControlEvent, PitchBendEvent, write_midi, write_combined_midi, rebuild_combined_from_parts, concatenate_midi_files, read_note_starts, mido_key_signature
+from app.services.midi_writer import NoteEvent, ControlEvent, PitchBendEvent, write_midi, write_combined_midi, rebuild_combined_from_parts, concatenate_midi_files, read_note_starts
 from app.generators.chords import generate_chords, resolve_progression
-from app.theory.chords import roman_to_chord
 from app.theory.scales import build_scale, scale_mode as _scale_mode
 from app.generators.bass import generate_bass
 from app.generators.melody import generate_melody
@@ -38,14 +35,13 @@ from app.core.constants import DRUM_MAP
 from app.services.humanize import apply_groove_pocket, apply_feel
 from app.services.quality import score_generation, extract_rhythm_patterns
 from app.services.priors import load_prior, sample_progression, melody_prior_for, groove_fields_for
-from app.services.library import save_generation as lib_save, is_saved, build_scoring_style
+from app.services.library import save_generation as lib_save, build_scoring_style
 from app.core.arrangement import (
-    SECTION_PROFILES, _SONG_TEMPLATES, _part_seed, _transpose_key, scaled_profile,
+    _part_seed, scaled_profile,
     _apply_section_ramp, _plan_sections, _auto_arc_section_type, _section_end_bars,
-    _song_tempo_map,
 )
 from app.services.mixdown import (
-    _DEFAULT_PROGRAMS, _STYLE_PROGRAMS, _PART_CHANNELS, _VELOCITY_SCALE, part_midi_meta,
+    _PART_CHANNELS, _VELOCITY_SCALE, part_midi_meta,
     _generate_part_cc, _generate_melody_expression_cc, _generate_bass_expression_cc,
     _generate_808_pitch_bends, _drop_quiet, _scale_velocity, _shift,
     _apply_groove_push, _apply_dynamic,
@@ -1202,7 +1198,8 @@ def regenerate_part(req: RegeneratePartRequest):
 
 @router.get("/exports/{gen_id}/bundle.zip")
 def download_bundle(gen_id: str):
-    import zipfile, io
+    import zipfile
+    import io
     output_dir = EXPORTS_DIR / gen_id
     if not output_dir.exists():
         raise HTTPException(status_code=404, detail="Generation not found")
@@ -1227,7 +1224,8 @@ def download_bundle(gen_id: str):
 
 @router.get("/exports/{gen_id}/sections.zip")
 def download_sections(gen_id: str):
-    import zipfile, io
+    import zipfile
+    import io
     sec_dir = EXPORTS_DIR / gen_id / "sections"
     if not sec_dir.exists():
         raise HTTPException(status_code=404, detail="No section stems found — generate in Arrangement mode first")

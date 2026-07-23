@@ -12,7 +12,6 @@ from typing import List
 from app.services.midi_writer import NoteEvent
 from app.core.constants import DRUM_MAP, DRUM_CHANNEL
 from app.services.variation import should_trigger
-from app.services.humanize import micro_jitter
 from app.theory.rhythm import apply_swing
 
 

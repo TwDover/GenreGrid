@@ -35,11 +35,23 @@ jobs:
           python -m pytest -q
           pyinstaller genregrid.spec --distpath dist --workpath build/pyinstaller --noconfirm
 
+      # Lint runs only in the Linux job — it's platform-independent, so there's
+      # no value in repeating it on Windows/macOS.
+      - name: Lint backend (ruff)
+        run: |
+          cd backend
+          source .venv/bin/activate
+          pip install -q -r requirements-dev.txt
+          ruff check app tests
+
       - name: Install frontend dependencies
         run: cd frontend && npm ci
 
       - name: Type-check frontend
         run: cd frontend && npx vue-tsc --noEmit
+
+      - name: Lint frontend (eslint)
+        run: cd frontend && npm run lint
 
       - name: Frontend tests
         run: cd frontend && npm test

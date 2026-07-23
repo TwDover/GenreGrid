@@ -43,7 +43,7 @@ from app.core.arrangement import (
     apply_melodic_pickups,
 )
 from app.services.mixdown import (
-    _DEFAULT_PROGRAMS, _STYLE_PROGRAMS, _PART_CHANNELS, part_midi_meta,
+    _PART_CHANNELS, part_midi_meta,
     _generate_part_cc, _generate_melody_expression_cc,
     _generate_808_pitch_bends, _drop_quiet, _scale_velocity, _shift,
     generate_build_sweeps, generate_section_crescendo,

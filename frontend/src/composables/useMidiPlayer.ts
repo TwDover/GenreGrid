@@ -16,7 +16,7 @@ import { getPianoSampler, getMasterCompressor, getBassBus, getMelodicBus, duckOn
 import { drumCharacterForStyle } from '../soundfonts/drums'
 import { makeSynthKit } from '../soundfonts/synthDrums'
 import { getBassSampler } from '../soundfonts/bass'
-import { getMelodicSampler, getMelodicSamplerById } from '../soundfonts/melodic'
+import { getMelodicSamplerById, SAMPLED_VOICES } from '../soundfonts/melodic'
 import { voiceFor } from './useStyleCatalog'
 import { encodeWav } from '../utils/wavEncoder'
 
@@ -295,12 +295,12 @@ export function useMidiPlayer() {
 
       // Pre-load all samplers + MIDI in parallel.
       // SYNTH_STYLES use synthesis for drums + bass — skip those sampler loads entirely.
-      const melodicSamplerPromise = getMelodicSampler(styleId)
-
-      // Instrument-identity voices (Phase 3): each part may name a sampled
-      // playback voice ("electric_piano_1") via the style's instrumentation —
-      // preload those per part; non-sampled voices ("melody_lead") map to
-      // synth families below, and null falls back to legacy style logic.
+      //
+      // Instrument-identity voices (Phase 3): each part names its playback voice
+      // via the style's instrumentation (the registry, served in /styles →
+      // voices.*). Sampled voices ("electric_piano_1") load a sampler per part;
+      // non-sampled voices ("melody_lead", "pad_synth") map to synth families
+      // below. The registry is the single source of truth — no per-style map here.
       const _partVoice = {
         chords: voiceFor(styleId, 'chords'),
         melody: voiceFor(styleId, 'melody'),
@@ -308,13 +308,15 @@ export function useMidiPlayer() {
       }
       const _samplerP = (v: string | null) =>
         (v ? getMelodicSamplerById(v) : null) ?? Promise.resolve(null)
+      // The Salamander grand piano is the last-resort chords/melody voice, needed
+      // only when the chords part has no sampled voice and no synth family fits.
+      const _chordsSampled = !!_partVoice.chords && SAMPLED_VOICES.has(_partVoice.chords)
 
       const fetchUrl = url.startsWith('blob:') || url.startsWith('data:') ? url : downloadUrl(url)
-      const [, buf, bassSampler, melodicSampler, chordsSamp, melodySamp, arpSamp] = await Promise.all([
-        (!isSynth && !isPad && !isLofi && !isMelodicSynth && !melodicSamplerPromise) ? getPianoSampler() : Promise.resolve(null),
+      const [, buf, bassSampler, chordsSamp, melodySamp, arpSamp] = await Promise.all([
+        (!isSynth && !isPad && !isLofi && !isMelodicSynth && !_chordsSampled) ? getPianoSampler() : Promise.resolve(null),
         fetch(fetchUrl).then(r => r.arrayBuffer()),
-        isSynth ? Promise.resolve(null) : getBassSampler(styleId),
-        melodicSamplerPromise ?? Promise.resolve(null),
+        isSynth ? Promise.resolve(null) : getBassSampler(voiceFor(styleId, 'bass')),
         _samplerP(_partVoice.chords),
         _samplerP(_partVoice.melody),
         _samplerP(_partVoice.arpeggio),
@@ -343,7 +345,7 @@ export function useMidiPlayer() {
       Tone.getTransport().bpm.value = midi.header.tempos[0]?.bpm ?? 120
 
       // Resolve piano fallback if still needed
-      const piano = (!isSynth && !isPad && !isLofi && !isMelodicSynth && !melodicSampler)
+      const piano = (!isSynth && !isPad && !isLofi && !isMelodicSynth && !_chordsSampled)
         ? await getPianoSampler()
         : null
 
@@ -406,10 +408,9 @@ export function useMidiPlayer() {
           // Counter-melody — soft string ensemble under the lead.
           inst = makePanned(makeStrings, pan)
         } else if (channel === 3) {
-          // Arpeggio — always its own voice so it sparkles above the comp.
-          inst = melodicSampler ?? makePanned(makeArpPluck, pan)
-        } else if (melodicSampler) {
-          inst = melodicSampler                       // bundled sample (Rhodes, EP2, vibes…)
+          // Arpeggio — a sampled arp voice already won above (_voiceSamplers);
+          // here it has none, so give it its own pluck to sparkle over the comp.
+          inst = makePanned(makeArpPluck, pan)
         } else if (isLofi) {
           inst = makePanned(makeLofiSynth, pan)
         } else if (isSynth || isMelodicSynth) {
@@ -1003,9 +1004,13 @@ export function useMidiPlayer() {
     // Synth/pad/lofi styles use in-memory oscillators — nothing to fetch.
     // Drums are synthesized for every style now, so only bass/melodic samplers load.
     if (isSynth || isPad || isLofi) return
+    // Warm the registry-selected sample sets for this style (best-effort).
+    const melodicVoices = (['chords', 'melody', 'arpeggio'] as const)
+      .map(part => voiceFor(styleId, part))
+      .filter((v): v is string => !!v && SAMPLED_VOICES.has(v))
     Promise.all([
-      getBassSampler(styleId),
-      getMelodicSampler(styleId),
+      getBassSampler(voiceFor(styleId, 'bass')),
+      ...melodicVoices.map(v => getMelodicSamplerById(v)),
     ]).catch(() => { /* best-effort, ignore network errors */ })
   }
 

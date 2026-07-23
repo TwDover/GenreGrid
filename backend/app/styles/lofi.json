@@ -8,7 +8,7 @@
     "default_scale": "major",
     "instrumentation": {
         "chords": "rhodes_ep",
-        "bass": "electric_bass",
+        "bass": "fretless_bass",
         "melody": "rhodes_ep",
         "arpeggio": "vibraphone",
         "pads": "warm_pad",

@@ -7,7 +7,6 @@
 # version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
 # <https://www.gnu.org/licenses/> for details.
 """Mine a directory of MIDI files into a per-genre statistical prior."""
-from collections import Counter, defaultdict
 from pathlib import Path
 
 from app.mining.analysis import bar_chords, detect_key, in_scale_degree

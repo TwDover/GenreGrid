@@ -56,7 +56,9 @@ INSTRUMENTS: dict[str, dict] = {
     "accordion":      _inst("Accordion",       23, "accordion",        (41, 91), 6, "sustain"),
     # ── Mallets ───────────────────────────────────────────────────────────────
     "vibraphone":     _inst("Vibraphone",      11, "vibraphone",       (53, 89), 4, "ring"),
-    "marimba":        _inst("Marimba",         12, "marimba",          (45, 96), 4, "decay"),
+    # playback_voice is vibraphone (nearest sampled mallet): the exported MIDI keeps
+    # GM 12 (Marimba), but in-app preview plays real vibes instead of a generic pluck.
+    "marimba":        _inst("Marimba",         12, "vibraphone",       (45, 96), 4, "decay"),
     # ── Guitars ───────────────────────────────────────────────────────────────
     "nylon_guitar":   _inst("Nylon Guitar",    24, "acoustic_guitar_nylon", (40, 83), 6, "decay", strum=0.018),
     "steel_guitar":   _inst("Steel Guitar",    25, "acoustic_guitar_nylon", (40, 84), 6, "decay", strum=0.018),
@@ -68,12 +70,16 @@ INSTRUMENTS: dict[str, dict] = {
     "overdriven_guitar":  _inst("Overdriven Guitar", 29, "synth_lead", (35, 86), 4, "sustain", strum=0.008),
     "distortion_guitar":  _inst("Distortion Guitar", 30, "synth_lead", (35, 86), 4, "sustain", strum=0.006),
     # ── Basses ────────────────────────────────────────────────────────────────
-    "upright_bass":   _inst("Upright Bass",    32, "bass_sampler",     (28, 60), 1, "decay", monophonic_legato=True),
-    "electric_bass":  _inst("Electric Bass",   33, "bass_sampler",     (28, 62), 1, "decay", monophonic_legato=True),
-    "picked_bass":    _inst("Picked Bass",     34, "bass_sampler",     (28, 62), 1, "decay", monophonic_legato=True),
-    "synth_bass":     _inst("Synth Bass",      38, "synth_bass",       (24, 60), 1, "sustain", monophonic_legato=True),
-    "sub_808":        _inst("808 Sub",         38, "synth_bass",       (24, 55), 1, "sustain", monophonic_legato=True),
-    "contrabass":     _inst("Contrabass",      43, "bass_sampler",     (28, 60), 1, "sustain", monophonic_legato=True),
+    # playback_voice names the exact in-app bass sample set (frontend/public/samples/bass/*),
+    # decoupled from gm_program so preview and MIDI agree on the instrument.
+    "upright_bass":   _inst("Upright Bass",    32, "acoustic_bass",       (28, 60), 1, "decay", monophonic_legato=True),
+    "electric_bass":  _inst("Electric Bass",   33, "electric_bass_finger", (28, 62), 1, "decay", monophonic_legato=True),
+    "picked_bass":    _inst("Picked Bass",     34, "electric_bass_pick",  (28, 62), 1, "decay", monophonic_legato=True),
+    "fretless_bass":  _inst("Fretless Bass",   35, "fretless_bass",       (28, 62), 1, "decay", monophonic_legato=True),
+    "slap_bass":      _inst("Slap Bass",       36, "slap_bass_1",         (28, 60), 1, "decay", monophonic_legato=True),
+    "synth_bass":     _inst("Synth Bass",      38, "synth_bass_1",        (24, 60), 1, "sustain", monophonic_legato=True),
+    "sub_808":        _inst("808 Sub",         38, "synth_bass_1",        (24, 55), 1, "sustain", monophonic_legato=True),
+    "contrabass":     _inst("Contrabass",      43, "acoustic_bass",       (28, 60), 1, "sustain", monophonic_legato=True),
     # ── Orchestral ────────────────────────────────────────────────────────────
     "string_ensemble": _inst("String Ensemble", 48, "string_ensemble_1", (36, 96), 12, "sustain"),
     "tremolo_strings": _inst("Tremolo Strings", 44, "string_ensemble_1", (36, 96), 12, "sustain"),

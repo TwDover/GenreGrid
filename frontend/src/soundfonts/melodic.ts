@@ -11,34 +11,10 @@
 import * as Tone from 'tone'
 import { getMelodicBus } from './loader'
 
-const STYLE_TO_INSTRUMENT: Record<string, string> = {
-  // Rhodes electric piano — warm, classic; lo-fi hip-hop IS Rhodes
-  lofi:        'electric_piano_1',
-  soul:        'electric_piano_1',
-  rnb:         'electric_piano_1',
-  boom_bap:    'electric_piano_1',
-  trap_soul:   'electric_piano_1',   // sampler used even though PAD_STYLES handles melodic synth
-  afrobeats:   'electric_piano_1',
-  dancehall:   'electric_piano_1',
-  // Vibraphone — jazz/latin percussive shimmer
-  jazz:        'vibraphone',
-  latin_jazz:  'vibraphone',
-  // Nylon guitar — bossa nova fingerpicked comp; samba cavaquinho proxy
-  bossa_nova:  'acoustic_guitar_nylon',
-  samba:       'acoustic_guitar_nylon',
-  // Clavinet — punky funk keyboard (Superstition, Higher Ground)
-  funk:        'clavinet',
-  // Accordion — characteristic cumbia sound
-  cumbia:      'accordion',
-  // Drawbar organ — afropop rhythm guitar substitute (closest warm attack available)
-  afropop:     'drawbar_organ',
-  // Strings — orchestral/cinematic pads
-  cinematic:      'string_ensemble_1',
-  epic_orchestral:'string_ensemble_1',
-  // Warm pad substitute for ambient (strings give the slow-attack pad feel in GM)
-  ambient:     'string_ensemble_1',
-  dark_ambient:'string_ensemble_1',
-}
+// Per-part melodic voices come from the instrument registry (served via
+// /styles → voices.{chords,melody,arpeggio}, read with voiceFor()). This module
+// loads a sample set by voice id via getMelodicSamplerById; the registry is the
+// single source of truth (see docs/instrument-identity-design.md).
 
 const MELODIC_SAMPLE_MAP: Record<string, string> = {
   A2: 'A2.mp3', C3: 'C3.mp3', E3: 'E3.mp3', G3: 'G3.mp3',
@@ -182,35 +158,3 @@ export function getMelodicSamplerById(inst: string): Promise<Tone.Sampler> | nul
   return promise
 }
 
-export function getMelodicSampler(styleId?: string): Promise<Tone.Sampler> | null {
-  const inst = styleId ? STYLE_TO_INSTRUMENT[styleId] : undefined
-  if (!inst) return null
-
-  if (melodicCache.has(inst)) return melodicCache.get(inst)!
-
-  // Reuse or create the fx chain for this instrument (routed to the melodic bus)
-  if (!fxCache.has(inst)) {
-    fxCache.set(inst, buildFxChain(inst, getMelodicBus()))
-  }
-  const fxPromise = fxCache.get(inst)!
-
-  const promise = fxPromise.then(
-    (fxInput) =>
-      new Promise<Tone.Sampler>((resolve, reject) => {
-        const sampler = new Tone.Sampler({
-          urls: MELODIC_SAMPLE_MAP,
-          baseUrl: `/samples/melodic/${inst}/`,
-          volume: INSTRUMENT_VOLUME[inst] ?? DEFAULT_VOLUME,
-          onload: () => resolve(sampler),
-          onerror: reject,
-        }).connect(fxInput)
-      }),
-  )
-
-  melodicCache.set(inst, promise)
-  return promise
-}
-
-export function getMelodicInstrumentName(styleId?: string): string | null {
-  return (styleId && STYLE_TO_INSTRUMENT[styleId]) ?? null
-}

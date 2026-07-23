@@ -16,7 +16,7 @@ overlay a style with no generator changes.
 """
 import math
 
-from app.mining.midi_io import MidiSong, Note
+from app.mining.midi_io import MidiSong
 
 _DRUM_CHANNEL = 9
 _STEP = 0.25            # 16th note in beats

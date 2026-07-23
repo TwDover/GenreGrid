@@ -493,7 +493,7 @@ onMounted(async () => {
         auto_saved: false,
       }
     }
-  } catch (e) {
+  } catch {
     error.value = 'Could not reach backend — make sure uvicorn is running on port 8000.'
   }
 })
@@ -537,7 +537,7 @@ async function retryFetch() {
   try {
     styles.value = await fetchStyles()
     setStyleCatalog(styles.value)
-  } catch (e) {
+  } catch {
     error.value = 'Could not reach backend — make sure uvicorn is running on port 8000.'
   }
 }
