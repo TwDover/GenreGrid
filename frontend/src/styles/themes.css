@@ -9,161 +9,214 @@
  * <https://www.gnu.org/licenses/> for details.
  */
 
-/* Theme tokens. The dark values are the app's original palette; light and
- * retro re-map the same roles. Components use var(--token) exclusively —
- * adding a theme means adding one block here, nothing else. The active theme
- * is data-theme on <html>, applied by useTheme.ts (persisted per user). */
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Design tokens. Two themes only — light and dark — and by default the app
+ * follows the OS via prefers-color-scheme. A manual override stamps
+ * data-theme="light|dark" on <html>, which must beat the media query in BOTH
+ * directions (useTheme.ts).
+ *
+ * Naming: the current-generation tokens are --ground/--raised/--ink/--accent/…
+ * The older --panel/--surface/--text-* names are kept as ALIASES so the many
+ * components still written against them re-skin for free; new code should reach
+ * for the primary tokens.
+ * ───────────────────────────────────────────────────────────────────────────*/
 
-:root,
-:root[data-theme="dark"] {
-  --bg: #000000;
-  --bg-deepest: #020608;
-  --panel: #060f14;
-  --panel-deep: #040a0e;
-  --panel-alt: #081620;
-  --surface: #0d2535;
-  --surface-hover: #122f40;
-  --surface-muted: #001520;
-  --accent: #00c8ff;
-  --accent-bright: #7ae8ff;
-  --accent-dim: #0080cc;
-  --accent-surface: #001e35;
-  --accent-surface-strong: #003450;
-  --text: #e0e0e8;
-  --text-soft: #c0c8d0;
-  --text-dim: #4a7080;
-  --text-faint: #2a4550;
-  --error: #f87171;
-  --error-surface: #2a1010;
-  --gold: #fbbf24;
-  --gold-surface: #3a2e10;
-  --success: #34d399;
-  --success-surface: #064e3b;
+:root {
+  /* Type — five steps replace the old ad-hoc sizes. */
+  --t-display: 1.375rem;  /* 22px  song title */
+  --t-title:   1rem;      /* 16px  part / panel headings */
+  --t-body:    0.875rem;  /* 14px  the base */
+  --t-meta:    0.8125rem; /* 13px  secondary + numeric readouts */
+  --t-micro:   0.6875rem; /* 11px  uppercase eyebrows */
 
-  /* Song-timeline section chips — one hue per section type, plus the text
-   * color drawn on top of them. These are intentionally distinct per theme
-   * (unlike most tokens above): a strip of chips needs its own small palette
-   * to read well against each background, not just a recolored accent. */
-  --seg-intro: #1a4060;
-  --seg-verse: #1a5040;
-  --seg-pre_chorus: #3a4a20;
-  --seg-chorus: #005580;
-  --seg-post_chorus: #204060;
-  --seg-bridge: #502060;
-  --seg-instrumental_solo: #603020;
-  --seg-outro: #102030;
-  --seg-ending: #0a1420;
-  --seg-text: #ffffff;
-  --seg-text-dim: rgba(255, 255, 255, 0.6);
-  --seg-text-faint: rgba(255, 255, 255, 0.35);
-}
+  --f-ui:   -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --f-mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, monospace;
 
-:root[data-theme="light"] {
-  --bg: #e8edf1;
-  --bg-deepest: #dde5ea;
-  --panel: #ffffff;
-  --panel-deep: #f2f6f8;
-  --panel-alt: #f7fafb;
-  --surface: #e3ebf0;
-  --surface-hover: #d3dfe6;
-  --surface-muted: #edf3f6;
-  --accent: #0077b6;
-  --accent-bright: #005f92;
+  /* Spacing + shape */
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
+  --s5: 24px; --s6: 32px; --s7: 48px;
+  --r-sm: 6px; --r-md: 9px; --r-lg: 14px;
+
+  /* ── Light palette (also the base, so no-JS / system-light get it) ── */
+  --ground:  #fbfcfd;
+  --sunken:  #f1f4f6;
+  --raised:  #ffffff;
+  --line:    #e2e8ec;
+  --line-soft: #eef2f5;
+  --ink:     #131a1f;
+  --ink-dim: #5a6672;
+  --ink-faint: #8b98a3;
+
+  --accent:      #0b7fa3;
+  --accent-ink:  #ffffff;
+  --accent-wash: #e6f3f8;
+  --accent-edge: #b9deeb;
+
+  --good: #1a7f4b;
+  --warn: #9a6700;
+  --bad:  #c0392b;
+
+  --shadow: 0 1px 2px rgba(16,24,32,.05), 0 8px 24px -12px rgba(16,24,32,.18);
+  --shadow-lift: 0 2px 6px rgba(16,24,32,.07), 0 24px 60px -20px rgba(16,24,32,.28);
+
+  /* Section hues — the arrangement's identity, tuned to read on a light ground. */
+  --seg-intro: #c3d0dc;
+  --seg-verse: #b6d8cf;
+  --seg-pre_chorus: #dcd6b0;
+  --seg-chorus: #9ccede;
+  --seg-post_chorus: #bcd6e4;
+  --seg-bridge: #cfc2dd;
+  --seg-instrumental_solo: #e2c8b4;
+  --seg-outro: #d2d8de;
+  --seg-ending: #e3e8ec;
+  --seg-text: #1d2831;
+  --seg-text-dim: rgba(29, 40, 49, 0.62);
+  --seg-text-faint: rgba(29, 40, 49, 0.4);
+
+  /* ── Aliases (light) — legacy names mapped onto the new palette ── */
+  --bg: var(--ground);
+  --bg-deepest: var(--sunken);
+  --panel: var(--raised);
+  --panel-deep: var(--sunken);
+  --panel-alt: var(--line-soft);
+  --surface: #eef2f5;
+  --surface-hover: #e2e8ec;
+  --surface-muted: var(--sunken);
+  --text: var(--ink);
+  --text-soft: #3a4650;
+  --text-dim: var(--ink-dim);
+  --text-faint: var(--ink-faint);
+  --accent-bright: #0a6f8f;
   --accent-dim: #4da3cc;
-  --accent-surface: #ddeef7;
-  --accent-surface-strong: #c2e2f2;
-  --text: #1a2530;
-  --text-soft: #33434f;
-  --text-dim: #5a7080;
-  --text-faint: #93a7b3;
-  --error: #d64545;
+  --accent-surface: var(--accent-wash);
+  --accent-surface-strong: #d4ebf3;
+  --on-accent: var(--accent-ink);
+  --error: var(--bad);
   --error-surface: #fbe9e9;
-  --gold: #b8860b;
+  --gold: var(--warn);
   --gold-surface: #f7ecd0;
-  --success: #14915f;
+  --success: var(--good);
   --success-surface: #d9f2e6;
 
-  /* Pastel chips read as "light UI" instead of dark navy tiles floating on
-   * a white page; dark text sits on top instead of white. */
-  --seg-intro: #cfe0f0;
-  --seg-verse: #d3e8da;
-  --seg-pre_chorus: #eef0c8;
-  --seg-chorus: #bfe3f5;
-  --seg-post_chorus: #d3ddf0;
-  --seg-bridge: #e6d3f0;
-  --seg-instrumental_solo: #f0dcd0;
-  --seg-outro: #dde6ec;
-  --seg-ending: #eef2f5;
-  --seg-text: #1a2530;
-  --seg-text-dim: rgba(26, 37, 48, 0.6);
-  --seg-text-faint: rgba(26, 37, 48, 0.4);
-}
-
-/* Retro: green-phosphor CRT. Same roles, terminal palette, plus scanlines. */
-:root[data-theme="retro"] {
-  --bg: #050a05;
-  --bg-deepest: #030703;
-  --panel: #081208;
-  --panel-deep: #060d06;
-  --panel-alt: #0a160a;
-  --surface: #0f2412;
-  --surface-hover: #14301a;
-  --surface-muted: #071407;
-  --accent: #33ff66;
-  --accent-bright: #8affac;
-  --accent-dim: #22aa44;
-  --accent-surface: #0a2410;
-  --accent-surface-strong: #103618;
-  --text: #c9f5d3;
-  --text-soft: #a4dcb0;
-  --text-dim: #4e8f5e;
-  --text-faint: #2e5a3a;
-  --error: #ff6b5e;
-  --error-surface: #2a1008;
-  --gold: #ffd23f;
-  --gold-surface: #332a08;
-  --success: #7dffa0;
-  --success-surface: #0a2e1a;
-
-  /* No hue variety on a phosphor CRT — sections differentiate by brightness
-   * of the same green (plus one amber chip for the instrumental solo, the
-   * one section that's conceptually "warm" rather than structural). */
-  --seg-intro: #123a1c;
-  --seg-verse: #0f4a22;
-  --seg-pre_chorus: #1c4a1a;
-  --seg-chorus: #145a38;
-  --seg-post_chorus: #1a3a28;
-  --seg-bridge: #245a2e;
-  --seg-instrumental_solo: #3a2e12;
-  --seg-outro: #0e2a16;
-  --seg-ending: #081c0d;
-  --seg-text: #c9f5d3;
-  --seg-text-dim: rgba(201, 245, 211, 0.65);
-  --seg-text-faint: rgba(201, 245, 211, 0.4);
-}
-
-/* CRT dressing for retro: scanlines over everything + a phosphor glow on
- * headings. pointer-events: none keeps the overlay purely cosmetic. */
-:root[data-theme="retro"] body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  pointer-events: none;
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0) 0px,
-    rgba(0, 0, 0, 0) 2px,
-    rgba(0, 20, 0, 0.16) 3px,
-    rgba(0, 20, 0, 0.16) 4px
-  );
-}
-
-:root[data-theme="retro"] h1 {
-  text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 55%, transparent);
-}
-
-/* Light theme reads better without the neon-on-black glow effects */
-:root[data-theme="light"] body {
   color-scheme: light;
 }
+
+/* ── Dark palette — applied when the OS asks for it… ── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground:  #0f1418;
+    --sunken:  #0a0e11;
+    --raised:  #161c21;
+    --line:    #222a31;
+    --line-soft: #1a2126;
+    --ink:     #e3e8ec;
+    --ink-dim: #93a1ab;
+    --ink-faint: #5f6d78;
+
+    --accent:      #45c8e8;
+    --accent-ink:  #052730;
+    --accent-wash: #10262f;
+    --accent-edge: #1d4655;
+
+    --good: #46b87a;
+    --warn: #d8a33a;
+    --bad:  #e06b5f;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+    --shadow-lift: 0 2px 6px rgba(0,0,0,.5), 0 24px 60px -20px rgba(0,0,0,.85);
+
+    --seg-intro: #2d3d4c;
+    --seg-verse: #244a44;
+    --seg-pre_chorus: #4a4630;
+    --seg-chorus: #1d5c73;
+    --seg-post_chorus: #274859;
+    --seg-bridge: #43355a;
+    --seg-instrumental_solo: #563a2c;
+    --seg-outro: #232c34;
+    --seg-ending: #1a2128;
+    --seg-text: #dbe6ee;
+    --seg-text-dim: rgba(219, 230, 238, 0.62);
+    --seg-text-faint: rgba(219, 230, 238, 0.38);
+
+    --surface: #1f272e;
+    --surface-hover: #28323b;
+    --surface-muted: var(--sunken);
+    --text-soft: #c4ccd3;
+    --accent-bright: #7ad9f0;
+    --accent-dim: #2a9bbd;
+    --accent-surface-strong: #173845;
+    --error-surface: #2a1010;
+    --gold-surface: #332a10;
+    --success-surface: #0d2e20;
+
+    color-scheme: dark;
+  }
+}
+
+/* ── …and the manual overrides, which win over the media query either way. ── */
+:root[data-theme="light"] {
+  --ground:#fbfcfd; --sunken:#f1f4f6; --raised:#ffffff; --line:#e2e8ec; --line-soft:#eef2f5;
+  --ink:#131a1f; --ink-dim:#5a6672; --ink-faint:#8b98a3;
+  --accent:#0b7fa3; --accent-ink:#ffffff; --accent-wash:#e6f3f8; --accent-edge:#b9deeb;
+  --good:#1a7f4b; --warn:#9a6700; --bad:#c0392b;
+  --shadow:0 1px 2px rgba(16,24,32,.05), 0 8px 24px -12px rgba(16,24,32,.18);
+  --shadow-lift:0 2px 6px rgba(16,24,32,.07), 0 24px 60px -20px rgba(16,24,32,.28);
+  --seg-intro:#c3d0dc; --seg-verse:#b6d8cf; --seg-pre_chorus:#dcd6b0; --seg-chorus:#9ccede;
+  --seg-post_chorus:#bcd6e4; --seg-bridge:#cfc2dd; --seg-instrumental_solo:#e2c8b4;
+  --seg-outro:#d2d8de; --seg-ending:#e3e8ec;
+  --seg-text:#1d2831; --seg-text-dim:rgba(29,40,49,.62); --seg-text-faint:rgba(29,40,49,.4);
+  --surface:#eef2f5; --surface-hover:#e2e8ec; --surface-muted:var(--sunken);
+  --text-soft:#3a4650; --accent-bright:#0a6f8f; --accent-dim:#4da3cc; --accent-surface-strong:#d4ebf3;
+  --error-surface:#fbe9e9; --gold-surface:#f7ecd0; --success-surface:#d9f2e6;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --ground:#0f1418; --sunken:#0a0e11; --raised:#161c21; --line:#222a31; --line-soft:#1a2126;
+  --ink:#e3e8ec; --ink-dim:#93a1ab; --ink-faint:#5f6d78;
+  --accent:#45c8e8; --accent-ink:#052730; --accent-wash:#10262f; --accent-edge:#1d4655;
+  --good:#46b87a; --warn:#d8a33a; --bad:#e06b5f;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+  --shadow-lift:0 2px 6px rgba(0,0,0,.5), 0 24px 60px -20px rgba(0,0,0,.85);
+  --seg-intro:#2d3d4c; --seg-verse:#244a44; --seg-pre_chorus:#4a4630; --seg-chorus:#1d5c73;
+  --seg-post_chorus:#274859; --seg-bridge:#43355a; --seg-instrumental_solo:#563a2c;
+  --seg-outro:#232c34; --seg-ending:#1a2128;
+  --seg-text:#dbe6ee; --seg-text-dim:rgba(219,230,238,.62); --seg-text-faint:rgba(219,230,238,.38);
+  --surface:#1f272e; --surface-hover:#28323b; --surface-muted:var(--sunken);
+  --text-soft:#c4ccd3; --accent-bright:#7ad9f0; --accent-dim:#2a9bbd; --accent-surface-strong:#173845;
+  --error-surface:#2a1010; --gold-surface:#332a10; --success-surface:#0d2e20;
+  color-scheme: dark;
+}
+
+/* Whimsical "Sunset" — a warm, cheerful light theme, deliberately distinct from
+ * the cool neutral light so the theme toggle always visibly changes something.
+ * Same token roles, warm cream grounds and a coral accent, playful pastel
+ * section hues. */
+:root[data-theme="whimsical"] {
+  --ground:#fff5ec; --sunken:#ffece0; --raised:#fffdfb; --line:#f6dcc9; --line-soft:#fdeee3;
+  --ink:#3d2a1e; --ink-dim:#8a6a56; --ink-faint:#c2a48f;
+  --accent:#e8623d; --accent-ink:#ffffff; --accent-wash:#ffe6dc; --accent-edge:#f7c3ae;
+  --good:#2f9e6f; --warn:#c9820f; --bad:#d8443a;
+  --shadow:0 1px 2px rgba(120,60,30,.06), 0 8px 24px -12px rgba(120,60,30,.22);
+  --shadow-lift:0 2px 6px rgba(120,60,30,.09), 0 24px 60px -20px rgba(120,60,30,.32);
+  --seg-intro:#ffd9b8; --seg-verse:#cfe8b0; --seg-pre_chorus:#ffe8a3; --seg-chorus:#ffc4a3;
+  --seg-post_chorus:#ffd2c0; --seg-bridge:#e6c4f0; --seg-instrumental_solo:#f7cf9e;
+  --seg-outro:#f0ddd0; --seg-ending:#f6e9df;
+  --seg-text:#3d2a1e; --seg-text-dim:rgba(61,42,30,.62); --seg-text-faint:rgba(61,42,30,.42);
+  --surface:#ffe8db; --surface-hover:#ffdcc9; --surface-muted:var(--sunken);
+  --text-soft:#5c4332; --accent-bright:#d24e2b; --accent-dim:#f0956f; --accent-surface-strong:#ffd8c8;
+  --error-surface:#ffe3df; --gold-surface:#fbefd2; --success-surface:#dbf3e6;
+  color-scheme: light;
+}
+
+/* Hairline, ground-blended scrollbars — the old ones chopped the page into
+ * visible panes, which was a specific complaint. */
+* { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+*::-webkit-scrollbar { width: 11px; height: 11px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 99px;
+  border: 3px solid var(--ground);
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); }

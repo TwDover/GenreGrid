@@ -7,32 +7,13 @@
   version. Distributed WITHOUT ANY WARRANTY. See <https://www.gnu.org/licenses/>.
 -->
 <template>
-  <form class="generate-form" @submit.prevent="emit('submit', form)">
-    <div class="style-field">
-      <div class="style-selector-row">
-        <StyleSelector v-model="form.style_id" :styles="styles" />
-        <button type="button" class="browse-btn" @click="showBrowser = true" :disabled="styles.length === 0">Browse</button>
-        <button type="button" class="edit-style-btn" @click="showEditor = true" :disabled="!selectedStyle" title="Edit this style's parameters">Edit</button>
-      </div>
-      <div v-if="selectedStyle" class="style-info">
-        <span>{{ selectedStyle.bpm_range[0] }}–{{ selectedStyle.bpm_range[1] }} BPM</span>
-        <span class="dot">·</span>
-        <span>{{ selectedStyle.default_scale }}</span>
-        <span v-if="selectedStyle.custom" class="custom-badge">custom</span>
-        <div class="style-dna">
-          <StyleRadar v-if="styleDetail" :style="styleDetail" :size="64" />
-          <span class="dna-label">DNA</span>
-        </div>
-      </div>
-    </div>
-
+  <form class="generate-form setup-form" @submit.prevent="emit('submit', form)">
     <StyleBrowser
       v-if="showBrowser"
       v-model="form.style_id"
       :styles="styles"
       @close="showBrowser = false"
     />
-
     <StyleEditor
       v-if="showEditor"
       :styleId="form.style_id"
@@ -41,202 +22,208 @@
       @saved="onStyleSaved"
     />
 
-    <div class="field-row">
-      <div class="field">
-        <label>
-          BPM
-          <span v-if="selectedStyle" class="hint">{{ selectedStyle.bpm_range[0] }}–{{ selectedStyle.bpm_range[1] }}</span>
-        </label>
-        <div class="bpm-row">
-          <input
-            type="number"
-            v-model.number="form.bpm"
-            :min="selectedStyle?.bpm_range[0] ?? 40"
-            :max="selectedStyle?.bpm_range[1] ?? 240"
-          />
-          <button type="button" class="tap-btn" @click="handleTap">Tap</button>
+    <div class="setup-grid">
+      <!-- ── Sound ──────────────────────────────────────────────────────── -->
+      <section class="group">
+        <span class="eyebrow">Sound</span>
+        <div class="field">
+          <label>Style</label>
+          <div class="style-row">
+            <select v-model="form.style_id" class="style-select">
+              <option v-if="styles.length === 0" disabled value="">Loading…</option>
+              <option v-for="s in styles" :key="s.id" :value="s.id">{{ s.name }}</option>
+            </select>
+            <button type="button" class="btn" @click="showBrowser = true" :disabled="styles.length === 0">Browse</button>
+            <button type="button" class="btn" @click="showEditor = true" :disabled="!selectedStyle" title="Edit this style's parameters">Edit</button>
+          </div>
+          <div v-if="selectedStyle" class="style-info">
+            <span>{{ selectedStyle.bpm_range[0] }}–{{ selectedStyle.bpm_range[1] }} BPM</span>
+            <span class="dot">·</span>
+            <span>{{ selectedStyle.default_scale }}</span>
+            <span v-if="selectedStyle.custom" class="custom-badge">custom</span>
+          </div>
         </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label>Key</label>
+            <select v-model="form.key">
+              <option v-for="k in keys" :key="k" :value="k">{{ k }}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Scale</label>
+            <select v-model="form.scale">
+              <option value="major">Major</option>
+              <option value="minor">Minor</option>
+              <option value="dorian">Dorian</option>
+              <option value="phrygian">Phrygian</option>
+              <option value="mixolydian">Mixolydian</option>
+              <option value="pentatonic_minor">Pentatonic Minor</option>
+              <option value="pentatonic_major">Pentatonic Major</option>
+              <option value="blues">Blues</option>
+              <option value="harmonic_minor">Harmonic Minor</option>
+              <option value="phrygian_dominant">Phrygian Dominant</option>
+              <option value="whole_tone">Whole Tone</option>
+            </select>
+          </div>
+        </div>
+        <div class="scale-notes">
+          <span v-for="note in scaleNotes" :key="note" class="scale-note">{{ note }}</span>
+        </div>
+
+        <div class="field">
+          <label>BPM <span v-if="selectedStyle" class="hint">{{ selectedStyle.bpm_range[0] }}–{{ selectedStyle.bpm_range[1] }}</span></label>
+          <div class="bpm-row">
+            <input
+              type="number"
+              v-model.number="form.bpm"
+              :min="selectedStyle?.bpm_range[0] ?? 40"
+              :max="selectedStyle?.bpm_range[1] ?? 240"
+            />
+            <button type="button" class="btn" @click="handleTap">Tap</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Form ───────────────────────────────────────────────────────── -->
+      <section class="group">
+        <span class="eyebrow">Form</span>
+        <div class="field">
+          <label>Bars</label>
+          <input type="number" v-model.number="form.bars" min="1" max="128" />
+        </div>
+
+        <div class="field">
+          <label>Parts</label>
+          <div class="part-toggles">
+            <label v-for="part in allParts" :key="part" class="toggle">
+              <input type="checkbox" :value="part" v-model="form.parts" />
+              {{ part.replace('_', ' ') }}
+            </label>
+          </div>
+        </div>
+
+        <div class="field" v-if="form.mode === 'loop'">
+          <label>Section <span class="hint">shapes density &amp; bar count</span></label>
+          <div class="section-grid">
+            <label
+              v-for="(p, key) in SECTION_PROFILES"
+              :key="key"
+              class="section-card"
+              :class="{ active: form.section_type === key }"
+              :title="p.desc"
+            >
+              <input type="radio" :value="key" v-model="form.section_type" />
+              <span class="section-label">{{ p.label }}</span>
+              <span class="section-bars">{{ p.bars[0] }}–{{ p.bars[1] }}</span>
+            </label>
+            <label class="section-card" :class="{ active: !form.section_type }" title="No shaping — use sliders as-is">
+              <input type="radio" :value="undefined" v-model="form.section_type" />
+              <span class="section-label">Free</span>
+              <span class="section-bars">any</span>
+            </label>
+          </div>
+          <p v-if="sectionBarHint" class="section-bar-hint">
+            {{ sectionBarHint }}
+            <button type="button" class="btn btn-quiet hint-apply" @click="applySuggestedBars">Apply</button>
+          </p>
+        </div>
+      </section>
+
+      <!-- ── Feel ───────────────────────────────────────────────────────── -->
+      <section class="group">
+        <span class="eyebrow">Feel</span>
+        <div class="field">
+          <label>Complexity <span class="value">{{ form.complexity.toFixed(2) }}</span></label>
+          <input type="range" v-model.number="form.complexity" min="0" max="1" step="0.01" />
+        </div>
+        <div class="field">
+          <label>Variation <span class="value">{{ form.variation.toFixed(2) }}</span></label>
+          <input type="range" v-model.number="form.variation" min="0" max="1" step="0.01" />
+        </div>
+        <div class="field">
+          <label>Feel <span class="value">{{ feelLabel }}</span></label>
+          <input type="range" v-model.number="form.humanize" min="0" max="1" step="0.01" />
+        </div>
+      </section>
+    </div>
+
+    <!-- ── Advanced ─────────────────────────────────────────────────────── -->
+    <details class="advanced">
+      <summary>Advanced — blending, custom harmony, seed, presets</summary>
+      <div class="adv-grid">
+        <section class="group">
+          <div class="field">
+            <label>Blend with <span class="hint">mix two styles</span></label>
+            <select v-model="form.blend_style_id">
+              <option :value="undefined">None</option>
+              <option v-for="s in styles.filter(s => s.id !== form.style_id)" :key="s.id" :value="s.id">{{ s.name }}</option>
+            </select>
+          </div>
+          <div class="field" v-if="form.blend_style_id">
+            <label>Blend amount <span class="value">{{ Math.round(form.blend_amount * 100) }}%</span></label>
+            <input type="range" v-model.number="form.blend_amount" min="0" max="1" step="0.01" />
+          </div>
+          <label class="prior-toggle" v-if="selectedStyle?.has_prior">
+            <input type="checkbox" v-model="form.use_priors" />
+            <span>Use my local MIDI corpus <span class="hint">overlays patterns mined from a corpus you provide; you're responsible for its license</span></span>
+          </label>
+        </section>
+
+        <section class="group">
+          <div class="field">
+            <label>Progression <span class="hint">e.g. i VII III VI</span></label>
+            <input
+              type="text"
+              v-model="customProgressionRaw"
+              placeholder="leave blank for style defaults"
+              class="progression-input"
+              @blur="parseProgression"
+            />
+            <div v-if="progressionError" class="field-error">{{ progressionError }}</div>
+          </div>
+          <div class="field">
+            <label>Seed <span class="hint">blank = random</span></label>
+            <input type="number" v-model.number="form.seed" placeholder="e.g. 1234567890" min="0" />
+          </div>
+        </section>
+
+        <section class="group">
+          <div class="field">
+            <label>Presets</label>
+            <select v-model="selectedPreset" @change="loadPreset">
+              <option value="">Load preset…</option>
+              <option v-for="p in presets" :key="p.name" :value="p.name">{{ p.name }}</option>
+            </select>
+          </div>
+          <div class="preset-actions">
+            <button type="button" class="btn" @click="savePreset" :disabled="presets.length >= 10">Save current</button>
+            <button type="button" class="btn preset-delete" @click="deletePreset" :disabled="!selectedPreset">Delete</button>
+          </div>
+        </section>
       </div>
-      <div class="field">
-        <label>Bars</label>
-        <input type="number" v-model.number="form.bars" min="1" max="128" />
-      </div>
-    </div>
-
-    <div class="field-row">
-      <div class="field">
-        <label>Key</label>
-        <select v-model="form.key">
-          <option v-for="k in keys" :key="k" :value="k">{{ k }}</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Scale</label>
-        <select v-model="form.scale">
-          <option value="major">Major</option>
-          <option value="minor">Minor</option>
-          <option value="dorian">Dorian</option>
-          <option value="phrygian">Phrygian</option>
-          <option value="mixolydian">Mixolydian</option>
-          <option value="pentatonic_minor">Pentatonic Minor</option>
-          <option value="pentatonic_major">Pentatonic Major</option>
-          <option value="blues">Blues</option>
-          <option value="harmonic_minor">Harmonic Minor</option>
-          <option value="phrygian_dominant">Phrygian Dominant</option>
-          <option value="whole_tone">Whole Tone</option>
-        </select>
-      </div>
-    </div>
-    <div class="scale-notes">
-      <span v-for="note in scaleNotes" :key="note" class="scale-note">{{ note }}</span>
-    </div>
-
-    <div class="field">
-      <label>Complexity <span class="value">{{ form.complexity.toFixed(2) }}</span></label>
-      <input type="range" v-model.number="form.complexity" min="0" max="1" step="0.01" />
-    </div>
-
-    <div class="field">
-      <label>Variation <span class="value">{{ form.variation.toFixed(2) }}</span></label>
-      <input type="range" v-model.number="form.variation" min="0" max="1" step="0.01" />
-    </div>
-
-    <div class="field">
-      <label>Parts</label>
-      <div class="part-toggles">
-        <label v-for="part in allParts" :key="part" class="toggle">
-          <input type="checkbox" :value="part" v-model="form.parts" />
-          {{ part }}
-        </label>
-      </div>
-    </div>
-
-    <div class="field" v-if="!forcedMode">
-      <label>Mode</label>
-      <div class="mode-toggles">
-        <label class="mode-option" :class="{ active: form.mode === 'loop' }">
-          <input type="radio" value="loop" v-model="form.mode" />
-          Loop
-          <span class="mode-hint">all parts · all bars · uniform</span>
-        </label>
-        <label class="mode-option" :class="{ active: form.mode === 'arrangement' }">
-          <input type="radio" value="arrangement" v-model="form.mode" />
-          Arrangement
-          <span class="mode-hint">intro · verse · chorus · outro</span>
-        </label>
-      </div>
-    </div>
-
-    <div class="field" v-if="form.mode === 'loop'">
-      <label>
-        Section
-        <span class="hint">shapes complexity, dynamics, and bar count</span>
-      </label>
-      <div class="section-grid">
-        <label
-          v-for="(p, key) in SECTION_PROFILES"
-          :key="key"
-          class="section-card"
-          :class="{ active: form.section_type === key }"
-        >
-          <input type="radio" :value="key" v-model="form.section_type" />
-          <span class="section-label">{{ p.label }}</span>
-          <span class="section-bars">{{ p.bars[0] }}–{{ p.bars[1] }} bars</span>
-          <span class="section-desc">{{ p.desc }}</span>
-        </label>
-        <label class="section-card" :class="{ active: !form.section_type }">
-          <input type="radio" :value="undefined" v-model="form.section_type" />
-          <span class="section-label">Free</span>
-          <span class="section-bars">any</span>
-          <span class="section-desc">No shaping — use sliders as-is</span>
-        </label>
-      </div>
-      <p v-if="sectionBarHint" class="section-bar-hint">
-        {{ sectionBarHint }}
-        <button type="button" class="hint-apply" @click="applySuggestedBars">Apply</button>
-      </p>
-    </div>
-
-    <div class="field">
-      <label>Blend with <span class="hint">optional — mix two styles together</span></label>
-      <div class="blend-row">
-        <select v-model="form.blend_style_id" class="blend-select">
-          <option :value="undefined">None</option>
-          <option v-for="s in styles.filter(s => s.id !== form.style_id)" :key="s.id" :value="s.id">{{ s.name }}</option>
-        </select>
-        <input
-          v-if="form.blend_style_id"
-          type="range"
-          v-model.number="form.blend_amount"
-          min="0" max="1" step="0.01"
-          class="blend-slider"
-          :title="`Blend: ${Math.round(form.blend_amount * 100)}% ${styles.find(s => s.id === form.blend_style_id)?.name ?? ''}`"
-        />
-        <span v-if="form.blend_style_id" class="blend-pct">{{ Math.round(form.blend_amount * 100) }}%</span>
-      </div>
-    </div>
-
-    <div class="field" v-if="selectedStyle?.has_prior">
-      <label class="prior-toggle">
-        <input type="checkbox" v-model="form.use_priors" />
-        Use my local MIDI corpus
-        <span class="hint">Optional. The built-in style patterns are always used; this additionally overlays chord, melody &amp; drum patterns mined from a corpus you provide. You're responsible for your corpus's license.</span>
-      </label>
-    </div>
-
-    <div class="field">
-      <label>Feel <span class="value">{{ feelLabel }}</span></label>
-      <input type="range" v-model.number="form.humanize" min="0" max="1" step="0.01" />
-    </div>
-
-    <div class="field">
-      <label>
-        Progression
-        <span class="hint">optional — e.g. i VII III VI</span>
-      </label>
-      <input
-        type="text"
-        v-model="customProgressionRaw"
-        placeholder="i VII III VI (leave blank to use style defaults)"
-        class="progression-input"
-        @blur="parseProgression"
-      />
-      <div v-if="progressionError" class="field-error">{{ progressionError }}</div>
-    </div>
-
-    <div class="field">
-      <label>Seed <span class="hint">optional — leave blank for random</span></label>
-      <input type="number" v-model.number="form.seed" placeholder="e.g. 1234567890" min="0" />
-    </div>
+    </details>
 
     <div class="form-actions">
-      <button type="button" class="randomize-btn" @click="randomize" :disabled="styles.length === 0">
+      <button type="submit" :disabled="loading" class="btn-primary generate-btn">
+        {{ loading ? 'Generating…' : 'Generate' }}
+      </button>
+      <button type="button" class="btn randomize-btn" @click="randomize" :disabled="styles.length === 0">
         ⟳ Randomize
       </button>
-      <button type="submit" :disabled="loading" class="generate-btn">
-        {{ loading ? 'Generating...' : 'Generate' }}
-      </button>
       <div class="batch-row">
-        <button type="button" class="batch-btn" :disabled="loading" @click="emit('batch', form, batchCount)">
+        <button type="button" class="btn batch-btn" :disabled="loading" @click="emit('batch', form, batchCount)">
           Batch ×{{ batchCount }}
         </button>
-        <input type="number" v-model.number="batchCount" min="2" max="10" class="batch-count" />
+        <input type="number" v-model.number="batchCount" min="2" max="10" class="batch-count" aria-label="Batch count" />
       </div>
-    </div>
-
-    <div class="preset-row">
-      <select v-model="selectedPreset" class="preset-select" @change="loadPreset">
-        <option value="">Load preset…</option>
-        <option v-for="p in presets" :key="p.name" :value="p.name">{{ p.name }}</option>
-      </select>
-      <button type="button" class="preset-btn" @click="savePreset" :disabled="presets.length >= 10">Save</button>
-      <button type="button" class="preset-btn preset-delete" @click="deletePreset" :disabled="!selectedPreset">Delete</button>
     </div>
   </form>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, shallowRef } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 
 interface SectionProfile { label: string; bars: [number, number]; desc: string }
 const SECTION_PROFILES: Record<string, SectionProfile> = {
@@ -266,11 +253,8 @@ const SCALE_INTERVALS: Record<string, number[]> = {
   phrygian_dominant: [0,1,4,5,7,8,10],
   whole_tone:        [0,2,4,6,8,10],
 }
-import StyleSelector from './StyleSelector.vue'
 import StyleBrowser from './StyleBrowser.vue'
 import StyleEditor from './StyleEditor.vue'
-import StyleRadar from './StyleRadar.vue'
-import { fetchStyleDetail } from '../services/api'
 import type { StyleInfo, GenerateRequest, GenerateResponse } from '../types/midi'
 
 const props = defineProps<{
@@ -380,13 +364,6 @@ const scaleNotes = computed(() => {
 
 const showBrowser = ref(false)
 const showEditor = ref(false)
-const styleDetail = shallowRef<Record<string, any> | null>(null)
-
-watch(() => form.style_id, async (id) => {
-  styleDetail.value = null
-  if (!id) return
-  try { styleDetail.value = await fetchStyleDetail(id) } catch { /* radar just won't show */ }
-}, { immediate: true })
 const batchCount = ref(4)
 
 function onStyleSaved(newStyleId: string) {
@@ -488,387 +465,122 @@ function randomize() {
 <style scoped>
 .prior-toggle {
   display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--s2);
   cursor: pointer;
+  font-size: var(--t-meta);
+  color: var(--ink-dim);
 }
-.prior-toggle input {
-  width: auto;
-  margin: 0;
-}
-.prior-toggle .hint {
-  flex-basis: 100%;
-  margin-left: 1.5rem;
-}
+.prior-toggle input { width: auto; margin: 3px 0 0; accent-color: var(--accent); }
 
-.style-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.style-selector-row {
-  display: flex;
-  gap: 0.4rem;
-}
-
-.browse-btn {
-  font-size: 0.75rem;
-  padding: 0 0.75rem;
-  background: var(--surface);
-  border: 1px solid var(--surface-hover);
-  border-radius: 6px;
-  color: var(--text-dim);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
-  flex-shrink: 0;
-}
-.browse-btn:hover { background: var(--surface-hover); color: var(--text); }
-
-.edit-style-btn {
-  font-size: 0.75rem;
-  padding: 0 0.65rem;
-  background: var(--surface);
-  border: 1px solid var(--surface-hover);
-  border-radius: 6px;
-  color: var(--text-dim);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
-  flex-shrink: 0;
-}
-.edit-style-btn:hover:not(:disabled) { background: var(--accent-surface-strong); border-color: color-mix(in srgb, var(--accent) 27%, transparent); color: var(--accent); }
-.edit-style-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+/* Style select + its Browse / Edit buttons on one aligned row — the select
+ * flexes, the buttons stay their natural width, all the same height. */
+.style-row { display: flex; gap: var(--s2); }
+.style-select { flex: 1; min-width: 0; }
+.style-row .btn { flex-shrink: 0; }
 
 .style-info {
   display: flex;
-  gap: 0.4rem;
+  gap: var(--s2);
   align-items: center;
-  font-size: 0.72rem;
-  color: var(--text-faint);
-  padding-left: 0.1rem;
+  font-size: var(--t-meta);
+  color: var(--ink-faint);
 }
-
-.dot { color: var(--surface-hover); }
+.dot { color: var(--line); }
 
 .custom-badge {
-  font-size: 0.6rem;
-  background: var(--accent-surface-strong);
+  font-size: var(--t-micro);
+  background: var(--accent-wash);
   color: var(--accent);
-  border: 1px solid color-mix(in srgb, var(--accent) 27%, transparent);
-  border-radius: 3px;
+  border: 1px solid var(--accent-edge);
+  border-radius: var(--r-sm);
   padding: 0.05rem 0.35rem;
 }
 
-.style-dna {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-}
+.progression-input { font-family: var(--f-mono); letter-spacing: 0.04em; }
+.field-error { font-size: var(--t-meta); color: var(--bad); margin-top: var(--s1); }
 
-.dna-label {
-  font-size: 0.6rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-faint);
-}
-
-.blend-row {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.blend-select {
-  flex: 1;
-  min-width: 0;
-}
-
-.blend-slider {
-  flex: 1;
-  min-width: 0;
-}
-
-.blend-pct {
-  font-size: 0.72rem;
-  color: var(--text-dim);
-  font-family: monospace;
-  width: 2.5rem;
-  text-align: right;
-  flex-shrink: 0;
-}
-
-.progression-input {
-  font-family: monospace;
-  letter-spacing: 0.04em;
-}
-
-.field-error {
-  font-size: 0.7rem;
-  color: var(--error);
-  margin-top: 0.25rem;
-}
-
+/* Inline captions on labels — normal case, no uppercase inheritance. */
 .hint {
-  font-size: 0.7rem;
-  color: var(--text-faint);
+  font-size: var(--t-meta);
+  color: var(--ink-faint);
   margin-left: 0.4rem;
   font-weight: normal;
   text-transform: none;
   letter-spacing: 0;
 }
 
-.form-actions {
-  display: flex;
-  gap: 0.75rem;
-  margin-top: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.batch-row {
-  display: flex;
-  gap: 0.3rem;
-  align-items: stretch;
-}
-
-.batch-btn {
-  background: var(--panel);
-  border: 1px solid var(--surface);
-  color: var(--text-dim);
-  padding: 0.75rem 0.85rem;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: border-color 0.15s, color 0.15s;
-}
-.batch-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 27%, transparent); color: var(--accent-bright); }
-.batch-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.batch-count {
-  width: 3rem;
-  background: var(--panel-deep);
-  border: 1px solid var(--surface);
-  border-radius: 6px;
-  color: var(--text-dim);
-  font-size: 0.85rem;
-  text-align: center;
-  padding: 0 0.4rem;
-}
-
-.randomize-btn {
-  background: var(--panel);
-  border: 1px solid var(--surface);
-  color: var(--text-dim);
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
-  white-space: nowrap;
-}
-.randomize-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.randomize-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.mode-toggles {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.mode-option {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  padding: 0.5rem 0.75rem;
-  background: var(--panel);
-  border: 1px solid var(--surface);
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.85rem;
-  color: var(--text-dim);
-  transition: border-color 0.15s, color 0.15s;
-}
-
-.mode-option input[type="radio"] {
-  display: none;
-}
-
-.mode-option.active {
-  border-color: var(--accent);
-  color: var(--text);
-}
-
-.mode-option:hover:not(.active) {
-  border-color: var(--surface-hover);
-  color: var(--accent-bright);
-}
-
-.mode-hint {
-  font-size: 0.68rem;
-  color: var(--text-faint);
-  font-weight: normal;
-  text-transform: none;
-  letter-spacing: 0;
-}
-
-.mode-option.active .mode-hint {
-  color: var(--text-dim);
-}
-
-.bpm-row { display: flex; gap: 0.5rem; align-items: center; }
+.bpm-row { display: flex; gap: var(--s2); align-items: center; }
 .bpm-row input { flex: 1; }
-.tap-btn {
-  font-size: 0.78rem;
-  padding: 0.5rem 0.65rem;
-  background: var(--panel);
-  border: 1px solid var(--surface);
-  border-radius: 6px;
-  color: var(--text-dim);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: border-color 0.15s, color 0.15s;
-  flex-shrink: 0;
-}
-.tap-btn:hover { border-color: var(--accent); color: var(--accent); }
+.bpm-row .btn { flex-shrink: 0; }
 
-.preset-row {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  margin-top: -0.25rem;
-}
-.preset-select {
-  flex: 1;
-  background: var(--panel);
-  border: 1px solid var(--surface);
-  border-radius: 6px;
-  color: var(--text-dim);
-  font-size: 0.8rem;
-  padding: 0.35rem 0.5rem;
-  cursor: pointer;
-}
-.preset-select:focus { outline: none; border-color: var(--accent); }
-.preset-btn {
-  font-size: 0.75rem;
-  padding: 0.35rem 0.65rem;
-  background: var(--panel);
-  border: 1px solid var(--surface);
-  border-radius: 6px;
-  color: var(--text-dim);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
-}
-.preset-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.preset-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.preset-delete:hover:not(:disabled) { border-color: var(--error) !important; color: var(--error) !important; }
-
-@media (max-width: 400px) {
-  .field-row { grid-template-columns: 1fr; }
-}
-
-.scale-notes {
-  display: flex;
-  gap: 0.3rem;
-  flex-wrap: wrap;
-  padding: 0.1rem 0;
-}
+.scale-notes { display: flex; gap: var(--s1); flex-wrap: wrap; }
 .scale-note {
-  font-size: 0.7rem;
-  font-family: monospace;
+  font-size: var(--t-meta);
+  font-family: var(--f-mono);
   color: var(--accent);
-  background: var(--panel);
-  border: 1px solid var(--surface);
-  border-radius: 3px;
-  padding: 0.1rem 0.35rem;
+  background: var(--accent-wash);
+  border: 1px solid var(--accent-edge);
+  border-radius: var(--r-sm);
+  padding: 0.05rem 0.4rem;
 }
 
-/* Section type grid */
-.section-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.4rem;
-}
-
+/* Section profile grid — compact chips (label + bar range). */
+.section-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(66px, 1fr)); gap: var(--s1); }
 .section-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  padding: 0.45rem 0.55rem;
-  background: var(--panel);
-  border: 1px solid var(--surface);
-  border-radius: 6px;
+  display: flex; flex-direction: column; gap: 1px;
+  padding: var(--s2);
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.14s, background 0.14s;
 }
-
 .section-card input[type="radio"] { display: none; }
-
-.section-card.active {
-  border-color: var(--accent);
-  background: var(--surface-muted);
-}
-
-.section-card:hover:not(.active) {
-  border-color: var(--surface-hover);
-}
-
-.section-label {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--accent-bright);
-  line-height: 1.2;
-}
-
-.section-card.active .section-label { color: var(--accent-bright); }
-
-.section-bars {
-  font-size: 0.65rem;
-  font-family: monospace;
-  color: var(--accent);
-}
-
-.section-card:not(.active) .section-bars { color: var(--text-faint); }
-
-.section-desc {
-  font-size: 0.62rem;
-  color: var(--text-faint);
-  line-height: 1.3;
-  margin-top: 0.05rem;
-}
-
-.section-card.active .section-desc { color: var(--text-faint); }
+.section-card.active { border-color: var(--accent); background: var(--accent-wash); }
+.section-card:hover:not(.active) { border-color: var(--ink-faint); }
+.section-label { font-size: var(--t-meta); font-weight: 600; color: var(--ink); line-height: 1.15; }
+.section-card.active .section-label { color: var(--accent); }
+.section-bars { font-size: var(--t-micro); font-family: var(--f-mono); color: var(--ink-faint); }
 
 .section-bar-hint {
-  margin: 0.35rem 0 0;
-  font-size: 0.72rem;
-  color: var(--gold);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  margin: var(--s1) 0 0;
+  font-size: var(--t-meta);
+  color: var(--warn);
+  display: flex; align-items: center; gap: var(--s2);
 }
-
 .hint-apply {
-  font-size: 0.68rem;
-  padding: 0.15rem 0.5rem;
-  background: var(--surface);
-  border: 1px solid color-mix(in srgb, var(--gold) 40%, transparent);
-  border-radius: 4px;
-  color: var(--gold);
-  cursor: pointer;
-  white-space: nowrap;
+  height: 26px; padding: 0 var(--s2);
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--line));
+  color: var(--warn);
 }
+.hint-apply:hover:not(:disabled) { background: var(--gold-surface); color: var(--warn); }
 
-.hint-apply:hover { background: var(--gold-surface); }
+.preset-actions { display: flex; gap: var(--s2); }
+.preset-actions .btn { flex: 1; }
+.preset-delete:hover:not(:disabled) { border-color: var(--bad); color: var(--bad); }
 
-@media (max-width: 480px) {
-  .section-grid { grid-template-columns: repeat(2, 1fr); }
+/* Pinned to the bottom of the drawer so the actions stay reachable. One row:
+ * Generate (widest) · Randomize · Batch — wrapping only on very narrow widths. */
+.form-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  align-items: stretch;
+  margin-top: var(--s4);
+  /* Own the drawer's bottom spacing (sheet-body drops its bottom padding) so
+   * the opaque fill pins flush to the scroll-area bottom — nothing shows
+   * through beneath the buttons as you scroll. */
+  padding: var(--s3) 0 var(--s5);
+  background: var(--raised);
+  box-shadow: 0 -10px 14px -2px var(--raised);
 }
+.form-actions .generate-btn { flex: 2 1 180px; height: 42px; font-size: var(--t-body); }
+.randomize-btn { flex: 1 1 130px; height: 42px; }
+.batch-row { display: flex; gap: var(--s1); flex-shrink: 0; }
+.batch-row .batch-btn { height: 42px; }
+.batch-count { width: 3rem; height: 42px; text-align: center; padding: 0 var(--s1); }
 </style>

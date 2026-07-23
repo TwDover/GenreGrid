@@ -10,13 +10,24 @@
  */
 import { ref } from 'vue'
 
-export const THEMES = ['dark', 'light', 'retro'] as const
+// Three visually distinct looks. There's deliberately no "system" cycle stop —
+// it resolved to whichever of light/dark matched the OS, so one click appeared
+// to do nothing and read as a bug. Instead the app DEFAULTS to the OS on first
+// load (below), then the toggle cycles these explicit themes.
+//   · light     — calm neutral (cool grey, cyan accent)
+//   · dark      — calm neutral, dark
+//   · whimsical — a warm "Sunset" theme, just for fun
+export const THEMES = ['light', 'dark', 'whimsical'] as const
 export type Theme = typeof THEMES[number]
 
-const THEME_META: Record<Theme, { icon: string; label: string }> = {
-  dark:  { icon: '🌙', label: 'Dark' },
-  light: { icon: '☀️', label: 'Light' },
-  retro: { icon: '📟', label: 'Retro' },
+export const THEME_META: Record<Theme, { icon: string; label: string }> = {
+  light:     { icon: '☀', label: 'Light' },
+  dark:      { icon: '☾', label: 'Dark' },
+  whimsical: { icon: '🌅', label: 'Sunset' },
+}
+
+function _osPrefersDark(): boolean {
+  return typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches
 }
 
 function _load(): Theme {
@@ -24,7 +35,8 @@ function _load(): Theme {
     const t = localStorage.getItem('genregrid_theme')
     if (t && (THEMES as readonly string[]).includes(t)) return t as Theme
   } catch { /* storage unavailable */ }
-  return 'dark'
+  // No saved choice yet → follow the OS to a degree.
+  return _osPrefersDark() ? 'dark' : 'light'
 }
 
 const theme = ref<Theme>(_load())
@@ -33,7 +45,7 @@ function _apply(t: Theme) {
   document.documentElement.dataset.theme = t
 }
 
-// Apply at module load so the first paint is already themed (no flash)
+// Apply at module load so the first paint is already themed (no flash).
 _apply(theme.value)
 
 export function useTheme() {
@@ -53,7 +65,7 @@ export function useTheme() {
 
 /** Read a theme token's current value — for canvas/SVG code that can't use
  *  var() in a CSS context (e.g. PianoRoll's 2D canvas). */
-export function themeColor(token: string, fallback = '#00c8ff'): string {
+export function themeColor(token: string, fallback = '#45c8e8'): string {
   const v = getComputedStyle(document.documentElement).getPropertyValue(token).trim()
   return v || fallback
 }

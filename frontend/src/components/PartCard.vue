@@ -361,55 +361,59 @@ async function exportWav() {
 </script>
 
 <style scoped>
+/* A stem reads as a hairline row in a list, not a boxed card — the name and
+ * instrument carry it, and the controls stay quiet until hovered. */
 .part-track {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  background: var(--panel);
-  border: 1px solid var(--surface);
-  border-radius: 8px;
-  padding: 0.5rem 0.75rem;
+  gap: var(--s4);
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: var(--s3) var(--s2);
   min-width: 0;
-  transition: border-color 0.15s;
+  transition: background 0.14s;
 }
+.part-track:hover { background: var(--sunken); }
 
 .part-track.playing {
-  border-color: var(--accent);
+  background: var(--accent-wash);
+  border-bottom-color: var(--accent-edge);
 }
 
-.part-track.expired {
-  border-color: var(--error-surface);
-  opacity: 0.75;
-}
+.part-track.expired { opacity: 0.7; }
 
 .expired-note {
   flex: 1;
-  font-size: 0.72rem;
-  color: var(--error);
+  font-size: var(--t-meta);
+  color: var(--bad);
   font-style: italic;
 }
 
 .part-name {
-  width: 74px;
+  width: 132px;
   flex-shrink: 0;
-  font-size: 0.62rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  line-height: 1.25;
-  color: var(--accent);
+  line-height: 1.3;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  gap: 1px;
 }
-
+/* Single-line (self-evident) parts: the instrument name, calm and titled. */
+.part-name { font-size: var(--t-title); font-weight: 550; color: var(--ink); letter-spacing: -.01em; text-transform: capitalize; }
 .pn-role {
-  font-size: 0.55rem;
-  color: var(--text-faint);
-  letter-spacing: 0.08em;
+  font-size: var(--t-micro);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-faint);
 }
-
 .pn-inst {
+  font-size: var(--t-meta);
+  font-weight: 500;
+  color: var(--ink-dim);
+  text-transform: none;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -419,74 +423,75 @@ async function exportWav() {
 .track-controls {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--s1);
   flex-shrink: 0;
 }
 
 .icon-btn {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
-  background: var(--surface);
-  border: 1px solid var(--surface-hover);
-  border-radius: 6px;
-  color: var(--accent);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--ink-dim);
   font-size: 0.85rem;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
 }
-.icon-btn:hover:not(:disabled) { background: var(--surface-hover); }
-.icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.playing .icon-btn:first-child { background: var(--accent-surface-strong); border-color: var(--accent); }
+.icon-btn:hover:not(:disabled) { background: var(--surface-hover); color: var(--ink); }
+.icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.playing .icon-btn:first-child { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .lock-btn { font-size: 0.75rem; }
 .roll-btn { font-size: 0.68rem; font-weight: 700; }
-.lock-btn.locked { background: var(--accent-surface); border-color: color-mix(in srgb, var(--accent) 33%, transparent); }
+.lock-btn.locked { background: var(--accent-wash); border-color: var(--accent-edge); color: var(--accent); }
 
 .drag-handle {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
-  background: var(--surface);
-  border: 1px solid var(--surface-hover);
-  border-radius: 6px;
-  color: var(--accent);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--ink-faint);
   font-size: 1rem;
   cursor: grab;
   display: flex;
   align-items: center;
   justify-content: center;
   user-select: none;
-  transition: background 0.15s;
+  transition: background 0.14s, color 0.14s;
 }
-.drag-handle:hover { background: var(--surface-hover); }
+.drag-handle:hover { background: var(--surface-hover); color: var(--ink); }
 .drag-handle:active { cursor: grabbing; }
 .drag-handle:not(.drag-ready) { opacity: 0.4; cursor: wait; }
 
 .save-btn {
-  height: 32px;
-  background: var(--surface);
-  border: 1px solid var(--surface-hover);
-  border-radius: 6px;
-  color: var(--accent);
-  font-size: 0.75rem;
+  height: 30px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--ink-dim);
+  font-size: var(--t-meta);
   cursor: pointer;
-  padding: 0 0.6rem;
+  padding: 0 var(--s2);
   white-space: nowrap;
-  transition: background 0.15s;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
 }
-.save-btn:hover:not(:disabled) { background: var(--surface-hover); }
+.save-btn:hover:not(:disabled) { border-color: var(--ink-faint); color: var(--ink); }
 .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .edit-save-btn {
-  border-color: color-mix(in srgb, var(--accent) 53%, transparent);
-  background: var(--accent-surface-strong);
+  border-color: var(--accent-edge);
+  background: var(--accent-wash);
+  color: var(--accent);
 }
 
 .gain-slider {
-  width: 64px;
+  width: 72px;
   flex-shrink: 0;
   accent-color: var(--accent);
   cursor: pointer;
@@ -499,8 +504,7 @@ async function exportWav() {
 
 .roll-empty {
   height: 40px;
-  background: var(--panel-deep);
-  border-radius: 4px;
-  opacity: 0.4;
+  background: var(--sunken);
+  border-radius: var(--r-sm);
 }
 </style>

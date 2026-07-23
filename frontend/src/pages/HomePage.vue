@@ -7,133 +7,165 @@
   version. Distributed WITHOUT ANY WARRANTY. See <https://www.gnu.org/licenses/>.
 -->
 <template>
-  <div class="home-page">
-    <header class="app-header">
-      <div class="header-title">
-        <h1>GenreGrid</h1>
-        <p class="subtitle">
-          <span class="subtitle-text" :class="{ hidden: showCredit }">Style-based MIDI generator</span>
-          <span class="subtitle-credit" :class="{ visible: showCredit }">by TW Dover</span>
-        </p>
-      </div>
-      <div class="header-actions">
-        <button class="hdr-btn" @click="saveSession" title="Save session (Ctrl+S)">Save</button>
-        <label class="hdr-btn" title="Load session from file">
-          Load
-          <input ref="loadInput" type="file" accept=".json" style="display:none" @change="loadSession" />
-        </label>
-        <button
-          class="hdr-btn"
-          @click="cycleTheme"
-          :title="`Theme: ${THEME_META[theme].label} — click to cycle`"
-        >{{ THEME_META[theme].icon }}</button>
-        <button
-          v-if="isElectron"
-          class="hdr-btn"
-          :disabled="updateChecking"
-          @click="checkForUpdates"
-          :title="updateMessage || 'Check for a newer version'"
-        >{{ updateLabel }}</button>
-        <button
-          v-if="renderJobs.length"
-          class="hdr-btn"
-          :class="{ 'hdr-active': activeRenderCount > 0 }"
-          @click="openRenderQueue"
-          :title="activeRenderCount > 0 ? `${activeRenderCount} download${activeRenderCount === 1 ? '' : 's'} in progress` : 'Download history'"
-        >⬇ {{ activeRenderCount > 0 ? activeRenderCount : renderJobs.length }}</button>
-        <button
-          v-if="errorEntries.length"
-          class="hdr-btn hdr-error"
-          @click="openErrorLog"
-          :title="`${errorEntries.length} error${errorEntries.length === 1 ? '' : 's'} logged this session`"
-        >🐛 {{ errorEntries.length }}</button>
-        <button class="hdr-btn hdr-help" @click="showShortcuts = !showShortcuts" title="Keyboard shortcuts">?</button>
-      </div>
+  <div class="app-shell">
+    <!-- ── Topbar ─────────────────────────────────────────────────────────── -->
+    <header class="topbar">
+      <div class="brand">Genre<span>Grid</span></div>
+
+      <button class="btn" @click="openSetup" aria-haspopup="dialog">
+        <span aria-hidden="true">⚙</span> Setup
+      </button>
+      <button class="btn" @click="drawer = 'library'" aria-haspopup="dialog">
+        {{ mode === 'song' ? 'Songs' : 'Library' }}
+      </button>
+
+      <div class="spacer"></div>
+
+      <button
+        v-if="isElectron"
+        class="btn btn-quiet"
+        :disabled="updateChecking"
+        @click="checkForUpdates"
+        :title="updateMessage || 'Check for a newer version'"
+      >{{ updateLabel }}</button>
+      <button
+        v-if="renderJobs.length"
+        class="btn btn-quiet"
+        :class="{ 'topbar-active': activeRenderCount > 0 }"
+        @click="openRenderQueue"
+        :title="activeRenderCount > 0 ? `${activeRenderCount} download${activeRenderCount === 1 ? '' : 's'} in progress` : 'Download history'"
+      >⬇ {{ activeRenderCount > 0 ? activeRenderCount : renderJobs.length }}</button>
+      <button
+        v-if="errorEntries.length"
+        class="btn btn-quiet topbar-error"
+        @click="openErrorLog"
+        :title="`${errorEntries.length} error${errorEntries.length === 1 ? '' : 's'} logged this session`"
+      >🐛 {{ errorEntries.length }}</button>
+      <button class="btn btn-quiet btn-icon" @click="cycleTheme" :title="`Theme: ${THEME_META[theme].label} — click to cycle`">{{ THEME_META[theme].icon }}</button>
+      <button class="btn btn-quiet btn-icon" @click="showShortcuts = !showShortcuts" title="Keyboard shortcuts">?</button>
     </header>
 
-    <!-- Dedicated playback area: transport, seek, per-part mutes, volume -->
-    <TransportBar />
-
-    <main class="app-main">
-      <div class="mode-tabs">
-        <button class="mode-tab" :class="{ active: mode === 'loop' }" @click="mode = 'loop'">Loop</button>
-        <button class="mode-tab" :class="{ active: mode === 'arrangement' }" @click="mode = 'arrangement'">Arrangement</button>
-        <button class="mode-tab" :class="{ active: mode === 'song' }" @click="mode = 'song'">Song</button>
-        <span class="mode-desc">{{ modeHint }}</span>
-      </div>
-
-      <div class="mode-body">
-        <section class="controls-col">
-          <GenerateForm
-            v-if="mode !== 'song'"
-            :styles="styles"
-            :loading="loading || batchLoading"
-            :replayData="replayData"
-            :forcedMode="genMode"
-            @submit="handleGenerate"
-            @batch="handleBatch"
-            @refresh-styles="refreshStyles"
-          />
-          <SongForm v-else :styles="styles" @built="onSongBuilt" />
-
-          <div v-if="genProgress && loading && mode !== 'song'" class="progress-row">
-            <span class="progress-text">{{ genProgress }}</span>
-            <div class="progress-dots"><span>.</span><span>.</span><span>.</span></div>
-          </div>
-          <div v-if="error && !loading && mode !== 'song'" class="error-row">
-            <p class="error-msg">{{ error }}</p>
-            <button class="retry-btn" @click="retryFetch">Retry</button>
-          </div>
-        </section>
-
-        <section class="output-col">
-          <template v-if="mode !== 'song'">
-            <div class="panel-tabs">
-              <button class="panel-tab" :class="{ active: activePanel === 'history' }" @click="activePanel = 'history'">History</button>
-              <button class="panel-tab" :class="{ active: activePanel === 'library' }" @click="activePanel = 'library'">Library</button>
-            </div>
-            <ExportPanel v-if="activePanel === 'history'" :history="history" :loading="loading" :starredIds="starredIds" @replay="handleReplay" @part-regenned="handlePartRegenned" @toggle-star="handleToggleStar" @delete="deleteHistoryEntry" @clear="clearHistory" />
-            <LibraryPanel v-else :styles="styles" @replay="handleLibraryReplay" />
-          </template>
-          <template v-else>
-            <div v-if="songHistory.length" class="song-history">
-              <div class="song-history-head">
-                <span class="song-history-label">Recent songs</span>
-                <button class="clear-btn" @click="clearSongs" title="Clear recent songs">Clear</button>
-              </div>
-              <div class="song-history-list">
-                <div
-                  v-for="item in songHistory"
-                  :key="item.result.generation_id"
-                  class="song-hist-row"
-                  role="button"
-                  tabindex="0"
-                  :class="{ active: item.result.generation_id === songResult?.generation_id }"
-                  @click="loadSong(item)"
-                  @keydown.enter="loadSong(item)"
-                >
-                  <span class="sh-label">{{ item.label }}</span>
-                  <span class="sh-meta">{{ item.result.total_bars }}b · {{ item.result.bpm }} BPM · {{ item.result.key }}</span>
-                  <button class="sh-del" @click.stop="deleteSong(item.result.generation_id)" title="Remove">✕</button>
-                </div>
-              </div>
-            </div>
-            <SongResult :result="songResult" :label="songLabel" @rebuilt="onSongBuilt" />
-          </template>
-        </section>
+    <!-- ── Workspace: the only scroll region ──────────────────────────────── -->
+    <main class="workspace">
+      <div class="workspace-inner">
+        <ExportPanel
+          v-if="mode !== 'song'"
+          :history="history" :loading="loading" :starredIds="starredIds"
+          @replay="handleReplay" @part-regenned="handlePartRegenned"
+          @toggle-star="handleToggleStar" @delete="deleteHistoryEntry" @clear="clearHistory"
+          @open-setup="openSetup"
+        />
+        <SongResult v-else :result="songResult" :label="songLabel" @rebuilt="onSongBuilt" @open-setup="openSetup" />
       </div>
     </main>
 
+    <!-- ── Docked transport ───────────────────────────────────────────────── -->
+    <TransportBar />
+
+    <!-- ═══ Drawers ═══════════════════════════════════════════════════════ -->
+    <div class="scrim" :class="{ open: !!drawer }" @click="closeDrawer"></div>
+
+    <!-- Setup: wide sheet from the top -->
+    <section class="sheet sheet-top" :class="{ open: drawer === 'setup' }" role="dialog" aria-modal="true" aria-label="Setup">
+      <div class="sheet-head">
+        <span class="sheet-title">Setup</span>
+        <div class="spacer"></div>
+        <button class="btn btn-quiet btn-icon" @click="closeDrawer" title="Close">✕</button>
+      </div>
+      <div class="sheet-body">
+        <!-- What kind of thing are we generating? Spelled out so the three
+             words aren't left to explain themselves. -->
+        <div class="mode-picker">
+          <span class="mode-picker-label">What do you want to make?</span>
+          <div class="mode-cards">
+            <button
+              v-for="m in (['loop','arrangement','song'] as const)"
+              :key="m"
+              class="mode-card"
+              :class="{ active: mode === m }"
+              :aria-pressed="mode === m"
+              @click="mode = m"
+            >
+              <span class="mc-title">{{ MODE_LABELS[m] }}</span>
+              <span class="mc-desc">{{ MODE_HINTS[m] }}</span>
+            </button>
+          </div>
+        </div>
+
+        <GenerateForm
+          v-if="mode !== 'song'"
+          :styles="styles"
+          :loading="loading || batchLoading"
+          :replayData="replayData"
+          :forcedMode="genMode"
+          @submit="handleGenerate"
+          @batch="handleBatch"
+          @refresh-styles="refreshStyles"
+        />
+        <SongForm v-else :styles="styles" @built="onSongBuilt" />
+
+        <div v-if="genProgress && loading && mode !== 'song'" class="progress-row">
+          <span>{{ genProgress }}</span>
+          <div class="progress-dots"><span>.</span><span>.</span><span>.</span></div>
+        </div>
+        <div v-if="error && !loading && mode !== 'song'" class="error-row">
+          <p class="error-msg">{{ error }}</p>
+          <button class="btn btn-quiet" @click="retryFetch">Retry</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Songs / Library: rail from the right -->
+    <section class="sheet sheet-right" :class="{ open: drawer === 'library' }" role="dialog" aria-modal="true" :aria-label="mode === 'song' ? 'Songs' : 'Library'">
+      <div class="sheet-head">
+        <span class="sheet-title">{{ mode === 'song' ? 'Songs' : 'Library' }}</span>
+        <button v-if="mode === 'song' && songHistory.length" class="btn btn-quiet clear-btn" @click="clearSongs" title="Clear recent songs">Clear</button>
+        <div class="spacer"></div>
+        <button class="btn btn-quiet btn-icon" @click="closeDrawer" title="Close">✕</button>
+      </div>
+      <div class="sheet-body">
+        <template v-if="mode === 'song'">
+          <div v-if="!songHistory.length" class="rail-empty">Songs you build show up here.</div>
+          <div v-else class="song-list">
+            <div
+              v-for="item in songHistory"
+              :key="item.result.generation_id"
+              class="song-item"
+              role="button" tabindex="0"
+              :aria-current="item.result.generation_id === songResult?.generation_id"
+              @click="loadSong(item); closeDrawer()"
+              @keydown.enter="loadSong(item); closeDrawer()"
+            >
+              <span class="si-label">{{ item.label }}</span>
+              <span class="si-meta mono">{{ item.result.total_bars }} bars · {{ item.result.bpm }} BPM · {{ item.result.key }}</span>
+              <button class="si-del" @click.stop="deleteSong(item.result.generation_id)" title="Remove">✕</button>
+            </div>
+          </div>
+        </template>
+        <LibraryPanel v-else :styles="styles" @replay="entry => { handleLibraryReplay(entry) }" />
+      </div>
+      <div class="sheet-foot">
+        <span class="eyebrow">Session</span>
+        <button class="btn btn-quiet" @click="saveSession" title="Save history &amp; pins to a file (Ctrl+S)">Save</button>
+        <label class="btn btn-quiet" title="Load session from file">
+          Load
+          <input ref="loadInput" type="file" accept=".json" style="display:none" @change="loadSession" />
+        </label>
+      </div>
+    </section>
+
+    <!-- ── Shortcuts modal ────────────────────────────────────────────────── -->
     <div v-if="showShortcuts" class="shortcuts-overlay" @click.self="showShortcuts = false">
       <div class="shortcuts-modal">
         <div class="shortcuts-header">
           <span class="shortcuts-title">Keyboard Shortcuts</span>
-          <button class="close-btn" @click="showShortcuts = false">✕</button>
+          <button class="btn btn-quiet btn-icon" @click="showShortcuts = false">✕</button>
         </div>
         <table class="shortcuts-table">
           <tbody>
             <tr><td class="shortcut-key">Space</td><td class="shortcut-desc">Stop playback</td></tr>
             <tr><td class="shortcut-key">Ctrl+S</td><td class="shortcut-desc">Save session</td></tr>
+            <tr><td class="shortcut-key">Esc</td><td class="shortcut-desc">Close drawer / dialog</td></tr>
             <tr><td class="shortcut-key">?</td><td class="shortcut-desc">Show shortcuts</td></tr>
             <tr><td colspan="2" class="shortcut-section">Developer / Debug</td></tr>
             <tr><td class="shortcut-key">Ctrl/Cmd+Shift+D</td><td class="shortcut-desc">Toggle on-screen debug HUD (mirrors console)</td></tr>
@@ -183,8 +215,13 @@ const { entries: errorEntries, open: openErrorLog } = useErrorLog()
 const { jobs: renderJobs, open: openRenderQueue } = useRenderQueue()
 const activeRenderCount = computed(() => renderJobs.value.filter(j => j.status === 'rendering').length)
 
-const showCredit = ref(false)
 const showShortcuts = ref(false)
+
+// Which drawer is open, if any. Setup (top) holds the form; library (right)
+// holds recent songs / the saved-styles library.
+const drawer = ref<'setup' | 'library' | null>(null)
+function openSetup() { drawer.value = 'setup' }
+function closeDrawer() { drawer.value = null }
 
 // ── Manual update check (desktop app only) ───────────────────────────────────
 const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI
@@ -232,7 +269,6 @@ async function checkForUpdates() {
   }
 }
 const loadInput = ref<HTMLInputElement | null>(null)
-let _creditTimer: ReturnType<typeof setTimeout> | null = null
 
 const styles = ref<StyleInfo[]>([])
 const loading = ref(false)
@@ -258,17 +294,21 @@ const loadStarred = (): Set<string> => {
 const history = ref<GenerateResponse[]>(loadHistory())
 const starredIds = ref<Set<string>>(loadStarred())
 const replayData = ref<GenerateResponse | null>(null)
-const activePanel = ref<'history' | 'library'>('history')
 
 // Top-level generation mode. Loop/Arrangement drive GenerateForm (via genMode);
 // Song drives SongForm + SongResult.
 const mode = ref<'loop' | 'arrangement' | 'song'>('loop')
 const genMode = computed<'loop' | 'arrangement'>(() => (mode.value === 'song' ? 'loop' : mode.value))
-const modeHint = computed(() => ({
-  loop: 'One looping section — every part across every bar, uniform.',
+const MODE_LABELS = {
+  loop: 'Loop',
+  arrangement: 'Arrangement',
+  song: 'Full Song',
+}
+const MODE_HINTS = {
+  loop: 'One looping section — every part plays across every bar.',
   arrangement: 'A full arc — intro · verse · chorus · outro — from one bar count.',
-  song: 'Stitch a complete song from a template; drag out each part.',
-}[mode.value]))
+  song: 'A complete song from a template; drag out each part.',
+}
 
 const songResult = ref<BuildSongResponse | null>(null)
 const songLabel = ref('')
@@ -320,6 +360,7 @@ function onSongBuilt(result: BuildSongResponse, label: string) {
   songLabel.value = label
   songHistory.value = [{ result, label }, ...songHistory.value].slice(0, 20)
   prefetchSamplers(result.style)
+  closeDrawer()   // reveal the freshly built song in the workspace
 }
 
 function loadSong(item: SongHistoryItem) {
@@ -396,6 +437,10 @@ function loadSession(e: Event) {
 }
 
 function onKeyDown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    if (drawer.value) { closeDrawer(); return }
+    if (showShortcuts.value) { showShortcuts.value = false; return }
+  }
   const tag = (e.target as HTMLElement).tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
   if (e.key === ' ' && currentlyPlaying.value) {
@@ -413,14 +458,9 @@ function onKeyDown(e: KeyboardEvent) {
 }
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown)
-  _creditTimer = setTimeout(() => {
-    showCredit.value = true
-    _creditTimer = setTimeout(() => { showCredit.value = false }, 3500)
-  }, 2000)
 })
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeyDown)
-  if (_creditTimer) clearTimeout(_creditTimer)
 })
 
 onMounted(async () => {
@@ -467,7 +507,7 @@ async function handleGenerate(form: GenerateRequest) {
     const unstarred = merged.filter(r => !starredIds.value.has(r.generation_id)).slice(0, 10)
     history.value = [...starred, ...unstarred].slice(0, 50)
     prefetchSamplers(result.style)
-    activePanel.value = 'history'
+    closeDrawer()   // reveal the new generation in the workspace
     const params = new URLSearchParams({
       style: result.style,
       key: result.summary.key_root,
@@ -498,7 +538,7 @@ async function retryFetch() {
 
 function handleReplay(response: GenerateResponse) {
   replayData.value = null
-  setTimeout(() => { replayData.value = response }, 0)
+  setTimeout(() => { replayData.value = response; openSetup() }, 0)
 }
 
 async function handleLibraryReplay(entry: LibraryEntry) {
@@ -546,7 +586,7 @@ async function handleBatch(form: GenerateRequest, count: number) {
       history.value = [...starred, ...unstarred].slice(0, 50)
     }
     prefetchSamplers(form.style_id)
-    activePanel.value = 'history'
+    closeDrawer()
   } catch (e: any) {
     error.value = e.message ?? 'Batch generation failed'
   } finally {
@@ -582,335 +622,213 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
 </script>
 
 <style scoped>
-/* Top-level mode switch — the primary decision */
-.mode-tabs {
+/* Shell: topbar / workspace / transport, pinned to the viewport. Only the
+ * workspace scrolls. */
+.app-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100vh;
+}
+
+/* ── Topbar ─────────────────────────────────────────────────────────────── */
+.topbar {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--s2);
+  height: 52px;
+  padding: 0 var(--s4);
+  border-bottom: 1px solid var(--line);
+  background: var(--ground);
+}
+.brand {
+  font-size: var(--t-title);
+  font-weight: 650;
+  letter-spacing: -.015em;
+  margin-right: var(--s2);
+}
+.brand span { color: var(--accent); }
+.spacer { flex: 1; }
+
+.topbar-active { color: var(--accent); background: var(--accent-wash); }
+.topbar-error { color: var(--bad); }
+
+/* ── Workspace ──────────────────────────────────────────────────────────── */
+.workspace { overflow-y: auto; }
+.workspace-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 var(--s5) var(--s7);
 }
 
-.mode-tab {
-  font-size: 0.85rem;
-  font-weight: 600;
-  padding: 0.5rem 1.4rem;
-  background: var(--panel);
-  border: 1px solid var(--surface);
-  border-radius: 8px;
-  color: var(--text-dim);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+/* ═══ Drawers ═══════════════════════════════════════════════════════════ */
+.scrim {
+  position: fixed; inset: 0; z-index: 40;
+  background: color-mix(in srgb, var(--sunken) 62%, transparent);
+  backdrop-filter: blur(3px);
+  opacity: 0; pointer-events: none;
+  transition: opacity .18s;
 }
-.mode-tab:hover { background: var(--panel-alt); color: var(--text-soft); }
-.mode-tab.active {
-  background: var(--accent-surface);
-  border-color: var(--accent);
-  color: var(--accent-bright);
+.scrim.open { opacity: 1; pointer-events: auto; }
+
+.sheet {
+  position: fixed; z-index: 50;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-lift);
+  display: flex; flex-direction: column;
+  transition: transform .22s cubic-bezier(.32,.72,0,1), opacity .18s;
 }
 
-.mode-desc {
-  margin-left: 0.75rem;
-  font-size: 0.72rem;
-  color: var(--text-faint);
-}
-
-/* Two-column body */
-.controls-col {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  min-width: 0;
-}
-
-.output-col {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-/* Song mode — recent songs selector */
-.song-history {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-.song-history-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.song-history-label {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
-}
-.clear-btn {
-  font-size: 0.68rem;
-  padding: 0.15rem 0.55rem;
-  background: var(--panel-deep);
-  border: 1px solid var(--surface);
-  border-radius: 4px;
-  color: var(--text-dim);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.clear-btn:hover { background: var(--error-surface); color: var(--error); border-color: color-mix(in srgb, var(--error) 27%, transparent); }
-.sh-del {
-  background: none;
-  border: none;
-  color: var(--text-faint);
-  font-size: 0.8rem;
-  cursor: pointer;
-  padding: 0 0.15rem;
-  line-height: 1;
-  flex-shrink: 0;
-  transition: color 0.15s;
-}
-.sh-del:hover { color: var(--error); }
-.song-history-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  max-height: 168px;
-  overflow-y: auto;
-}
-.song-hist-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.45rem 0.7rem;
-  background: var(--panel);
-  border: 1px solid var(--surface);
-  border-radius: 7px;
-  color: var(--text-soft);
-  cursor: pointer;
-  text-align: left;
-  transition: border-color 0.15s, background 0.15s;
-}
-.song-hist-row:hover { background: var(--panel-alt); }
-.song-hist-row.active { border-color: var(--accent); background: var(--accent-surface); }
-.sh-label { font-size: 0.8rem; font-weight: 600; }
-.sh-meta { font-size: 0.68rem; font-family: monospace; color: var(--text-dim); flex-shrink: 0; }
-
-.app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.header-title h1,
-.header-title .subtitle {
-  margin: 0;
-}
-
-.subtitle {
-  position: relative;
-  height: 1.2em;
-}
-
-.subtitle-text,
-.subtitle-credit {
-  position: absolute;
-  left: 0;
-  top: 0;
-  transition: opacity 0.8s ease;
-  white-space: nowrap;
-}
-
-.subtitle-text { opacity: 1; }
-.subtitle-text.hidden { opacity: 0; }
-
-.subtitle-credit {
+/* Horizontal centering and the slide-in are folded into ONE transform. Using
+ * the standalone `translate` property for centering alongside a `transform`
+ * animation dropped the centering in the packaged Electron build, throwing the
+ * sheet off the right edge. */
+.sheet-top {
+  top: 0; left: 50%;
+  width: min(1060px, calc(100vw - 32px));
+  max-width: 100%;
+  max-height: min(86vh, 780px);
+  border-top: none;
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+  transform: translate(-50%, -102%);
   opacity: 0;
-  color: var(--accent-dim);
-  font-style: italic;
 }
-.subtitle-credit.visible { opacity: 1; }
+.sheet-top.open { transform: translate(-50%, 0); opacity: 1; }
 
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
+.sheet-right {
+  top: 52px; bottom: 60px; right: 0;
+  width: min(340px, 92vw);
+  border-radius: var(--r-lg) 0 0 var(--r-lg);
+  border-right: none;
+  transform: translateX(102%);
+  opacity: 0;
+}
+.sheet-right.open { transform: translateX(0); opacity: 1; }
+
+.sheet-head {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s4) var(--s5);
+  border-bottom: 1px solid var(--line);
   flex-shrink: 0;
 }
-
-.hdr-btn {
-  font-size: 0.72rem;
-  padding: 0.25rem 0.6rem;
-  background: var(--panel);
-  border: 1px solid var(--surface);
-  border-radius: 5px;
-  color: var(--text-dim);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-  white-space: nowrap;
-  user-select: none;
+.sheet-title { font-size: var(--t-title); font-weight: 620; letter-spacing: -.015em; }
+.sheet-hint { font-size: var(--t-meta); color: var(--ink-faint); }
+/* No bottom padding: the setup forms' sticky action bar supplies the bottom
+ * spacing and pins flush to the scroll-area edge, so content can't peek out
+ * beneath it. Right-drawer content (Songs/Library) carries its own bottom pad. */
+.sheet-body { overflow-y: auto; overflow-x: hidden; padding: var(--s5) var(--s5) 0; flex: 1; min-height: 0; }
+.sheet-right .sheet-body { padding-bottom: var(--s5); }
+.sheet-foot {
+  display: flex; align-items: center; gap: var(--s2);
+  padding: var(--s3) var(--s5);
+  border-top: 1px solid var(--line);
+  flex-shrink: 0;
 }
-.hdr-btn:hover { background: var(--surface); color: var(--text); }
+.sheet-foot .eyebrow { margin-right: auto; }
+.clear-btn { color: var(--ink-dim); }
+.clear-btn:hover { color: var(--bad); }
 
-.hdr-error {
-  border-color: color-mix(in srgb, var(--error) 40%, transparent);
-  color: var(--error);
+/* ── Library / Songs rail ───────────────────────────────────────────────── */
+.rail-empty { font-size: var(--t-meta); color: var(--ink-faint); line-height: 1.6; padding: var(--s3) 0; }
+.song-list { display: flex; flex-direction: column; gap: var(--s2); }
+.song-item {
+  position: relative;
+  display: flex; flex-direction: column; gap: 2px;
+  padding: var(--s3) var(--s5) var(--s3) var(--s3);
+  border: 1px solid var(--line);
+  border-left: 2px solid transparent;
+  border-radius: var(--r-md);
+  background: var(--ground);
+  cursor: pointer; text-align: left;
+  transition: border-color .14s, background .14s;
 }
-.hdr-error:hover { background: var(--error-surface); }
-
-.hdr-active {
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-  color: var(--accent);
-  background: var(--accent-surface);
+.song-item:hover { border-color: var(--ink-faint); }
+.song-item[aria-current="true"] { border-color: var(--line); border-left-color: var(--accent); background: var(--accent-wash); }
+.si-label { font-size: var(--t-body); font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.si-meta { font-size: var(--t-micro); color: var(--ink-dim); }
+.si-del {
+  position: absolute; top: var(--s2); right: var(--s2);
+  width: 22px; height: 22px;
+  display: grid; place-items: center;
+  background: none; border: none; color: var(--ink-faint);
+  font-size: 11px; cursor: pointer; border-radius: var(--r-sm);
+  opacity: 0; transition: opacity .14s, color .14s, background .14s;
 }
-.hdr-active:hover { background: var(--accent-surface-strong); }
+.song-item:hover .si-del { opacity: 1; }
+.si-del:hover { color: var(--bad); background: var(--sunken); }
 
-.hdr-help {
-  font-weight: 700;
-  width: 24px;
-  padding: 0.25rem 0;
-  text-align: center;
-}
-
-.shortcuts-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.65);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 200;
-}
-
-.shortcuts-modal {
-  background: var(--panel);
-  border: 1px solid var(--surface);
-  border-radius: 12px;
-  padding: 1.25rem 1.5rem;
-  min-width: 280px;
-}
-
-.shortcuts-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1rem;
-}
-
-.shortcuts-title {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text);
-  letter-spacing: 0.04em;
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  color: var(--text-dim);
-  font-size: 0.9rem;
-  cursor: pointer;
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
-  transition: color 0.15s;
-}
-.close-btn:hover { color: var(--text); }
-
-.shortcuts-table {
-  border-collapse: collapse;
-  width: 100%;
-}
-
-.shortcut-key {
-  font-family: monospace;
-  font-size: 0.78rem;
-  color: var(--accent);
-  background: var(--surface-muted);
-  border: 1px solid var(--surface);
-  border-radius: 4px;
-  padding: 0.2rem 0.5rem;
-  white-space: nowrap;
-}
-
-.shortcut-desc {
-  font-size: 0.8rem;
-  color: var(--accent-bright);
-  padding-left: 1rem;
-}
-
-.shortcut-section {
-  padding: 0.55rem 0 0.2rem;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--accent);
-  opacity: 0.75;
-  border-bottom: 1px solid var(--surface);
-}
-
-.shortcuts-table tr { height: 2rem; }
-
-.progress-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.75rem;
-  color: var(--accent);
-}
-
-@keyframes dot-blink {
-  0%, 80%, 100% { opacity: 0.2; }
-  40% { opacity: 1; }
-}
+/* ── Progress / error rows (inside setup drawer) ────────────────────────── */
+.progress-row { display: flex; align-items: center; gap: var(--s2); font-size: var(--t-meta); color: var(--accent); margin-top: var(--s3); }
+@keyframes dot-blink { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
 .progress-dots span { animation: dot-blink 1.4s infinite; }
 .progress-dots span:nth-child(2) { animation-delay: 0.2s; }
 .progress-dots span:nth-child(3) { animation-delay: 0.4s; }
+.error-row { display: flex; align-items: center; gap: var(--s3); margin-top: var(--s3); }
 
-.error-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+/* ── Shortcuts modal ────────────────────────────────────────────────────── */
+.shortcuts-overlay {
+  position: fixed; inset: 0; z-index: 60;
+  background: color-mix(in srgb, var(--sunken) 70%, transparent);
+  backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center;
 }
-
-.retry-btn {
-  font-size: 0.75rem;
-  padding: 0.2rem 0.6rem;
-  background: var(--surface);
-  border: 1px solid var(--surface-hover);
-  border-radius: 4px;
-  color: var(--text-dim);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+.shortcuts-modal {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lift);
+  padding: var(--s4) var(--s5);
+  min-width: 300px;
+}
+.shortcuts-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s3); }
+.shortcuts-title { font-size: var(--t-title); font-weight: 620; letter-spacing: -.01em; }
+.shortcuts-table { border-collapse: collapse; width: 100%; }
+.shortcut-key {
+  font-family: var(--f-mono);
+  font-size: var(--t-meta);
+  color: var(--accent);
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 0.2rem 0.5rem;
   white-space: nowrap;
 }
-
-.retry-btn:hover {
-  background: var(--surface-hover);
-  color: var(--text);
+.shortcut-desc { font-size: var(--t-meta); color: var(--ink-dim); padding-left: var(--s4); }
+.shortcut-section {
+  padding: var(--s3) 0 var(--s1);
+  font-size: var(--t-micro);
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  border-bottom: 1px solid var(--line);
 }
+.shortcuts-table tr { height: 2rem; }
 
-.panel-tabs {
-  display: flex;
-  gap: 0.25rem;
-  margin-bottom: 0.75rem;
+/* ── Mode picker (top of the Setup drawer) ──────────────────────────────── */
+.mode-picker {
+  display: flex; flex-direction: column; gap: var(--s3);
+  margin-bottom: var(--s5);
+  padding-bottom: var(--s5);
+  border-bottom: 1px solid var(--line);
 }
-
-.panel-tab {
-  font-size: 0.78rem;
-  padding: 0.3rem 0.9rem;
-  background: var(--panel);
-  border: 1px solid var(--surface);
-  border-radius: 6px;
-  color: var(--text-dim);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+.mode-picker-label { font-size: var(--t-body); font-weight: 600; color: var(--ink); }
+.mode-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); }
+.mode-card {
+  display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
+  text-align: left; padding: var(--s3);
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--ground); cursor: pointer;
+  transition: border-color .14s, background .14s;
 }
+.mode-card:hover { border-color: var(--ink-faint); }
+.mode-card.active { border-color: var(--accent); background: var(--accent-wash); }
+.mc-title { font-size: var(--t-body); font-weight: 600; color: var(--ink); }
+.mode-card.active .mc-title { color: var(--accent); }
+.mc-desc { font-size: var(--t-meta); color: var(--ink-dim); line-height: 1.35; }
 
-.panel-tab:hover { background: var(--panel-alt); color: var(--text); }
-
-.panel-tab.active {
-  background: var(--accent-surface);
-  border-color: var(--accent);
-  color: var(--accent-bright);
+@media (max-width: 860px) {
+  .mode-cards { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet, .scrim { transition-duration: .01ms; }
 }
 </style>
