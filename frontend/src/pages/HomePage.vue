@@ -189,6 +189,7 @@
     <DownloadNamePrompt />
     <ErrorLogPanel />
     <RenderQueuePanel />
+    <InstrumentsPanel />
   </div>
 </template>
 
@@ -206,6 +207,7 @@ import ToastHost from '../components/ToastHost.vue'
 import DownloadNamePrompt from '../components/DownloadNamePrompt.vue'
 import ErrorLogPanel from '../components/ErrorLogPanel.vue'
 import RenderQueuePanel from '../components/RenderQueuePanel.vue'
+import InstrumentsPanel from '../components/InstrumentsPanel.vue'
 import { useErrorLog } from '../composables/useErrorLog'
 import { setStyleCatalog } from '../composables/useStyleCatalog'
 import { useRenderQueue } from '../composables/useRenderQueue'

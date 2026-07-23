@@ -9,6 +9,8 @@
  * <https://www.gnu.org/licenses/> for details.
  */
 import * as Tone from 'tone'
+import { LayeredSampler, loadLayeredSampler, layerCount } from './layeredSampler'
+import type { MelodicFxPreset } from './fxPresets'
 
 // Salamander Grand Piano — bundled locally under public/samples/piano/ (served by
 // the renderer's static server) so the flagship piano works fully offline and
@@ -29,21 +31,81 @@ const SAMPLE_MAP: Record<string, string> = {
 
 // Module-level singletons — created once, reused across all plays
 let masterOut: Tone.Gain | null = null
+let masterLimiter: Tone.WaveShaper | null = null
 let reverb: Tone.Reverb | null = null
-let piano: Tone.Sampler | null = null
-let loadPromise: Promise<Tone.Sampler> | null = null
+let piano: LayeredSampler | null = null
+let loadPromise: Promise<LayeredSampler> | null = null
+
+// ── Master soft-clip limiter ─────────────────────────────────────────────────
+// A safety limiter on the master so a dense full arrangement can't peak past the
+// ceiling and clip the DAC. It's a WaveShaper (a static transfer curve), NOT a
+// DynamicsCompressor: a DynamicsCompressorNode renders SILENCE on Linux packaged
+// Electron (see getMasterCompressor below), which is exactly why the master itself is
+// a plain Gain. A WaveShaperNode works on every platform.
+//
+// The curve is unity (fully transparent) below the threshold, bends through a gentle
+// quadratic knee above it, and — because the Web Audio API clamps a WaveShaper's input
+// to [-1, 1] — flattens to the ceiling for anything at or above 0 dBFS. So quiet
+// material passes untouched and only loud peaks are caught and held under the ceiling.
+const SOFTCLIP_THRESHOLD = 0.6    // linear amplitude (≈ -4.4 dBFS): knee starts here
+const SOFTCLIP_CEILING   = 0.985  // linear amplitude (≈ -0.13 dBFS): absolute ceiling
+
+// Transfer curve for the master limiter. `x` is an AudioRange [-1, 1] sample value.
+// Exported for unit testing (the WaveShaper node itself needs an AudioContext).
+export function softClipCurve(x: number): number {
+  const a = Math.abs(x)
+  if (a <= SOFTCLIP_THRESHOLD) return x            // transparent below threshold
+  const R = 1 - SOFTCLIP_THRESHOLD
+  const H = SOFTCLIP_CEILING - SOFTCLIP_THRESHOLD
+  const b = (H - R) / (R * R)                      // slope 1 at the knee, ≤1 through it
+  const d = Math.min(a, 1) - SOFTCLIP_THRESHOLD    // inputs past 0 dBFS clamp to ceiling
+  return Math.sign(x) * (SOFTCLIP_THRESHOLD + d + b * d * d)
+}
+
+// Build a master limiter node. Pass an explicit context for offline (WAV) renders so
+// the node lives in the offline graph rather than the ambient one; omit it for live
+// playback. Oversampled to keep the harmonics the knee introduces from aliasing.
+export function makeMasterLimiter(context?: Tone.BaseContext): Tone.WaveShaper {
+  const ws = context
+    ? new Tone.WaveShaper({ context, mapping: softClipCurve, length: 4096 })
+    : new Tone.WaveShaper(softClipCurve, 4096)
+  ws.oversample = '4x'
+  return ws
+}
 
 // Master output node. This used to be a Tone.Compressor for mix glue, but a
 // DynamicsCompressorNode renders SILENCE to the hardware on Linux packaged Electron —
 // signal enters it (meters read it fine) yet nothing reaches the speakers, and since the
 // entire mix routes through this one node, the whole app was silent on Linux (Win/Mac were
-// unaffected). A plain Gain works on every platform, so the master is now a unity gain
-// straight to the destination. (Kept the name to avoid touching every call site.)
+// unaffected). A plain Gain works on every platform, so the master is a unity gain feeding
+// the soft-clip limiter, which then reaches the destination. (Kept the name getMaster-
+// Compressor to avoid touching every call site.)
 export function getMasterCompressor(): Tone.Gain {
   if (masterOut) return masterOut
-  masterOut = new Tone.Gain(1).toDestination()
-  console.log(`[audio] master gain created (ctx=${Tone.getContext().state}, sr=${Tone.getContext().rawContext.sampleRate}) → toDestination`)
+  masterOut = new Tone.Gain(1)
+  masterLimiter = makeMasterLimiter()
+  masterOut.connect(masterLimiter)                     // masterOut → limiter → speakers
+  masterLimiter.toDestination()
+  console.log(`[audio] master gain + soft-clip limiter created (ctx=${Tone.getContext().state}, sr=${Tone.getContext().rawContext.sampleRate}) → toDestination`)
   return masterOut
+}
+
+// Set the pre-limiter master trim, in dB, for cross-style loudness normalization
+// (see MASTER_TRIM_DB in fxPresets.ts). The trim sits before the soft-clip limiter,
+// so pulling a hot style down also eases it off the limiter. Ramped, not stepped,
+// so switching styles mid-session doesn't click.
+export function setMasterTrimDb(db: number): void {
+  const master = getMasterCompressor()
+  const now = Tone.getContext().currentTime
+  master.gain.cancelScheduledValues(now)
+  master.gain.setTargetAtTime(Tone.dbToGain(db), now, 0.02)
+}
+
+// The live master's post-limiter node — the final node before the speakers. Tap this
+// (not getMasterCompressor, which is pre-limiter) to record exactly what's heard.
+export function getMasterLimiterNode(): Tone.WaveShaper {
+  getMasterCompressor()      // ensure the master chain is built
+  return masterLimiter!
 }
 
 // ── Submix buses ───────────────────────────────────────────────────────────
@@ -110,38 +172,61 @@ export function resetBusLevels(): void {
   if (bassBus)    { bassBus.gain.cancelScheduledValues(0);    bassBus.gain.value = BASS_BUS_DB }
 }
 
+// Decay the shared reverb's IR is currently generated for. Regenerating an IR is
+// relatively costly, so applyMelodicFxPreset only does it when the decay changes.
+let reverbDecay = 1.6
+
 async function getSharedReverb(): Promise<Tone.Reverb> {
   if (reverb) return reverb
-  const r = new Tone.Reverb({ decay: 1.6, wet: 0.22 })
+  const r = new Tone.Reverb({ decay: reverbDecay, wet: 0.22 })
   await r.generate()
   r.connect(getMelodicBus())      // piano is a melodic voice — route through its bus
   reverb = r
   return r
 }
 
+// Retune the shared melodic FX chain (chorus + delay) and reverb to a style's
+// preset. Chorus/delay/reverb-wet are live parameter writes (no graph rebuild, no
+// audible glitch); the reverb IR is only regenerated when the target decay differs
+// from what's loaded. Call before scheduling a style's parts. See fxPresets.ts.
+export async function applyMelodicFxPreset(p: MelodicFxPreset): Promise<void> {
+  getMelodicBus()                 // ensure the shared chorus + delay exist
+  const rv = await getSharedReverb()
+
+  if (melodicChorus) {
+    melodicChorus.frequency.value = p.chorus.frequency
+    melodicChorus.depth = p.chorus.depth
+    melodicChorus.wet.value = p.chorus.wet
+  }
+  if (melodicDelay) {
+    melodicDelay.delayTime.value = p.delay.delayTime
+    melodicDelay.feedback.value = p.delay.feedback
+    melodicDelay.wet.value = p.delay.wet
+  }
+
+  rv.wet.value = p.reverb.wet
+  if (Math.abs(reverbDecay - p.reverb.decay) > 0.01) {
+    reverbDecay = p.reverb.decay
+    rv.decay = p.reverb.decay
+    await rv.generate()           // rebuild the IR only when the room size changed
+  }
+}
+
 /**
  * Load the Salamander piano sampler once and cache it.
  * Subsequent calls return the cached instance immediately.
  */
-export async function getPianoSampler(): Promise<Tone.Sampler> {
+export async function getPianoSampler(): Promise<LayeredSampler> {
   if (piano) return piano
   if (loadPromise) return loadPromise
 
-  loadPromise = getSharedReverb().then(
-    (rv) =>
-      new Promise<Tone.Sampler>((resolve, reject) => {
-        const sampler = new Tone.Sampler({
-          urls: SAMPLE_MAP,
-          baseUrl: BASE_URL,
-          volume: -6,
-          onload: () => {
-            piano = sampler
-            resolve(sampler)
-          },
-          onerror: reject,
-        }).connect(rv)
-      }),
-  )
+  loadPromise = getSharedReverb().then(async (rv) => {
+    const sampler = await loadLayeredSampler({ baseUrl: BASE_URL, legacyUrls: SAMPLE_MAP, volume: -6 })
+    sampler.connect(rv)   // piano is a melodic voice — route through its bus (via reverb)
+    piano = sampler
+    console.log(`[audio] piano loaded — ${layerCount(sampler)} velocity layer(s)`)
+    return sampler
+  })
 
   return loadPromise
 }

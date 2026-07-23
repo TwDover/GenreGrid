@@ -60,6 +60,36 @@ artifacts derived from permissively-licensed (CC-BY, public-domain) sources, and
   set bundled at `frontend/public/samples/piano/` (the Tone.js-hosted subset) is
   derived from this work. https://archive.org/details/SalamanderGrandPianoV3
 
+## Bundled instrument samples (`frontend/public/samples/`)
+
+These are the audio one-shots the app plays. Samples are **data**, licensed
+separately from the GPL-3.0 code. **Everything shipped now has a confirmed license:**
+
+| Set | Source | License | Notes |
+|---|---|---|---|
+| **Piano** (`piano/`) | Salamander Grand Piano (Alexander Holm) | **CC-BY 3.0** | Attributed above. Clean to ship. |
+| **Vibraphone** (`melodic/vibraphone/`) | **VCSL** — Versilian Community Sample Library | **CC0 / public domain** | Velocity-layered (soft/hard mallets) via `scripts/build_velocity_samples.py`. No attribution required; kept here as courtesy. https://github.com/sgossner/VCSL |
+
+Every other instrument is **synthesized** in the app (no shipped samples), so there is
+nothing else to license. A **Samples / Synth toggle** in the transport bar switches
+between the sampled voices above and full synthesis.
+
+> **Removed for licensing (2026-07-23).** The following sets were deleted because their
+> redistribution rights were **not confirmed** — see `docs/LICENSE_AUDIT.md`:
+> - **MusyngKite** (all `bass/` + 7 `melodic/` voices: electric pianos, clavinet,
+>   accordion, drawbar organ, nylon guitar, string ensemble). The redistributor labels
+>   it CC-BY-SA 3.0, but the soundfont's original author says it is "free to use but
+>   **not meant to be redistributed**… or used for commercial purposes." Those voices
+>   now synthesize.
+> - **Tone.js drum samples** (`drums/`). No LICENSE on the source repo; and the app
+>   already synthesizes its drum kit, so the samples were unused. Deleted.
+>
+> **Adding samples back cleanly:** use `scripts/build_velocity_samples.py` with a
+> confirmed **CC0 / public-domain** (VCSL) or **CC-BY** (with attribution) source only.
+> Note that University of Iowa MIS, despite being widely called "free," carries **no
+> explicit license grant**, so it is *not* used here. VCSL is acoustic/orchestral and
+> does not cover the electric/synth voices, which is why they remain synthesized.
+
 ## Note on the GPL and data
 
 The GPL-3.0 covers this project's source code. It does **not** attempt to license

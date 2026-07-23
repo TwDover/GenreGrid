@@ -38,4 +38,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // the in-app error log panel.
   logRendererError: (entry: { timestamp: string; context: string; message: string; stack?: string }): Promise<void> =>
     ipcRenderer.invoke('log-renderer-error', entry),
+
+  // User custom-instrument storage under userData/instruments/ (see
+  // useCustomInstruments.ts + docs/custom-instruments-design.md).
+  instruments: {
+    list: () => ipcRenderer.invoke('instruments-list'),
+    save: (inst: unknown, files: Array<{ name: string; data: number[] }>) =>
+      ipcRenderer.invoke('instruments-save', { inst, files }),
+    remove: (id: string) => ipcRenderer.invoke('instruments-remove', id),
+    read: (id: string) => ipcRenderer.invoke('instruments-read', id),
+  },
 })

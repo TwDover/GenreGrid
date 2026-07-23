@@ -12,11 +12,15 @@ import { ref } from 'vue'
 import * as Tone from 'tone'
 import { Midi } from '@tonejs/midi'
 import { downloadUrl } from '../services/api'
-import { getPianoSampler, getMasterCompressor, getBassBus, getMelodicBus, duckOnKick, resetBusLevels } from '../soundfonts/loader'
+import { getPianoSampler, getMasterLimiterNode, getBassBus, getMelodicBus, duckOnKick, resetBusLevels, makeMasterLimiter, applyMelodicFxPreset, setMasterTrimDb } from '../soundfonts/loader'
+import { MELODIC_FX_PRESETS, MASTER_TRIM_DB, fxFamilyFor } from '../soundfonts/fxPresets'
 import { drumCharacterForStyle } from '../soundfonts/drums'
 import { makeSynthKit } from '../soundfonts/synthDrums'
-import { getBassSampler } from '../soundfonts/bass'
+import { getBassSampler, SAMPLED_BASS_VOICES } from '../soundfonts/bass'
 import { getMelodicSamplerById, SAMPLED_VOICES } from '../soundfonts/melodic'
+import { LayeredSampler } from '../soundfonts/layeredSampler'
+import { resolvePartInstrument } from '../soundfonts/customInstruments'
+import { useCustomInstruments } from './useCustomInstruments'
 import { voiceFor } from './useStyleCatalog'
 import { encodeWav } from '../utils/wavEncoder'
 
@@ -115,12 +119,28 @@ function applyVolume(v: number) {
 // Volume is applied inside toggle() after Tone.start() — calling applyVolume here
 // would create the AudioContext at import time, which browsers block before a user gesture.
 
+// Instrument mode: 'samples' plays the confirmed-license sample sets where a voice
+// has one (piano, vibraphone) and synthesizes the rest; 'synth' synthesizes every
+// voice. Lets you A/B the sampled vs fully-synthetic sound, and is the seam a future
+// "bring your own samples" feature plugs into. Persisted across sessions.
+export type SampleMode = 'samples' | 'synth'
+const _savedMode = typeof localStorage !== 'undefined'
+  ? localStorage.getItem('genregrid_sample_mode')
+  : null
+const sampleMode = ref<SampleMode>(_savedMode === 'synth' ? 'synth' : 'samples')
+function setSampleMode(mode: SampleMode) {
+  sampleMode.value = mode
+  if (typeof localStorage !== 'undefined') localStorage.setItem('genregrid_sample_mode', mode)
+}
+
 // Cache parsed MIDI data per URL so the piano roll persists after stop
 const midiStore = ref<Record<string, MidiData>>({})
 
 let scheduledParts: Tone.Part[] = []
 // Per-play disposables — samplers and synths that are NOT globally cached
 let disposables: Tone.ToneAudioNode[] = []
+// Per-play user custom-instrument samplers (LayeredSampler isn't a ToneAudioNode)
+let customSamplers: LayeredSampler[] = []
 
 function cleanup() {
   isPaused.value = false
@@ -130,8 +150,10 @@ function cleanup() {
   resetBusLevels()   // never leave a sidechain duck applied after stop
   scheduledParts.forEach(p => p.dispose())
   disposables.forEach(d => d.dispose())
+  customSamplers.forEach(s => s.dispose())
   scheduledParts = []
   disposables = []
+  customSamplers = []
   durationSeconds.value = 0
   stopPositionPolling()
   currentlyPlaying.value = null
@@ -293,6 +315,13 @@ export function useMidiPlayer() {
       const isPad          = styleId ? PAD_STYLES.has(styleId) : false
       const isLofi         = styleId ? LOFI_STYLES.has(styleId) : false
 
+      // Retune the shared melodic FX chain + master loudness trim to this style's
+      // family, so each genre sits in its own space and at an even level. Kicked off
+      // here (may regenerate the reverb IR) and awaited before parts are scheduled.
+      const fxFamily = fxFamilyFor({ isPad, isLofi, isSynth, isMelodicSynth })
+      const fxReady = applyMelodicFxPreset(MELODIC_FX_PRESETS[fxFamily])
+      setMasterTrimDb(MASTER_TRIM_DB[fxFamily])
+
       // Pre-load all samplers + MIDI in parallel.
       // SYNTH_STYLES use synthesis for drums + bass — skip those sampler loads entirely.
       //
@@ -306,23 +335,56 @@ export function useMidiPlayer() {
         melody: voiceFor(styleId, 'melody'),
         arpeggio: voiceFor(styleId, 'arpeggio'),
       }
+      // 'synth' mode skips every sampler load, so the existing synth fallbacks below
+      // take over for all voices. In 'samples' mode a voice loads a sampler only if it
+      // has a confirmed-license set (SAMPLED_VOICES / SAMPLED_BASS_VOICES); everything
+      // else still synthesizes.
+      const useSamples = sampleMode.value === 'samples'
       const _samplerP = (v: string | null) =>
-        (v ? getMelodicSamplerById(v) : null) ?? Promise.resolve(null)
+        (useSamples && v ? getMelodicSamplerById(v) : null) ?? Promise.resolve(null)
       // The Salamander grand piano is the last-resort chords/melody voice, needed
       // only when the chords part has no sampled voice and no synth family fits.
-      const _chordsSampled = !!_partVoice.chords && SAMPLED_VOICES.has(_partVoice.chords)
+      const _chordsSampled = useSamples && !!_partVoice.chords && SAMPLED_VOICES.has(_partVoice.chords)
+      const _bassVoice = voiceFor(styleId, 'bass')
+      const _bassSampled = useSamples && !isSynth && !!_bassVoice && SAMPLED_BASS_VOICES.has(_bassVoice)
 
       const fetchUrl = url.startsWith('blob:') || url.startsWith('data:') ? url : downloadUrl(url)
       const [, buf, bassSampler, chordsSamp, melodySamp, arpSamp] = await Promise.all([
-        (!isSynth && !isPad && !isLofi && !isMelodicSynth && !_chordsSampled) ? getPianoSampler() : Promise.resolve(null),
+        (useSamples && !isSynth && !isPad && !isLofi && !isMelodicSynth && !_chordsSampled) ? getPianoSampler() : Promise.resolve(null),
         fetch(fetchUrl).then(r => r.arrayBuffer()),
-        isSynth ? Promise.resolve(null) : getBassSampler(voiceFor(styleId, 'bass')),
+        _bassSampled ? getBassSampler(_bassVoice) : Promise.resolve(null),
         _samplerP(_partVoice.chords),
         _samplerP(_partVoice.melody),
         _samplerP(_partVoice.arpeggio),
       ])
 
       if (token !== _playToken) return
+
+      await fxReady            // reverb IR ready before the first note is scheduled
+      if (token !== _playToken) return
+
+      // Load any user custom instruments assigned to this style's parts. Every part
+      // can be user-sampled; a custom assignment overrides that part's built-in voice.
+      const customByPart: Partial<Record<PlayerPart, LayeredSampler>> = {}
+      if (useSamples) {
+        const ci = useCustomInstruments()
+        if (ci.supported()) {
+          await ci.ensureLoaded()
+          const parts: PlayerPart[] = ['chords', 'bass', 'melody', 'arpeggio', 'pads', 'counter_melody']
+          await Promise.all(parts.map(async (part) => {
+            const r = resolvePartInstrument(ci.assignments.value, styleId, part, null)
+            if (r.source !== 'custom') return
+            const manifest = await ci.materialize(r.id)
+            if (!manifest || manifest.layers.length === 0) return
+            const ls = new LayeredSampler({ baseUrl: '', manifest, volume: -6 })
+            await ls.loaded
+            ls.connect(part === 'bass' ? getBassBus() : getMelodicBus())
+            customByPart[part] = ls
+            customSamplers.push(ls)
+          }))
+          if (token !== _playToken) return
+        }
+      }
 
       const midi = new Midi(buf)
 
@@ -344,8 +406,8 @@ export function useMidiPlayer() {
 
       Tone.getTransport().bpm.value = midi.header.tempos[0]?.bpm ?? 120
 
-      // Resolve piano fallback if still needed
-      const piano = (!isSynth && !isPad && !isLofi && !isMelodicSynth && !_chordsSampled)
+      // Resolve piano fallback if still needed (never in 'synth' mode — useSamples gates it)
+      const piano = (useSamples && !isSynth && !isPad && !isLofi && !isMelodicSynth && !_chordsSampled)
         ? await getPianoSampler()
         : null
 
@@ -371,7 +433,7 @@ export function useMidiPlayer() {
       // fallback are cached/shared with their own fx chains, so chords+melody reuse
       // that one instrument (acoustic styles read fine sharing a voice); only the
       // arpeggio gets a distinct pluck on top.
-      const voiceCache: Record<number, Tone.PolySynth | Tone.Sampler> = {}
+      const voiceCache: Record<number, Tone.PolySynth | LayeredSampler> = {}
 
       function makePanned(build: (out: Tone.ToneAudioNode) => Tone.PolySynth, pan: number): Tone.PolySynth {
         const panner = new Tone.Panner(pan).connect(getMelodicBus())
@@ -381,14 +443,18 @@ export function useMidiPlayer() {
 
       // channel 0 = chords, 2 = melody, 3 = arpeggio, 4 = pads,
       // 5 = counter-melody (see backend _PART_CHANNELS)
-      function getMelodicInstrument(channel: number, pan: number): Tone.PolySynth | Tone.Sampler {
+      function getMelodicInstrument(channel: number, pan: number): Tone.PolySynth | LayeredSampler {
         if (voiceCache[channel]) return voiceCache[channel]
+
+        // A user custom instrument assigned to this part overrides everything else.
+        const custom = customByPart[CHANNEL_PART[channel]]
+        if (custom) { voiceCache[channel] = custom; return custom }
 
         // Instrument-identity resolution first: a sampled voice loaded for
         // this part wins; a wind/brass "melody_lead" voice gets the articulate
         // soft lead (matches the breath-phrased writing). Anything unresolved
         // falls through to the legacy style-family logic below.
-        const _voiceSamplers: Record<number, Tone.Sampler | null> = { 0: chordsSamp, 2: melodySamp, 3: arpSamp }
+        const _voiceSamplers: Record<number, LayeredSampler | null> = { 0: chordsSamp, 2: melodySamp, 3: arpSamp }
         const _voiceIds: Record<number, string | null> = { 0: _partVoice.chords, 2: _partVoice.melody, 3: _partVoice.arpeggio }
         if (_voiceSamplers[channel]) {
           voiceCache[channel] = _voiceSamplers[channel]!
@@ -399,7 +465,7 @@ export function useMidiPlayer() {
           return voiceCache[2]
         }
 
-        let inst: Tone.PolySynth | Tone.Sampler
+        let inst: Tone.PolySynth | LayeredSampler
         if (channel === 4) {
           // Pads part — always the sustained pad voice, never the sampler, so
           // the layer washes behind the comp regardless of style.
@@ -424,8 +490,13 @@ export function useMidiPlayer() {
           inst = channel === 0
             ? makePanned(makePad, pan)
             : makePanned((out) => makeMelodyLead(true, out), pan)
+        } else if (piano) {
+          inst = piano                                // Salamander grand piano (shared)
         } else {
-          inst = piano!                               // Salamander grand piano (shared)
+          // 'synth' mode (or piano not loaded): synth comp for chords, lead for melody.
+          inst = channel === 0
+            ? makePanned(makeSynthChords, pan)
+            : makePanned((out) => makeMelodyLead(false, out), pan)
         }
         voiceCache[channel] = inst
         return inst
@@ -451,8 +522,9 @@ export function useMidiPlayer() {
           scheduledParts.push(part)
 
         } else if (channel === 1) {
-          // Bass — synthesis for electronic styles, sampler otherwise
-          const bassInst = isSynth ? getSynthBass() : bassSampler!
+          // Bass — a user custom instrument wins, then a sampled voice (samples mode +
+          // confirmed-license set), otherwise the synth bass (electronic/synth mode).
+          const bassInst = customByPart.bass ?? bassSampler ?? getSynthBass()
           const notes = track.notes.map(n => ({
             time: n.time, midi: n.midi, duration: n.duration, velocity: n.velocity,
           }))
@@ -541,7 +613,9 @@ export function useMidiPlayer() {
       await toggle(url, styleId, label)
       looping.value = wasLooping
 
-      const comp = getMasterCompressor()
+      // Tap the post-limiter node so the recording captures exactly what's heard
+      // (the master's soft-clip limiter included), not the pre-limiter mix.
+      const comp = getMasterLimiterNode()
       const recorder = new Tone.Recorder()
       comp.connect(recorder)
       recorder.start()
@@ -631,8 +705,10 @@ export function useMidiPlayer() {
         dest.volume.value = 0
         // Plain gain, not a Tone.Compressor — a DynamicsCompressorNode renders silence on
         // Linux packaged Electron (see getMasterCompressor in loader.ts), which would make
-        // WAV exports silent there too.
-        const comp = new Tone.Gain({ context, gain: 1 }).connect(dest)
+        // WAV exports silent there too. A WaveShaper soft-clip limiter after it catches
+        // peaks so the exported WAV can't clip, matching live playback's master chain.
+        const limiter = makeMasterLimiter(context).connect(dest)
+        const comp = new Tone.Gain({ context, gain: 1 }).connect(limiter)
 
         // Only needed so Transport-relative delay-time notation ('8n', '4n', …)
         // in the effects below resolves against the song's real tempo — no note
@@ -1001,18 +1077,21 @@ export function useMidiPlayer() {
     const isSynth = styleId ? SYNTH_STYLES.has(styleId) : false
     const isPad   = styleId ? PAD_STYLES.has(styleId)   : false
     const isLofi  = styleId ? LOFI_STYLES.has(styleId)  : false
-    // Synth/pad/lofi styles use in-memory oscillators — nothing to fetch.
-    // Drums are synthesized for every style now, so only bass/melodic samplers load.
-    if (isSynth || isPad || isLofi) return
+    // Synth/pad/lofi styles use in-memory oscillators — nothing to fetch; and 'synth'
+    // mode never loads samplers. Drums are synthesized for every style now, so only
+    // the confirmed-license bass/melodic sets warm here.
+    if (isSynth || isPad || isLofi || sampleMode.value !== 'samples') return
     // Warm the registry-selected sample sets for this style (best-effort).
     const melodicVoices = (['chords', 'melody', 'arpeggio'] as const)
       .map(part => voiceFor(styleId, part))
       .filter((v): v is string => !!v && SAMPLED_VOICES.has(v))
+    const bassVoice = voiceFor(styleId, 'bass')
+    const bassP = bassVoice && SAMPLED_BASS_VOICES.has(bassVoice) ? [getBassSampler(bassVoice)] : []
     Promise.all([
-      getBassSampler(voiceFor(styleId, 'bass')),
+      ...bassP,
       ...melodicVoices.map(v => getMelodicSamplerById(v)),
     ]).catch(() => { /* best-effort, ignore network errors */ })
   }
 
-  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause, cue, playCued, cuedLabel }
+  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, sampleMode, setSampleMode, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause, cue, playCued, cuedLabel }
 }

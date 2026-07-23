@@ -406,6 +406,69 @@ ipcMain.handle('log-renderer-error', async (_, entry: { timestamp: string; conte
   }
 })
 
+// ── Custom instrument storage ────────────────────────────────────────────────
+// User-uploaded instruments live under userData/instruments/: an index.json listing
+// each instrument (id, name, kind, LayeredSampler manifest) plus a per-id folder of
+// audio files. The renderer reads bytes back via 'instruments-read' and plays them as
+// blob: URLs (see useCustomInstruments.ts) — deliberately no custom URL scheme, which
+// the Linux Web Audio path renders silent. See docs/custom-instruments-design.md.
+interface StoredInstrument { id: string; name: string; kind: string; manifest: unknown; createdAt: number }
+
+function instrumentsDir(): string {
+  const dir = path.join(app.getPath('userData'), 'instruments')
+  fs.mkdirSync(dir, { recursive: true })
+  return dir
+}
+function readInstrumentIndex(): StoredInstrument[] {
+  try { return JSON.parse(fs.readFileSync(path.join(instrumentsDir(), 'index.json'), 'utf-8')) } catch { return [] }
+}
+function writeInstrumentIndex(list: StoredInstrument[]): void {
+  fs.writeFileSync(path.join(instrumentsDir(), 'index.json'), JSON.stringify(list, null, 2))
+}
+// Resolve a renderer-supplied relative file name strictly within `baseDir`, rejecting
+// any traversal/absolute path that would escape it.
+function safeJoinWithin(baseDir: string, rel: string): string {
+  const resolved = path.resolve(baseDir, rel)
+  if (resolved !== baseDir && !resolved.startsWith(baseDir + path.sep)) throw new Error('unsafe path')
+  return resolved
+}
+
+ipcMain.handle('instruments-list', async () => readInstrumentIndex())
+
+ipcMain.handle('instruments-save', async (_, { inst, files }: { inst: StoredInstrument; files: Array<{ name: string; data: number[] }> }) => {
+  const id = path.basename(String(inst.id))   // our own uuid; basename defends regardless
+  const dir = path.join(instrumentsDir(), id)
+  for (const f of files) {
+    const dest = safeJoinWithin(dir, f.name)
+    await fs.promises.mkdir(path.dirname(dest), { recursive: true })
+    await fs.promises.writeFile(dest, Buffer.from(f.data))
+  }
+  const index = readInstrumentIndex().filter(i => i.id !== id)
+  index.push({ ...inst, id })
+  writeInstrumentIndex(index)
+})
+
+ipcMain.handle('instruments-remove', async (_, id: string) => {
+  const safeId = path.basename(String(id))
+  await fs.promises.rm(path.join(instrumentsDir(), safeId), { recursive: true, force: true })
+  writeInstrumentIndex(readInstrumentIndex().filter(i => i.id !== safeId))
+})
+
+ipcMain.handle('instruments-read', async (_, id: string) => {
+  const safeId = path.basename(String(id))
+  const dir = path.join(instrumentsDir(), safeId)
+  const out: Array<{ name: string; data: number[] }> = []
+  async function walk(rel: string): Promise<void> {
+    for (const entry of await fs.promises.readdir(path.join(dir, rel), { withFileTypes: true })) {
+      const childRel = rel ? path.join(rel, entry.name) : entry.name
+      if (entry.isDirectory()) await walk(childRel)
+      else out.push({ name: childRel.split(path.sep).join('/'), data: [...await fs.promises.readFile(path.join(dir, childRel))] })
+    }
+  }
+  try { await walk('') } catch { /* no such instrument */ }
+  return out
+})
+
 // Build a 32×32 solid purple drag icon from raw RGBA pixels
 function makeDragIcon(): ReturnType<typeof nativeImage.createFromBuffer> {
   const size = 32

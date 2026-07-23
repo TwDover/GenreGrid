@@ -62,6 +62,30 @@
       >{{ chipLabel(ch) }}</button>
     </div>
 
+    <!-- Instrument mode: sampled instruments vs full synthesis -->
+    <div class="tb-mode" role="group" aria-label="Instrument sound">
+      <button
+        class="tb-mode-btn"
+        :class="{ 'is-active': sampleMode === 'samples' }"
+        :aria-pressed="sampleMode === 'samples'"
+        title="Sampled instruments where available (piano, vibraphone), synth for the rest"
+        @click="setSampleMode('samples')"
+      >Samples</button>
+      <button
+        class="tb-mode-btn"
+        :class="{ 'is-active': sampleMode === 'synth' }"
+        :aria-pressed="sampleMode === 'synth'"
+        title="Synthesize every instrument"
+        @click="setSampleMode('synth')"
+      >Synth</button>
+    </div>
+    <button
+      v-if="instrumentsSupported()"
+      class="tb-instr-btn"
+      title="Manage custom instruments (upload your own samples)"
+      @click="instrumentsPanelOpen = true"
+    >🎹</button>
+
     <!-- Volume -->
     <div class="tb-volume">
       <span class="tb-vol-icon">{{ volume === 0 ? '🔇' : volume < 40 ? '🔈' : '🔊' }}</span>
@@ -81,13 +105,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useMidiPlayer, PLAYER_PARTS, type PlayerPart } from '../composables/useMidiPlayer'
+import { useCustomInstruments } from '../composables/useCustomInstruments'
 
 const {
   currentlyPlaying, nowPlayingLabel, isLoading, isRecording,
   stop, looping, setLooping, channelMuted, toggleMute, soloPart,
   positionSeconds, durationSeconds, seek, isPaused, togglePause,
-  volume, setVolume, playCued, cuedLabel,
+  volume, setVolume, sampleMode, setSampleMode, playCued, cuedLabel,
 } = useMidiPlayer()
+
+const { panelOpen: instrumentsPanelOpen, supported: instrumentsSupported } = useCustomInstruments()
 
 const isIdle = computed(() => !currentlyPlaying.value && !isLoading.value)
 
@@ -248,8 +275,25 @@ function onSeek(e: Event) {
 .tb-vol-icon { font-size: 0.75rem; }
 .tb-vol-slider { width: 90px; accent-color: var(--accent); cursor: pointer; }
 
+/* Samples/Synth segmented toggle */
+.tb-mode { display: inline-flex; flex-shrink: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.tb-mode-btn {
+  font: inherit; font-size: 0.7rem; line-height: 1; padding: 0.3rem 0.5rem;
+  background: var(--surface); color: var(--text-faint); border: none; cursor: pointer;
+}
+.tb-mode-btn + .tb-mode-btn { border-left: 1px solid var(--border); }
+.tb-mode-btn:hover { color: var(--text); }
+.tb-mode-btn.is-active { background: var(--accent); color: var(--accent-contrast, #fff); }
+.tb-instr-btn {
+  font-size: 0.85rem; line-height: 1; flex-shrink: 0; cursor: pointer;
+  padding: 0.3rem 0.45rem; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); color: var(--text-faint);
+}
+.tb-instr-btn:hover { color: var(--text); }
+
 @media (max-width: 900px) {
   .tb-label { display: none; }
   .tb-vol-slider { width: 60px; }
+  .tb-mode { display: none; }   /* keep the narrow bar uncluttered */
 }
 </style>
