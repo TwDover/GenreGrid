@@ -11,19 +11,21 @@
     <div v-if="!result" class="sr-empty">
       <span class="sr-empty-icon">♫</span>
       <span>Build a full song to see its timeline and draggable parts.</span>
+      <button class="btn btn-primary" @click="emit('open-setup')">Open Setup</button>
     </div>
 
     <template v-else>
       <!-- Header + whole-song actions -->
       <div class="sr-header">
+        <button class="btn-primary sr-play-btn" :class="{ playing: isPlaying }" @click="togglePlay">
+          <span class="sr-play-glyph">{{ isPlaying ? '■' : '▶' }}</span>
+          <span>{{ isPlaying ? 'Stop' : 'Play' }}</span>
+        </button>
         <div class="sr-title-block">
           <span class="sr-title">{{ label }}</span>
           <span class="sr-meta">{{ result.total_bars }} bars · {{ result.bpm }} BPM · {{ result.key }}</span>
         </div>
         <div class="sr-actions">
-          <button class="sr-play-btn" :class="{ playing: isPlaying }" @click="togglePlay">
-            {{ isPlaying ? '■ Stop' : '▶ Play song' }}
-          </button>
           <button class="sr-dl-btn" @click="download">↓ .mid</button>
           <button class="sr-dl-btn" :disabled="renderingWav" @click="exportSongWav" :title="wavError || 'Render and download the full song as WAV — see the ⬇ header button for progress from anywhere'">
             <span v-if="renderingWav">{{ Math.round(wavProgress * 100) }}%</span>
@@ -186,7 +188,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, onUnmounted } from 'vue'
 import type { BuildSongResponse, FileInfo } from '../types/midi'
 import { downloadUrl, regenerateSongPart, regenerateSongSection, undoSongPart, listSongVersions, restoreSongVersion, setPartGain, rollSongPartCandidates, keepSongPartCandidate, rebuildSongProgression, type SongVersion, type SongPartCandidate } from '../services/api'
 import { resolveProgression } from '../utils/chordResolver'
@@ -199,9 +201,12 @@ import { useRenderQueue } from '../composables/useRenderQueue'
 import PartCard from './PartCard.vue'
 
 const props = defineProps<{ result: BuildSongResponse | null; label: string }>()
-const emit = defineEmits<{ (e: 'rebuilt', result: BuildSongResponse, label: string): void }>()
+const emit = defineEmits<{
+  (e: 'rebuilt', result: BuildSongResponse, label: string): void
+  (e: 'open-setup'): void
+}>()
 
-const { toggle, stop: stopPlayer, currentlyPlaying, seek, positionSeconds, offlineRender } = useMidiPlayer()
+const { toggle, stop: stopPlayer, currentlyPlaying, seek, positionSeconds, offlineRender, cue } = useMidiPlayer()
 const { toast } = useToasts()
 const { promptFilename } = useDownloadPrompt()
 const { startJob, updateProgress, completeJob, failJob } = useRenderQueue()
@@ -588,6 +593,15 @@ async function onUndo(part: string) {
   }
 }
 
+// Hand the docked transport this song, so its ▶ starts playback from down
+// there too — the header button and the transport are the same action.
+watch(() => props.result?.generation_id, () => {
+  if (props.result) cue(props.label || 'Song', togglePlay)
+  else cue(null, null)
+}, { immediate: true })
+watch(() => props.label, l => { if (props.result) cue(l || 'Song', togglePlay) })
+onUnmounted(() => cue(null, null))
+
 async function togglePlay() {
   if (isPlaying.value) { stopPlayer(); return }
   if (!songUrl.value) return
@@ -650,25 +664,34 @@ async function exportSongWav() {
 
 .sr-empty {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 0.6rem; padding: 3rem 1rem; text-align: center;
-  color: var(--text-faint); font-size: 0.8rem;
-  border: 1px dashed var(--surface); border-radius: 10px;
+  gap: var(--s4); padding: var(--s7) var(--s4); text-align: center;
+  max-width: 30rem; margin: var(--s6) auto 0;
+  color: var(--ink-faint); font-size: var(--t-body); line-height: 1.6;
 }
-.sr-empty-icon { font-size: 1.8rem; color: var(--seg-intro); }
+.sr-empty-icon { font-size: 2rem; color: var(--ink-faint); }
 
-.sr-header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
-.sr-title-block { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
-.sr-title { font-size: 0.9rem; font-weight: 600; color: var(--text); }
-.sr-meta { font-size: 0.7rem; font-family: monospace; color: var(--text-dim); }
+/* Sticky so the song's identity and its play button stay on screen while you
+ * scroll through the stems below. */
+.sr-header {
+  display: flex; align-items: center; gap: var(--s4);
+  position: sticky; top: 0; z-index: 10;
+  background: linear-gradient(var(--ground) 80%, transparent);
+  padding: var(--s5) 0 var(--s4);
+}
+.sr-title-block { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.sr-title { font-size: var(--t-display); font-weight: 640; letter-spacing: -.02em; color: var(--ink); }
+.sr-meta { font-size: var(--t-meta); font-family: var(--f-mono); font-variant-numeric: tabular-nums; color: var(--ink-dim); }
 
 .sr-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+
+/* The song-level play button. Deliberately the largest control in the
+ * workspace — every other ▶ on the page is a per-stem preview. */
 .sr-play-btn {
-  font-size: 0.75rem; padding: 0.35rem 0.8rem; background: var(--accent-surface);
-  border: 1px solid color-mix(in srgb, var(--accent) 27%, transparent); border-radius: 5px; color: var(--accent); cursor: pointer;
-  transition: background 0.15s;
+  font-size: 0.85rem;
+  padding: 0.55rem 1.1rem;
+  flex-shrink: 0;
 }
-.sr-play-btn:hover { background: var(--accent-surface-strong); }
-.sr-play-btn.playing { background: var(--accent-surface-strong); border-color: var(--accent); }
+.sr-play-glyph { font-size: 0.75rem; }
 .sr-dl-btn {
   font-size: 0.75rem; padding: 0.35rem 0.65rem; background: var(--panel-deep);
   border: 1px solid var(--surface); border-radius: 5px; color: var(--text-dim); cursor: pointer;
@@ -693,23 +716,23 @@ async function exportSongWav() {
 .sr-history-item:hover:not(:disabled) { background: var(--surface); color: var(--accent); }
 .sr-history-item:disabled { opacity: 0.5; cursor: wait; }
 
-/* Timeline */
-.sr-timeline { position: relative; display: flex; height: 30px; border-radius: 5px; overflow: hidden; gap: 1px; background: var(--bg-deepest); }
+/* Timeline — the arrangement is the workspace hero, not a sliver. */
+.sr-timeline { position: relative; display: flex; height: 72px; border-radius: var(--r-md); overflow: hidden; gap: 2px; background: var(--sunken); }
 .sr-playhead {
   position: absolute; top: 0; bottom: 0; width: 2px;
   background: var(--accent); box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 60%, transparent);
   pointer-events: none; z-index: 2;
 }
 .sr-tl-block {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0 0.35rem; overflow: hidden; min-width: 0; gap: 0.2rem;
+  display: flex; align-items: flex-start; justify-content: space-between;
+  padding: var(--s2) var(--s3); overflow: hidden; min-width: 0; gap: 0.2rem;
   transition: filter 0.15s;
   cursor: pointer;
 }
-.sr-tl-block:hover { filter: brightness(1.2); }
+.sr-tl-block:hover { filter: brightness(1.07) saturate(1.08); }
 .sr-tl-block.sr-tl-busy { filter: brightness(0.7); cursor: wait; }
 .sr-tl-block.sr-tl-playing { filter: brightness(1.3); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 53%, transparent); }
-.sr-tl-name { font-size: 0.58rem; color: var(--seg-text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.sr-tl-name { font-size: var(--t-meta); font-weight: 600; color: var(--seg-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; letter-spacing: -.005em; }
 .sr-tl-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
 .q-good { background: var(--success); }
 .q-ok   { background: var(--gold); }
@@ -788,7 +811,7 @@ async function exportSongWav() {
 }
 .sr-hint { font-size: 0.65rem; text-transform: none; letter-spacing: 0; color: var(--text-faint); }
 
-.sr-stems { display: flex; flex-direction: column; gap: 0.4rem; }
+.sr-stems { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
 
 .sr-error { font-size: 0.72rem; color: var(--error); background: var(--error-surface); border-radius: 4px; padding: 0.3rem 0.5rem; }
 

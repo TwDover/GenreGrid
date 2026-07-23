@@ -51,6 +51,14 @@ const LOFI_STYLES = new Set(['lofi'])
 // Global so only one track plays at a time
 const currentlyPlaying = ref<string | null>(null)
 const nowPlayingLabel = ref<string | null>(null)
+
+// ── Cued track ───────────────────────────────────────────────────────────────
+// What the docked transport plays when you press ▶ with nothing running. The
+// view that owns a result (SongResult, ExportPanel) registers its own play
+// routine here, so the transport is a real control rather than a readout that
+// only lights up once playback has already started somewhere else.
+const cuedLabel = ref<string | null>(null)
+let cuedPlay: (() => void | Promise<void>) | null = null
 const isLoading = ref(false)
 const looping = ref(false)
 const isRecording = ref(false)
@@ -970,6 +978,16 @@ export function useMidiPlayer() {
     return currentlyPlaying.value === url
   }
 
+  /** Register (or clear, with nulls) what the transport's ▶ starts when idle. */
+  function cue(label: string | null, play: (() => void | Promise<void>) | null) {
+    cuedLabel.value = label
+    cuedPlay = play
+  }
+
+  async function playCued() {
+    if (cuedPlay) await cuedPlay()
+  }
+
   function setVolume(v: number) {
     volume.value = v
     applyVolume(v)
@@ -991,5 +1009,5 @@ export function useMidiPlayer() {
     ]).catch(() => { /* best-effort, ignore network errors */ })
   }
 
-  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause }
+  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause, cue, playCued, cuedLabel }
 }

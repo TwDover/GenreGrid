@@ -25,10 +25,10 @@
       <span class="history-title">Generations</span>
       <span class="history-count">{{ history.length }}</span>
       <input v-model="searchQuery" type="text" class="history-search" placeholder="Filter…" />
-      <button class="arrange-toggle" :class="{ active: showArrange }" @click="showArrange = !showArrange" title="Open arrangement builder">
+      <button class="btn btn-sm arrange-toggle" :class="{ active: showArrange }" @click="showArrange = !showArrange" title="Open arrangement builder">
         {{ showArrange ? '▲ Arrange' : '▼ Arrange' }}
       </button>
-      <button class="clear-btn" @click="emit('clear')" title="Clear unpinned generations">Clear</button>
+      <button class="btn btn-sm clear-btn" @click="emit('clear')" title="Clear unpinned generations">Clear</button>
     </div>
     <ArrangementBuilder v-if="showArrange" ref="arrangeRef" />
     <div class="history-list">
@@ -67,41 +67,41 @@
           <div class="seed-row">
             <span class="seed-label">Seed</span>
             <span class="seed-value">{{ response.seed }}</span>
-            <button class="seed-action" @click.stop="copy(response.seed)" :title="'Copy seed'">
+            <button class="btn btn-sm" @click.stop="copy(response.seed)" :title="'Copy seed'">
               {{ copied === response.seed ? '✓' : 'Copy' }}
             </button>
-            <button class="seed-action replay" @click.stop="$emit('replay', response)" title="Load these settings into the form">
+            <button class="btn btn-sm sa-replay" @click.stop="$emit('replay', response)" title="Load these settings into the form">
               Replay
             </button>
             <button
               v-if="response.quality"
-              class="seed-action save"
-              :class="{ saved: savedIds.has(response.generation_id) }"
+              class="btn btn-sm sa-save"
+              :class="{ 'sa-saved': savedIds.has(response.generation_id) }"
               :disabled="savedIds.has(response.generation_id) || saveLoading === response.generation_id"
               @click.stop="handleSave(response)"
               title="Save to library to improve future generations"
             >
               {{ savedIds.has(response.generation_id) ? 'Saved' : saveLoading === response.generation_id ? '...' : 'Save' }}
             </button>
-            <button class="seed-action" @click.stop="share(response)" title="Copy shareable link">
+            <button class="btn btn-sm" @click.stop="share(response)" title="Copy shareable link">
               {{ shared === response.generation_id ? '✓ Copied' : 'Share' }}
             </button>
             <button
-              class="seed-action"
+              class="btn btn-sm"
               :disabled="zipLoading === `${response.generation_id}:bundle`"
               @click.stop="handleZipDownload(response, 'bundle')"
               title="Download all parts as ZIP"
             >{{ zipLoading === `${response.generation_id}:bundle` ? '…' : 'Download All' }}</button>
             <button
               v-if="response.summary.mode === 'arrangement'"
-              class="seed-action"
+              class="btn btn-sm"
               :disabled="zipLoading === `${response.generation_id}:sections`"
               @click.stop="handleZipDownload(response, 'sections')"
               title="Download per-section stems as ZIP"
             >{{ zipLoading === `${response.generation_id}:sections` ? '…' : 'Sections ZIP' }}</button>
             <button
               v-if="response.files.some(f => f.part === 'combined')"
-              class="seed-action"
+              class="btn btn-sm"
               @click.stop="addToArrange(response)"
               title="Add to arrangement builder"
             >+ Arrange</button>
@@ -111,13 +111,13 @@
               </div>
               <template v-else>
                 <button
-                  class="seed-action"
+                  class="btn btn-sm"
                   :disabled="isRecording"
                   @click.stop="handleOfflineExport(response, 'wav')"
                   title="Offline render — full mix as WAV (fast). Progress also shows in the ⬇ header button."
                 >WAV ⚡</button>
                 <button
-                  class="seed-action"
+                  class="btn btn-sm"
                   :disabled="isRecording"
                   @click.stop="handleOfflineExport(response, 'stems')"
                   title="Offline render — drums / bass / melodic as separate WAV files (fast). Progress also shows in the ⬇ header button."
@@ -171,6 +171,16 @@
       </div>
     </div>
   </div>
+
+  <!-- Nothing generated yet. Without this the workspace column is a blank
+       void, which reads as "broken" rather than "empty". -->
+  <div v-else class="export-panel">
+    <div class="ep-empty">
+      <span class="ep-empty-icon">♫</span>
+      <span>Your loops land here, ready to audition and drag into your DAW.</span>
+      <button class="btn btn-primary" @click="emit('open-setup')">Open Setup</button>
+    </div>
+  </div>
 </template>
 
 
@@ -194,6 +204,7 @@ const emit = defineEmits<{
   (e: 'toggle-star', genId: string): void
   (e: 'delete', genId: string): void
   (e: 'clear'): void
+  (e: 'open-setup'): void
 }>()
 
 const { isRecording, offlineRender } = useMidiPlayer()
@@ -462,6 +473,14 @@ async function handleZipDownload(response: GenerateResponse, kind: 'bundle' | 's
 </script>
 
 <style scoped>
+.ep-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--s4); padding: var(--s7) var(--s4); text-align: center;
+  max-width: 30rem; margin: var(--s6) auto 0;
+  color: var(--ink-faint); font-size: var(--t-body); line-height: 1.6;
+}
+.ep-empty-icon { font-size: 2rem; color: var(--ink-faint); }
+
 @keyframes shimmer {
   0%   { background-position: -400px 0; }
   100% { background-position: 400px 0; }
@@ -527,17 +546,10 @@ async function handleZipDownload(response: GenerateResponse, kind: 'bundle' | 's
 
 .history-search {
   flex: 1;
-  max-width: 120px;
-  background: var(--panel-deep);
-  border: 1px solid var(--surface);
-  border-radius: 4px;
-  color: var(--text);
-  font-size: 0.72rem;
-  padding: 0.2rem 0.5rem;
-  outline: none;
+  max-width: 140px;
+  height: 28px;
+  font-size: var(--t-meta);
 }
-.history-search:focus { border-color: color-mix(in srgb, var(--accent) 33%, transparent); }
-.history-search::placeholder { color: var(--text-faint); }
 
 .entry-name {
   font-size: 0.7rem;
@@ -557,19 +569,8 @@ async function handleZipDownload(response: GenerateResponse, kind: 'bundle' | 's
 .entry-name:focus { border-color: color-mix(in srgb, var(--accent) 27%, transparent); background: var(--panel-deep); color: var(--text); }
 .entry-name[contenteditable="true"] { cursor: text; }
 
-.arrange-toggle {
-  margin-left: auto;
-  font-size: 0.68rem;
-  padding: 0.2rem 0.6rem;
-  background: var(--panel-deep);
-  border: 1px solid var(--surface);
-  border-radius: 4px;
-  color: var(--text-dim);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.arrange-toggle:hover { background: var(--panel-alt); color: var(--text); }
-.arrange-toggle.active { border-color: color-mix(in srgb, var(--accent) 27%, transparent); color: var(--accent); }
+.arrange-toggle { margin-left: auto; }
+.arrange-toggle.active { border-color: var(--accent-edge); color: var(--accent); background: var(--accent-wash); }
 
 .history-list {
   display: flex;
@@ -657,17 +658,8 @@ async function handleZipDownload(response: GenerateResponse, kind: 'bundle' | 's
   color: var(--text-faint);
 }
 
-.clear-btn {
-  font-size: 0.68rem;
-  padding: 0.2rem 0.6rem;
-  background: var(--panel-deep);
-  border: 1px solid var(--surface);
-  border-radius: 4px;
-  color: var(--text-dim);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.clear-btn:hover { background: var(--error-surface); color: var(--error); border-color: color-mix(in srgb, var(--error) 27%, transparent); }
+.clear-btn { color: var(--ink-dim); }
+.clear-btn:hover { color: var(--bad); border-color: var(--bad); }
 
 .entry-del {
   background: none;
@@ -713,49 +705,24 @@ async function handleZipDownload(response: GenerateResponse, kind: 'bundle' | 's
   flex: 1;
 }
 
-.seed-action {
-  font-size: 0.75rem;
-  padding: 0.2rem 0.6rem;
-  background: var(--surface);
-  border: 1px solid var(--surface-hover);
-  border-radius: 4px;
-  color: var(--text-dim);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.seed-action:hover { background: var(--surface-hover); color: var(--text); }
-
-.seed-action.replay {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 27%, transparent);
-}
-
-.seed-action.replay:hover { background: var(--accent-surface-strong); color: var(--accent-bright); }
-
-.seed-action.save {
-  color: var(--success);
-  border-color: color-mix(in srgb, var(--success) 27%, transparent);
-}
-
-.seed-action.save:hover:not(:disabled) { background: var(--success-surface); color: var(--success); }
-
-.seed-action.save.saved {
-  color: var(--text-faint);
-  border-color: var(--surface);
-  cursor: default;
-}
-
-.seed-action:disabled { opacity: 0.6; cursor: default; }
+/* Seed-row action colour modifiers — base look comes from .btn.btn-sm. */
+.sa-replay { color: var(--accent); border-color: var(--accent-edge); }
+.sa-replay:hover:not(:disabled) { background: var(--accent-wash); color: var(--accent); border-color: var(--accent); }
+.sa-save { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, var(--line)); }
+.sa-save:hover:not(:disabled) { background: var(--success-surface); color: var(--good); }
+.sa-save.sa-saved { color: var(--ink-faint); border-color: var(--line); cursor: default; }
 
 .export-progress {
-  font-size: 0.75rem;
-  padding: 0.2rem 0.6rem;
-  background: var(--surface-muted);
-  border: 1px solid color-mix(in srgb, var(--accent) 27%, transparent);
-  border-radius: 4px;
+  font-size: var(--t-meta);
+  padding: 0 var(--s2);
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  background: var(--accent-wash);
+  border: 1px solid var(--accent-edge);
+  border-radius: var(--r-sm);
   color: var(--accent);
-  font-family: monospace;
+  font-family: var(--f-mono);
 }
 
 .regen-error {
@@ -769,7 +736,7 @@ async function handleZipDownload(response: GenerateResponse, kind: 'bundle' | 's
 .part-cards {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  border-top: 1px solid var(--line);
 }
 
 .progression-row {
@@ -836,5 +803,5 @@ async function handleZipDownload(response: GenerateResponse, kind: 'bundle' | 's
   line-height: 1;
 }
 .rate-btn:hover { opacity: 0.8; }
-.rate-btn.active { opacity: 1; border-color: color-mix(in srgb, var(--accent) 27%, transparent); }
+.rate-btn.active { opacity: 1; border-color: var(--accent-edge); background: var(--accent-wash); }
 </style>

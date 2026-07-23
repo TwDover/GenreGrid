@@ -7,16 +7,19 @@
   version. Distributed WITHOUT ANY WARRANTY. See <https://www.gnu.org/licenses/>.
 -->
 <template>
-  <div v-if="isLoading || currentlyPlaying" class="transport-bar">
+  <!-- Always mounted. An idle transport is still the answer to "where do I
+       press play" — hiding it was what made playback feel like it lived in a
+       different place every time. -->
+  <div class="transport-bar" :class="{ idle: isIdle }">
     <!-- Transport controls -->
     <div class="tb-controls">
       <button
         class="tb-btn tb-play"
-        :disabled="isLoading || isRecording"
-        @click="togglePause"
-        :title="isPaused ? 'Resume' : 'Pause'"
-      >{{ isLoading ? '⟳' : isPaused ? '▶' : '⏸' }}</button>
-      <button class="tb-btn" :disabled="isRecording" @click="stop" title="Stop playback (Space)">■</button>
+        :disabled="isLoading || isRecording || (isIdle && !cuedLabel)"
+        @click="onPlayPause"
+        :title="playTitle"
+      >{{ isLoading ? '⟳' : (isIdle || isPaused) ? '▶' : '⏸' }}</button>
+      <button class="tb-btn" :disabled="isRecording || isIdle" @click="stop" title="Stop playback (Space)">■</button>
       <button
         class="tb-btn"
         :class="{ active: looping }"
@@ -28,7 +31,7 @@
 
     <!-- Track label -->
     <span v-if="isRecording" class="tb-rec">● REC</span>
-    <span v-else class="tb-label" :title="nowPlayingLabel ?? ''">{{ nowPlayingLabel ?? '…' }}</span>
+    <span v-else class="tb-label" :class="{ 'tb-label-cued': isIdle }" :title="trackLabel">{{ trackLabel }}</span>
 
     <!-- Seek bar -->
     <div class="tb-seek">
@@ -76,14 +79,35 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useMidiPlayer, PLAYER_PARTS, type PlayerPart } from '../composables/useMidiPlayer'
 
 const {
   currentlyPlaying, nowPlayingLabel, isLoading, isRecording,
   stop, looping, setLooping, channelMuted, toggleMute, soloPart,
   positionSeconds, durationSeconds, seek, isPaused, togglePause,
-  volume, setVolume,
+  volume, setVolume, playCued, cuedLabel,
 } = useMidiPlayer()
+
+const isIdle = computed(() => !currentlyPlaying.value && !isLoading.value)
+
+// Idle shows the cued track (what ▶ would start) so the bar is never a blank
+// row of dead controls.
+const trackLabel = computed(() => {
+  if (isLoading.value) return 'Loading…'
+  if (!isIdle.value) return nowPlayingLabel.value ?? '…'
+  return cuedLabel.value ?? 'Nothing loaded'
+})
+
+const playTitle = computed(() => {
+  if (isIdle.value) return cuedLabel.value ? `Play ${cuedLabel.value}` : 'Generate something to play'
+  return isPaused.value ? 'Resume' : 'Pause'
+})
+
+function onPlayPause() {
+  if (isIdle.value) playCued()
+  else togglePause()
+}
 
 const chipLabel = (ch: PlayerPart) => (
   { drums: 'D', bass: 'B', chords: 'Ch', melody: 'M', arpeggio: 'A', pads: 'P', counter_melody: 'Cm' }[ch]
@@ -100,21 +124,26 @@ function onSeek(e: Event) {
 </script>
 
 <style scoped>
+/* Docked to the bottom of the shell. Fixed height in both states so nothing
+ * above it ever reflows when playback starts or stops. */
 .transport-bar {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.4rem 1rem;
+  padding: 0.5rem 1rem;
+  height: 52px;
   background: var(--accent-surface);
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   min-width: 0;
+  flex-shrink: 0;
 }
+.transport-bar.idle { background: var(--panel); border-top-color: var(--surface); }
 
 .tb-controls { display: flex; gap: 0.35rem; flex-shrink: 0; }
 
 .tb-btn {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   background: var(--surface);
   border: 1px solid var(--surface-hover);
   border-radius: 6px;
@@ -128,9 +157,18 @@ function onSeek(e: Event) {
   transition: background 0.15s, border-color 0.15s;
 }
 .tb-btn:hover:not(:disabled) { background: var(--surface-hover); }
-.tb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.tb-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .tb-btn.active { border-color: var(--accent); background: var(--accent-surface-strong); }
-.tb-play { background: var(--accent-surface-strong); }
+
+/* The one true play button — solid accent, wider than its neighbours. */
+.tb-play {
+  width: 44px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-size: 0.9rem;
+}
+.tb-play:hover:not(:disabled) { background: var(--accent); filter: brightness(1.12); }
 
 .tb-label {
   font-size: 0.75rem;
@@ -140,9 +178,11 @@ function onSeek(e: Event) {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 220px;
+  min-width: 90px;
   flex-shrink: 1;
   text-transform: capitalize;
 }
+.tb-label-cued { color: var(--text-dim); }
 
 .tb-rec {
   font-size: 0.75rem;
