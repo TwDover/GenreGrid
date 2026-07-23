@@ -57,7 +57,7 @@ export function logError(context: string, error: unknown): void {
   persist()
   console.error(`[${context}]`, error)
 
-  const api = (window as any).electronAPI
+  const api = window.electronAPI
   if (api?.logRendererError) {
     api.logRendererError({ timestamp: entry.timestamp, context, message, stack }).catch(() => { /* best-effort */ })
   }

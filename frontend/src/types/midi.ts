@@ -19,6 +19,27 @@ export interface StyleInfo {
   voices?: Record<string, string>        // part role → playback voice id ("melody": "melody_lead")
 }
 
+/**
+ * The full style-detail document returned by GET /styles/:id/detail and posted
+ * back to POST /styles/custom. Every field the UI reads (radar metrics, editor
+ * sliders) is enumerated and optional — the backend may omit any, and callers
+ * always read them with a `?? default`. The index signature carries the many
+ * additional backend fields the editor preserves on save but never reads
+ * individually. Use this instead of `Record<string, any>` for style objects.
+ */
+export interface StyleConfig {
+  id?: string
+  name?: string
+  bpm_range?: [number, number]
+  velocity_base?: number
+  groove_push?: number
+  drums?: { hat_density?: number; swing?: number; triplet_probability?: number }
+  melody?: { density?: number; stepwise_motion?: number; rest_probability?: number }
+  bass?: { pattern_density?: number; sustain_bias?: number }
+  chord_extensions?: { allow_7th?: number; allow_9th?: number }
+  [key: string]: unknown
+}
+
 export interface GenerateRequest {
   style_id: string
   key: string
@@ -107,6 +128,7 @@ export interface SongSectionDef {
   parts_mode?: string
   chorus_key?: boolean
   bridge_key?: boolean
+  style_id?: string   // per-section style override (custom templates)
 }
 
 export interface BuildSongRequest {
@@ -126,6 +148,8 @@ export interface BuildSongRequest {
   final_chorus_lift?: number
   custom_template?: SongSectionDef[]
   progression_override?: string[]   // pin an explicit roman-numeral progression
+  blend_style_id?: string           // optional second style to blend with style_id
+  blend_amount?: number             // 0..1 mix toward blend_style_id
 }
 
 export interface SongSectionResult {

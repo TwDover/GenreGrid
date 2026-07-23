@@ -190,6 +190,7 @@ import PartCard from './PartCard.vue'
 import QualityBadge from './QualityBadge.vue'
 import ArrangementBuilder from './ArrangementBuilder.vue'
 import type { GenerateResponse, FileInfo } from '../types/midi'
+import { errorMessage } from '../utils/errors'
 import { regeneratePart, saveToLibrary, bundleUrl, sectionsUrl } from '../services/api'
 import { useMidiPlayer, type PlayerPart } from '../composables/useMidiPlayer'
 import { useDownloadPrompt } from '../composables/useDownloadPrompt'
@@ -362,8 +363,8 @@ async function handleRegen(response: GenerateResponse, part: string) {
     })
     if (oldFile) undoFiles.value = { ...undoFiles.value, [key]: oldFile }
     emit('part-regenned', response.generation_id, newFile)
-  } catch (e: any) {
-    regenError.value = e.message ?? 'Regeneration failed'
+  } catch (e) {
+    regenError.value = errorMessage(e) ?? 'Regeneration failed'
     logError('Regenerate part', e)
   } finally {
     regenLoadingKey.value = null
@@ -436,8 +437,8 @@ async function handleOfflineExport(response: GenerateResponse, mode: 'wav' | 'st
         }
       }
     }
-  } catch (e: any) {
-    regenError.value = e.message ?? 'Export failed'
+  } catch (e) {
+    regenError.value = errorMessage(e) ?? 'Export failed'
     logError('WAV/stems export', e)
   } finally {
     exportingId.value = null
@@ -462,9 +463,9 @@ async function handleZipDownload(response: GenerateResponse, kind: 'bundle' | 's
     if (!res.ok) throw new Error('Download failed')
     const blob = await res.blob()
     completeJob(jobId, blob)
-  } catch (e: any) {
-    failJob(jobId, e.message ?? 'Download failed')
-    regenError.value = e.message ?? 'Download failed'
+  } catch (e) {
+    failJob(jobId, errorMessage(e) ?? 'Download failed')
+    regenError.value = errorMessage(e) ?? 'Download failed'
     logError('ZIP download', e)
   } finally {
     zipLoading.value = null

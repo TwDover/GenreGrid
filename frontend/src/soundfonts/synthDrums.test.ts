@@ -34,7 +34,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 // to be built inside vi.hoisted() rather than declared as normal top-level
 // classes — otherwise the factory below runs before they're initialized.
 const { createdInstances, FakeMembraneSynth, FakeSynth, FakeNoiseSynth, FakeMetalSynth, FakeFilter, FakeDistortion } = vi.hoisted(() => {
-  const createdInstances: any[] = []
+  const createdInstances: FakeVoiceInstance[] = []
 
   class FakeVoice {
     static requiredArity = 4
@@ -107,7 +107,14 @@ vi.mock('./loader', () => ({
   getDrumBus: () => ({ connect: () => ({}) }),
 }))
 
+import type * as Tone from 'tone'
 import { makeSynthKit } from './synthDrums'
+
+// Minimal surface of a fake voice as seen by the assertions (they only read
+// `.calls`); every FakeVoice subclass satisfies it structurally.
+interface FakeVoiceInstance {
+  calls: unknown[][]
+}
 
 // GM drum pitches used across the tests (mirrors the constants in synthDrums.ts)
 const KICK = 36
@@ -120,10 +127,10 @@ const RIDE = 51
 const TOM = 45
 
 function fakeOut() {
-  return { connect: () => ({}) } as any
+  return { connect: () => ({}) } as unknown as Tone.ToneAudioNode
 }
 function fakeContext() {
-  return {} as any
+  return {} as unknown as Tone.BaseContext
 }
 
 describe('makeSynthKit', () => {

@@ -12,7 +12,7 @@
       <div class="editor-header">
         <span class="editor-title">Style Editor</span>
         <span class="editor-base">Based on: {{ baseStyleName }}</span>
-        <StyleRadar v-if="!loading && !error" :style="(draft as any)" :size="72" :editable="true" @update:style="onRadarDrag" />
+        <StyleRadar v-if="!loading && !error" :style="draft" :size="72" :editable="true" @update:style="onRadarDrag" />
         <button class="close-btn" @click="$emit('close')">✕</button>
       </div>
 
@@ -164,6 +164,8 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { fetchStyleDetail, saveCustomStyle } from '../services/api'
+import type { StyleConfig } from '../types/midi'
+import { errorMessage } from '../utils/errors'
 import StyleRadar from './StyleRadar.vue'
 
 const props = defineProps<{ styleId: string; baseStyleName: string }>()
@@ -195,9 +197,9 @@ const draft = ref<Draft>({
   chord_extensions: { allow_7th: 0.5, allow_9th: 0.3 },
 })
 
-let _source: Record<string, any> = {}
+let _source: StyleConfig = {}
 
-function applySource(data: Record<string, any>) {
+function applySource(data: StyleConfig) {
   _source = data
   draft.value = {
     id: `custom_${data.id}`,
@@ -234,8 +236,8 @@ async function load() {
   try {
     const data = await fetchStyleDetail(props.styleId)
     applySource(data)
-  } catch (e: any) {
-    error.value = e.message ?? 'Failed to load style'
+  } catch (e) {
+    error.value = errorMessage(e) ?? 'Failed to load style'
   } finally {
     loading.value = false
   }
@@ -245,7 +247,7 @@ watch(() => props.styleId, load, { immediate: true })
 
 function pct(v: number) { return `${Math.round(v * 100)}%` }
 
-function onRadarDrag(newStyle: Record<string, any>) {
+function onRadarDrag(newStyle: StyleConfig) {
   draft.value = {
     ...draft.value,
     groove_push: newStyle.groove_push ?? draft.value.groove_push,
@@ -275,8 +277,8 @@ async function handleSave() {
     await saveCustomStyle(payload)
     emit('saved', idClean)
     emit('close')
-  } catch (e: any) {
-    saveError.value = e.message ?? 'Save failed'
+  } catch (e) {
+    saveError.value = errorMessage(e) ?? 'Save failed'
   } finally {
     saving.value = false
   }

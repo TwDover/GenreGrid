@@ -217,7 +217,8 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import type { StyleInfo, BuildSongResponse } from '../types/midi'
+import type { StyleInfo, BuildSongRequest, BuildSongResponse } from '../types/midi'
+import { errorMessage } from '../utils/errors'
 import { buildSong, buildSongFromMelody } from '../services/api'
 import { logError } from '../composables/useErrorLog'
 
@@ -384,7 +385,7 @@ async function generate() {
       emit('built', result, `${templateLabel.value} (your melody)`)
       return
     }
-    const payload: any = { ...form.value }
+    const payload: BuildSongRequest = { ...form.value }
     if (!payload.blend_style_id) delete payload.blend_style_id
     if (form.value.template === 'custom') {
       payload.custom_template = customSections.value.map((s, i) => ({
@@ -399,8 +400,8 @@ async function generate() {
     }
     const result = await buildSong(payload)
     emit('built', result, templateLabel.value)
-  } catch (e: any) {
-    error.value = e.message ?? 'Song generation failed'
+  } catch (e) {
+    error.value = errorMessage(e) ?? 'Song generation failed'
     logError('Build song', e)
   } finally {
     loading.value = false

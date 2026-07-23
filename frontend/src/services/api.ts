@@ -8,13 +8,13 @@
  * version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
  * <https://www.gnu.org/licenses/> for details.
  */
-import type { StyleInfo, GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, LibraryEntry, BatchGenerateRequest, BuildSongRequest, BuildSongResponse } from '../types/midi'
+import type { StyleInfo, StyleConfig, GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, LibraryEntry, BatchGenerateRequest, BuildSongRequest, BuildSongResponse } from '../types/midi'
 
 const BASE_URL = (() => {
-  if (typeof window !== 'undefined' && (window as any).electronAPI?.apiPort) {
-    return `http://127.0.0.1:${(window as any).electronAPI.apiPort}`
+  if (typeof window !== 'undefined' && window.electronAPI?.apiPort) {
+    return `http://127.0.0.1:${window.electronAPI.apiPort}`
   }
-  return (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8000'
+  return import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 })()
 
 export async function fetchStyles(): Promise<StyleInfo[]> {
@@ -266,7 +266,7 @@ export async function fetchLibraryCounts(): Promise<Record<string, number>> {
   return res.json()
 }
 
-export async function fetchStyleDetail(styleId: string): Promise<Record<string, any>> {
+export async function fetchStyleDetail(styleId: string): Promise<StyleConfig> {
   const res = await fetch(`${BASE_URL}/styles/${styleId}/detail`)
   if (!res.ok) throw new Error('Failed to fetch style detail')
   return res.json()
@@ -311,7 +311,7 @@ export async function buildSong(req: BuildSongRequest): Promise<BuildSongRespons
   return res.json()
 }
 
-export async function saveCustomStyle(style: Record<string, any>): Promise<Record<string, any>> {
+export async function saveCustomStyle(style: StyleConfig): Promise<StyleConfig> {
   const res = await fetch(`${BASE_URL}/styles/custom`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
