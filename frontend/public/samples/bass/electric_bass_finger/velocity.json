@@ -1,0 +1,80 @@
+{
+  "layers": [
+    {
+      "maxVelocity": 0.3,
+      "urls": {
+        "Db1": "pp/Db1.mp3",
+        "E1": "pp/E1.mp3",
+        "Gb1": "pp/Gb1.mp3",
+        "A1": "pp/A1.mp3",
+        "C2": "pp/C2.mp3",
+        "Eb2": "pp/Eb2.mp3",
+        "Gb2": "pp/Gb2.mp3",
+        "A2": "pp/A2.mp3",
+        "C3": "pp/C3.mp3",
+        "Eb3": "pp/Eb3.mp3",
+        "Gb3": "pp/Gb3.mp3",
+        "A3": "pp/A3.mp3",
+        "C4": "pp/C4.mp3",
+        "Eb4": "pp/Eb4.mp3"
+      }
+    },
+    {
+      "maxVelocity": 0.55,
+      "urls": {
+        "Db1": "p/Db1.mp3",
+        "E1": "p/E1.mp3",
+        "Gb1": "p/Gb1.mp3",
+        "A1": "p/A1.mp3",
+        "C2": "p/C2.mp3",
+        "Eb2": "p/Eb2.mp3",
+        "Gb2": "p/Gb2.mp3",
+        "A2": "p/A2.mp3",
+        "C3": "p/C3.mp3",
+        "Eb3": "p/Eb3.mp3",
+        "Gb3": "p/Gb3.mp3",
+        "A3": "p/A3.mp3",
+        "C4": "p/C4.mp3",
+        "Eb4": "p/Eb4.mp3"
+      }
+    },
+    {
+      "maxVelocity": 0.8,
+      "urls": {
+        "Db1": "f/Db1.mp3",
+        "E1": "f/E1.mp3",
+        "Gb1": "f/Gb1.mp3",
+        "A1": "f/A1.mp3",
+        "C2": "f/C2.mp3",
+        "Eb2": "f/Eb2.mp3",
+        "Gb2": "f/Gb2.mp3",
+        "A2": "f/A2.mp3",
+        "C3": "f/C3.mp3",
+        "Eb3": "f/Eb3.mp3",
+        "Gb3": "f/Gb3.mp3",
+        "A3": "f/A3.mp3",
+        "C4": "f/C4.mp3",
+        "Eb4": "f/Eb4.mp3"
+      }
+    },
+    {
+      "maxVelocity": 1.0,
+      "urls": {
+        "Db1": "ff/Db1.mp3",
+        "E1": "ff/E1.mp3",
+        "Gb1": "ff/Gb1.mp3",
+        "A1": "ff/A1.mp3",
+        "C2": "ff/C2.mp3",
+        "Eb2": "ff/Eb2.mp3",
+        "Gb2": "ff/Gb2.mp3",
+        "A2": "ff/A2.mp3",
+        "C3": "ff/C3.mp3",
+        "Eb3": "ff/Eb3.mp3",
+        "Gb3": "ff/Gb3.mp3",
+        "A3": "ff/A3.mp3",
+        "C4": "ff/C4.mp3",
+        "Eb4": "ff/Eb4.mp3"
+      }
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "layers": [
+    {
+      "maxVelocity": 0.4,
+      "urls": {
+        "Db1": "vl1/Db1.mp3",
+        "E1": "vl1/E1.mp3",
+        "G1": "vl1/G1.mp3",
+        "Bb1": "vl1/Bb1.mp3",
+        "Db2": "vl1/Db2.mp3",
+        "E2": "vl1/E2.mp3",
+        "G2": "vl1/G2.mp3",
+        "Bb2": "vl1/Bb2.mp3",
+        "Db3": "vl1/Db3.mp3",
+        "E3": "vl1/E3.mp3",
+        "G3": "vl1/G3.mp3",
+        "Bb3": "vl1/Bb3.mp3",
+        "Db4": "vl1/Db4.mp3"
+      }
+    },
+    {
+      "maxVelocity": 0.75,
+      "urls": {
+        "Db1": "vl2/Db1.mp3",
+        "E1": "vl2/E1.mp3",
+        "G1": "vl2/G1.mp3",
+        "Bb1": "vl2/Bb1.mp3",
+        "Db2": "vl2/Db2.mp3",
+        "E2": "vl2/E2.mp3",
+        "G2": "vl2/G2.mp3",
+        "Bb2": "vl2/Bb2.mp3",
+        "Db3": "vl2/Db3.mp3",
+        "E3": "vl2/E3.mp3",
+        "G3": "vl2/G3.mp3",
+        "Bb3": "vl2/Bb3.mp3",
+        "Db4": "vl2/Db4.mp3"
+      }
+    },
+    {
+      "maxVelocity": 1.0,
+      "urls": {
+        "Db1": "vl3/Db1.mp3",
+        "E1": "vl3/E1.mp3",
+        "G1": "vl3/G1.mp3",
+        "Bb1": "vl3/Bb1.mp3",
+        "Db2": "vl3/Db2.mp3",
+        "E2": "vl3/E2.mp3",
+        "G2": "vl3/G2.mp3",
+        "Bb2": "vl3/Bb2.mp3",
+        "Db3": "vl3/Db3.mp3",
+        "E3": "vl3/E3.mp3",
+        "G3": "vl3/G3.mp3",
+        "Bb3": "vl3/Bb3.mp3",
+        "Db4": "vl3/Db4.mp3"
+      }
+    }
+  ]
+}

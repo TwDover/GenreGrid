@@ -11,7 +11,10 @@
 import { ref } from 'vue'
 import {
   buildManifest,
+  buildKit,
+  setKitSlot,
   type CustomInstrument,
+  type DrumKitMap,
   type InstrumentAssignments,
 } from '../soundfonts/customInstruments'
 import type { LayeredSamplerManifest } from '../soundfonts/layeredSampler'
@@ -61,39 +64,80 @@ export function customInstrumentsSupported(): boolean {
   return !!storageApi()
 }
 
-// Cache of materialized instruments (object-URL manifests), keyed by id, so repeated
+// Caches of materialized instruments (object-URL manifests), keyed by id, so repeated
 // plays don't re-read the bytes or leak new object URLs each time.
 const materialized = new Map<string, LayeredSamplerManifest>()
+const materializedKits = new Map<string, DrumKitMap>()
+
+/** Read every stored file for an instrument and expose it as a blob: URL, keyed by
+ *  the stored relative name the manifests reference. */
+async function objectUrls(id: string): Promise<Map<string, string> | null> {
+  const api = storageApi()
+  if (!api) return null
+  const files = await api.read(id)
+  const urlByName = new Map<string, string>()
+  for (const f of files) {
+    urlByName.set(f.name, URL.createObjectURL(new Blob([new Uint8Array(f.data)])))
+  }
+  return urlByName
+}
+
+function rewriteManifest(
+  manifest: LayeredSamplerManifest,
+  urlByName: Map<string, string>,
+): LayeredSamplerManifest {
+  const resolve = (v: string | string[]) =>
+    Array.isArray(v) ? v.map(x => urlByName.get(x) ?? x) : (urlByName.get(v) ?? v)
+  return {
+    layers: manifest.layers.map(l => ({
+      maxVelocity: l.maxVelocity,
+      urls: Object.fromEntries(Object.entries(l.urls).map(([note, v]) => [note, resolve(v)])),
+    })),
+  }
+}
 
 /**
- * Read an instrument's audio over IPC and build a LayeredSampler manifest whose file
- * references are blob: object URLs. Cached per instrument. Returns null if the
- * instrument or the storage backend is unavailable. Use with LayeredSampler:
+ * Read a chromatic instrument's audio over IPC and build a LayeredSampler manifest
+ * whose file references are blob: object URLs. Cached per instrument. Returns null if
+ * the instrument or the storage backend is unavailable. Use with LayeredSampler:
  *   new LayeredSampler({ baseUrl: '', manifest })
  */
 async function materialize(id: string): Promise<LayeredSamplerManifest | null> {
   const cached = materialized.get(id)
   if (cached) return cached
   const inst = getInstrument(id)
-  const api = storageApi()
-  if (!inst || !api) return null
+  if (!inst) return null
+  const urlByName = await objectUrls(id)
+  if (!urlByName) return null
 
-  const files = await api.read(id)
-  const urlByName = new Map<string, string>()
-  for (const f of files) {
-    urlByName.set(f.name, URL.createObjectURL(new Blob([new Uint8Array(f.data)])))
-  }
-  const resolve = (v: string | string[]) =>
-    Array.isArray(v) ? v.map(x => urlByName.get(x) ?? x) : (urlByName.get(v) ?? v)
-
-  const manifest: LayeredSamplerManifest = {
-    layers: inst.manifest.layers.map(l => ({
-      maxVelocity: l.maxVelocity,
-      urls: Object.fromEntries(Object.entries(l.urls).map(([note, v]) => [note, resolve(v)])),
-    })),
-  }
+  const manifest = rewriteManifest(inst.manifest, urlByName)
   materialized.set(id, manifest)
   return manifest
+}
+
+/** Same for a drum kit: every mapped piece becomes a single-zone manifest of blob:
+ *  URLs, ready to become one LayeredSampler per piece. */
+async function materializeKit(id: string): Promise<DrumKitMap | null> {
+  const cached = materializedKits.get(id)
+  if (cached) return cached
+  const inst = getInstrument(id)
+  if (!inst?.kit) return null
+  const urlByName = await objectUrls(id)
+  if (!urlByName) return null
+
+  const kit: DrumKitMap = {}
+  for (const [pitch, manifest] of Object.entries(inst.kit)) {
+    kit[Number(pitch)] = rewriteManifest(manifest, urlByName)
+  }
+  materializedKits.set(id, kit)
+  return kit
+}
+
+/** Forget an instrument's blob: URLs so the next play re-reads it. Called after any
+ *  edit — a stale cache would keep playing the pre-edit kit. */
+function invalidate(id: string): void {
+  materialized.delete(id)
+  materializedKits.delete(id)
 }
 
 function uuid(): string {
@@ -124,17 +168,42 @@ async function importInstrument(
   name: string,
   kind: CustomInstrument['kind'],
   files: File[],
-): Promise<CustomInstrument | null> {
+): Promise<{ instrument: CustomInstrument; unmatched: string[] } | null> {
   const api = storageApi()
   if (!api) throw new Error('Custom instruments need the desktop app.')
 
   const named = files.map(f => ({ file: f, path: relPath(f) }))
-  const { manifest, mapped } = buildManifest(named.map(n => n.path))
-  if (mapped === 0 || manifest.layers.length === 0) return null
+  const paths = named.map(n => n.path)
+
+  // The two kinds map differently — a kit is pitch → one-shot, a chromatic
+  // instrument is a stretched keyboard. See CustomInstrument's docstring.
+  let manifest: LayeredSamplerManifest = { layers: [] }
+  let kit: DrumKitMap | undefined
+  let mapped: number
+  let unmatched: string[] = []
+  if (kind === 'drums') {
+    const built = buildKit(paths)
+    kit = built.kit
+    mapped = built.mapped
+    unmatched = built.unmatched
+    // A kit whose files all went unrecognised is still worth creating: the user
+    // places them by hand in the editor, which beats rejecting the import.
+    if (mapped === 0 && unmatched.length === 0) return null
+  } else {
+    const built = buildManifest(paths)
+    manifest = built.manifest
+    mapped = built.mapped
+    if (mapped === 0 || manifest.layers.length === 0) return null
+  }
 
   const id = uuid()
-  const inst: CustomInstrument = { id, name: name.trim() || 'Untitled', kind, manifest, createdAt: Date.now() }
+  const inst: CustomInstrument = {
+    id, name: name.trim() || 'Untitled', kind, manifest, createdAt: Date.now(),
+    ...(kit ? { kit } : {}),
+  }
 
+  // Store every audio file, including ones no slot claimed — the kit editor needs
+  // them on disk to place later.
   const payload = await Promise.all(
     named
       .filter(n => /\.(mp3|wav|ogg|flac|m4a|aac)$/i.test(n.path))
@@ -142,7 +211,31 @@ async function importInstrument(
   )
   await api.save(inst, payload)
   instruments.value = [...instruments.value, inst]
-  return inst
+  return { instrument: inst, unmatched }
+}
+
+/** Point one kit piece at specific stored files (or clear it with an empty list, which
+ *  drops that piece back to the synth kit). Persists and invalidates the play cache. */
+async function updateKitSlot(id: string, pitch: number, paths: string[]): Promise<void> {
+  const inst = getInstrument(id)
+  const api = storageApi()
+  if (!inst || inst.kind !== 'drums' || !api) return
+  const next: CustomInstrument = { ...inst, kit: setKitSlot(inst.kit ?? {}, pitch, paths) }
+  // No new bytes — the files are already stored; only the map changed.
+  await api.save(next, [])
+  instruments.value = instruments.value.map(i => (i.id === id ? next : i))
+  invalidate(id)
+}
+
+/** Every audio file stored for an instrument, for the kit editor's slot pickers. */
+async function storedFileNames(id: string): Promise<string[]> {
+  const api = storageApi()
+  if (!api) return []
+  try {
+    return (await api.read(id)).map(f => f.name).filter(n => /\.(mp3|wav|ogg|flac|m4a|aac)$/i.test(n))
+  } catch {
+    return []
+  }
 }
 
 // The path used both for the manifest and for storage. Folder uploads carry a
@@ -158,7 +251,7 @@ async function deleteInstrument(id: string): Promise<void> {
   const api = storageApi()
   if (api) await api.remove(id)
   instruments.value = instruments.value.filter(i => i.id !== id)
-  materialized.delete(id)
+  invalidate(id)
   // Drop any assignments that referenced it.
   let changed = false
   for (const part of Object.keys(assignments.value.defaults) as PlayerPart[]) {
@@ -174,13 +267,16 @@ async function deleteInstrument(id: string): Promise<void> {
 }
 
 /** Assign (or clear, with id=null) a custom instrument to a part — globally, or for a
- *  specific style when `styleId` is given. */
+ *  specific style when `styleId` is given.
+ *
+ *  Clearing a per-style assignment records an empty value rather than deleting the
+ *  entry: "built-in for this style" has to beat the all-styles default, or picking
+ *  Built-in in one style would silently keep playing the global override. */
 function assignPart(part: PlayerPart, id: string | null, styleId?: string): void {
   if (styleId) {
     assignments.value.perStyle ??= {}
     assignments.value.perStyle[styleId] ??= {}
-    if (id) assignments.value.perStyle[styleId][part] = id
-    else delete assignments.value.perStyle[styleId][part]
+    assignments.value.perStyle[styleId][part] = id ?? ''
   } else {
     if (id) assignments.value.defaults[part] = id
     else delete assignments.value.defaults[part]
@@ -203,6 +299,9 @@ export function useCustomInstruments() {
     assignPart,
     getInstrument,
     materialize,
+    materializeKit,
+    updateKitSlot,
+    storedFileNames,
     supported: customInstrumentsSupported,
   }
 }

@@ -12,16 +12,17 @@ import { ref } from 'vue'
 import * as Tone from 'tone'
 import { Midi } from '@tonejs/midi'
 import { downloadUrl } from '../services/api'
-import { getPianoSampler, getMasterLimiterNode, getBassBus, getMelodicBus, duckOnKick, resetBusLevels, makeMasterLimiter, applyMelodicFxPreset, setMasterTrimDb } from '../soundfonts/loader'
+import { getPianoSampler, getMasterLimiterNode, getBassBus, getMelodicBus, getDrumBus, duckOnKick, resetBusLevels, makeMasterLimiter, applyMelodicFxPreset, setMasterTrimDb } from '../soundfonts/loader'
 import { MELODIC_FX_PRESETS, MASTER_TRIM_DB, fxFamilyFor } from '../soundfonts/fxPresets'
 import { drumCharacterForStyle } from '../soundfonts/drums'
 import { makeSynthKit } from '../soundfonts/synthDrums'
+import { makeHybridKit, type KitSamplers } from '../soundfonts/customDrumKit'
 import { getBassSampler, SAMPLED_BASS_VOICES } from '../soundfonts/bass'
 import { getMelodicSamplerById, SAMPLED_VOICES } from '../soundfonts/melodic'
 import { LayeredSampler } from '../soundfonts/layeredSampler'
 import { resolvePartInstrument } from '../soundfonts/customInstruments'
 import { useCustomInstruments } from './useCustomInstruments'
-import { voiceFor } from './useStyleCatalog'
+import { voiceFor, setActiveStyle } from './useStyleCatalog'
 import { encodeWav } from '../utils/wavEncoder'
 
 export interface ParsedNote {
@@ -301,6 +302,7 @@ export function useMidiPlayer() {
     const token = ++_playToken
     isLoading.value = true
     nowPlayingLabel.value = label ?? url.split('/').pop() ?? url
+    setActiveStyle(styleId)   // the Instruments panel opens on what you're hearing
 
     try {
       await Tone.start()
@@ -366,6 +368,7 @@ export function useMidiPlayer() {
       // Load any user custom instruments assigned to this style's parts. Every part
       // can be user-sampled; a custom assignment overrides that part's built-in voice.
       const customByPart: Partial<Record<PlayerPart, LayeredSampler>> = {}
+      const customKit: KitSamplers = new Map()
       if (useSamples) {
         const ci = useCustomInstruments()
         if (ci.supported()) {
@@ -382,6 +385,22 @@ export function useMidiPlayer() {
             customByPart[part] = ls
             customSamplers.push(ls)
           }))
+
+          // Drums resolve the same way but load as a kit: one single-zone sampler per
+          // mapped piece, so nothing is ever pitch-shifted and unmapped pieces stay
+          // synthesized (see makeHybridKit).
+          const drumChoice = resolvePartInstrument(ci.assignments.value, styleId, 'drums', null)
+          if (drumChoice.source === 'custom') {
+            const kit = await ci.materializeKit(drumChoice.id)
+            await Promise.all(Object.entries(kit ?? {}).map(async ([pitch, manifest]) => {
+              if (!manifest.layers.length) return
+              const ls = new LayeredSampler({ baseUrl: '', manifest, volume: -4 })
+              await ls.loaded
+              ls.connect(getDrumBus())
+              customKit.set(Number(pitch), ls)
+              customSamplers.push(ls)
+            }))
+          }
           if (token !== _playToken) return
         }
       }
@@ -413,8 +432,12 @@ export function useMidiPlayer() {
 
       // Synthesized drum kit — one voice per articulation, tuned to the style's
       // character. Replaces the old thin/fake-cymbal samples for every genre.
-      const drumKit = makeSynthKit(drumCharacterForStyle(styleId))
-      disposables.push(...drumKit.nodes)
+      // A user kit assigned to the drums part layers over this per piece (below).
+      const synthDrumKit = makeSynthKit(drumCharacterForStyle(styleId))
+      disposables.push(...synthDrumKit.nodes)
+      // User kit pieces (loaded above) take over the pitches they cover; the rest
+      // stay synthesized, so a two-piece kit is usable without filling every slot.
+      const drumKit = makeHybridKit(synthDrumKit, customKit)
       let _synthBass: Tone.MonoSynth | null = null
       const getSynthBass = () => { if (!_synthBass) _synthBass = makeSynthBass(); return _synthBass }
 

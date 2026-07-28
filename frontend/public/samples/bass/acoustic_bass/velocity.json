@@ -1,0 +1,151 @@
+{
+  "layers": [
+    {
+      "maxVelocity": 0.45,
+      "urls": {
+        "C1": [
+          "p/C1_rr1.mp3",
+          "p/C1_rr2.mp3"
+        ],
+        "Eb1": [
+          "p/Eb1_rr1.mp3",
+          "p/Eb1_rr2.mp3"
+        ],
+        "G1": [
+          "p/G1_rr1.mp3",
+          "p/G1_rr2.mp3"
+        ],
+        "Bb1": [
+          "p/Bb1_rr1.mp3",
+          "p/Bb1_rr2.mp3"
+        ],
+        "D2": [
+          "p/D2_rr1.mp3",
+          "p/D2_rr2.mp3"
+        ],
+        "F2": [
+          "p/F2_rr1.mp3",
+          "p/F2_rr2.mp3"
+        ],
+        "A2": [
+          "p/A2_rr1.mp3",
+          "p/A2_rr2.mp3"
+        ],
+        "C3": [
+          "p/C3_rr1.mp3",
+          "p/C3_rr2.mp3"
+        ],
+        "E3": [
+          "p/E3_rr1.mp3",
+          "p/E3_rr2.mp3"
+        ],
+        "G3": [
+          "p/G3_rr1.mp3",
+          "p/G3_rr2.mp3"
+        ],
+        "A3": [
+          "p/A3_rr1.mp3",
+          "p/A3_rr2.mp3"
+        ]
+      }
+    },
+    {
+      "maxVelocity": 0.75,
+      "urls": {
+        "C1": [
+          "m/C1_rr1.mp3",
+          "m/C1_rr2.mp3"
+        ],
+        "Eb1": [
+          "m/Eb1_rr1.mp3",
+          "m/Eb1_rr2.mp3"
+        ],
+        "G1": [
+          "m/G1_rr1.mp3",
+          "m/G1_rr2.mp3"
+        ],
+        "Bb1": [
+          "m/Bb1_rr1.mp3",
+          "m/Bb1_rr2.mp3"
+        ],
+        "D2": [
+          "m/D2_rr1.mp3",
+          "m/D2_rr2.mp3"
+        ],
+        "F2": [
+          "m/F2_rr1.mp3",
+          "m/F2_rr2.mp3"
+        ],
+        "A2": [
+          "m/A2_rr1.mp3",
+          "m/A2_rr2.mp3"
+        ],
+        "C3": [
+          "m/C3_rr1.mp3",
+          "m/C3_rr2.mp3"
+        ],
+        "E3": [
+          "m/E3_rr1.mp3",
+          "m/E3_rr2.mp3"
+        ],
+        "G3": [
+          "m/G3_rr1.mp3",
+          "m/G3_rr2.mp3"
+        ],
+        "A3": [
+          "m/A3_rr1.mp3",
+          "m/A3_rr2.mp3"
+        ]
+      }
+    },
+    {
+      "maxVelocity": 1.0,
+      "urls": {
+        "C1": [
+          "f/C1_rr1.mp3",
+          "f/C1_rr2.mp3"
+        ],
+        "Eb1": [
+          "f/Eb1_rr1.mp3",
+          "f/Eb1_rr2.mp3"
+        ],
+        "G1": [
+          "f/G1_rr1.mp3",
+          "f/G1_rr2.mp3"
+        ],
+        "Bb1": [
+          "f/Bb1_rr1.mp3",
+          "f/Bb1_rr2.mp3"
+        ],
+        "D2": [
+          "f/D2_rr1.mp3",
+          "f/D2_rr2.mp3"
+        ],
+        "F2": [
+          "f/F2_rr1.mp3",
+          "f/F2_rr2.mp3"
+        ],
+        "A2": [
+          "f/A2_rr1.mp3",
+          "f/A2_rr2.mp3"
+        ],
+        "C3": [
+          "f/C3_rr1.mp3",
+          "f/C3_rr2.mp3"
+        ],
+        "E3": [
+          "f/E3_rr1.mp3",
+          "f/E3_rr2.mp3"
+        ],
+        "G3": [
+          "f/G3_rr1.mp3",
+          "f/G3_rr2.mp3"
+        ],
+        "A3": [
+          "f/A3_rr1.mp3",
+          "f/A3_rr2.mp3"
+        ]
+      }
+    }
+  ]
+}

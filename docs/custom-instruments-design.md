@@ -1,19 +1,77 @@
 # Design: User-uploaded custom instruments
 
-**Status (2026-07-23): MVP IMPLEMENTED (needs desktop runtime testing).** Design for
-letting users add their own samples, map them to notes/velocities, and pick which
-instrument plays each part. Fleshes out the Phase 2 roadmap item "Custom soundfont /
-SF2 upload + per-part instrument picker."
+**Status (2026-07-23): T1–T3 + drum kits + per-style assignment SHIPPED (needs desktop
+runtime testing).** Design for letting users add their own samples, map them to
+notes/velocities, and pick which instrument plays each part. Fleshes out the Phase 2
+roadmap item "Custom soundfont / SF2 upload + per-part instrument picker."
 
-**Shipped (T1 + T2 tier):** pure mapping core (`customInstruments.ts`, unit-tested),
-library store (`useCustomInstruments.ts`), Electron storage IPC + preload (list/save/
-remove/read under `userData/instruments/`, played back as blob: URLs — no custom
-scheme, per the Linux Web-Audio note below), engine integration (every part resolves a
-custom instrument first in `useMidiPlayer.ts`), and the Instruments panel UI + a 🎹
-transport-bar button. **Not yet done:** velocity-layer preview, SF2/SFZ import (T4),
-auto pitch-detection, per-style-override UI, web/OPFS storage. **Untested at runtime**
-(automation can't launch Electron / play audio) — needs a desktop pass: import a file,
-assign it to a part, play, and delete.
+**Shipped:** pure mapping core (`customInstruments.ts`, unit-tested), library store
+(`useCustomInstruments.ts`), Electron storage IPC + preload (list/save/remove/read
+under `userData/instruments/`, played back as blob: URLs — no custom scheme, per the
+Linux Web-Audio note below), engine integration (every part, drums included, resolves a
+custom instrument first in `useMidiPlayer.ts`), and the Instruments panel + 🎹
+transport-bar button.
+
+**Second pass (same day)** closed the three things that made the first cut confusing:
+
+- **`kind` now means something.** It was collected, stored, displayed — and read by
+  nothing; playback routed purely by part. It now selects the mapping shape (kit vs
+  chromatic) and filters which instruments a part will even offer.
+- **Drum kits exist.** `drums` was absent from both the kind dropdown and the part
+  resolution loop, so a kit could not be added *or* played. See "Drum kits" below.
+- **The panel shows a style's real lineup**, not an abstract part list, with a
+  this-style / all-styles scope toggle. Per-style assignment was already fully
+  supported by the store and resolver — only the UI never passed a `styleId`.
+
+**Not yet done:** SF2/SFZ import (T4), auto pitch-detection, a mapping preview for
+chromatic instruments (mini keyboard), web/OPFS storage. **Untested at runtime**
+(automation can't launch Electron or play audio) — needs a desktop pass: import a
+melodic instrument and a kit, assign both, play, audition + edit a kit piece, delete.
+
+## Drum kits
+
+A kit is **not** a chromatic instrument with percussion samples in it. Chromatic
+mapping stretches zones across the keyboard; do that to a kit and a missing ride gets
+covered by a pitched-up kick. So drums use a separate shape:
+
+- `CustomInstrument.kit` is `Record<GM pitch, LayeredSamplerManifest>`, each manifest
+  holding **exactly one zone** at `KIT_ROOT`. One zone per piece is what makes
+  pitch-shifting impossible.
+- `DRUM_SLOTS` mirrors the backend's `DRUM_MAP` (`core/constants.py`) — the twelve
+  pitches the generator actually emits.
+- Import matches filenames to pieces (`matchDrumSlot`): distinctive words anywhere
+  (`kick`, `hihat`, `floor_tom`), two-letter abbreviations only as whole tokens, so
+  `chord_stab.wav` is not filed as a closed hat because it contains "ch". Priority
+  order resolves overlaps — open hat beats closed hat, both of which contain "hat".
+- **Unmatched files are returned, not guessed at**, and the kit editor opens on them.
+  A sample on the wrong drum is worse than one the user places in two clicks.
+- Velocity layers and round-robins work per piece exactly as they do chromatically
+  (`kick/soft/01.wav`, `snare_rr2.wav`).
+- **Unfilled pieces fall through to the synth kit** (`makeHybridKit`), so a two-file
+  kit is useful the moment it is imported rather than after filling twelve slots.
+
+## Assignment scope
+
+Resolution is per-style override → global default → registry voice. One subtlety worth
+keeping: a per-style value of `''` means "built-in **for this style**" and is distinct
+from having no entry (which inherits the global default). Without that distinction,
+picking "Built-in" for one style would silently keep playing the all-styles override —
+the UI would look changed and sound identical.
+
+## Where users get sounds
+
+Because imported audio is the user's own and never ships, we are not bound to CC0/CC-BY
+here — the user just needs the right to use what they download. The in-panel hint points
+at a few free, redistributable sources, chosen so the drum matcher (`matchDrumSlot`) has
+the best chance of auto-placing files:
+
+- **One-shot packs** (files named `kick.wav`, `snare.wav`, `hihat.wav`) map cleanly:
+  **Freesound** filtered to CC0, **99Sounds**, MusicRadar’s **SampleRadar**, BPB free packs.
+- **Multisampled CC0 libraries** (the `sfzinstruments` org — `virtuosity_drums`,
+  `karoryfer.*-drums`, DrumGizmo kits) work too, but their velocity/round-robin filenames
+  mostly land in "unmatched" and need manual placement — fine, just more clicks.
+- A folder of 2–3 named one-shots is enough to try the feature; unfilled pieces fall back
+  to the synth kit.
 
 ## Why now
 
@@ -136,21 +194,27 @@ interface InstrumentAssignments {
 
 ## Phased delivery
 
-1. **MVP** — Instruments library (list/add/delete) + T1 (one-shot) & T2 (note-named)
-   import + Electron protocol storage + per-part picker wired into playback. Piano/
-   vibraphone remain the built-in sampled voices; users fill the rest.
-2. **Velocity layers (T3)** + a light mapping preview (mini keyboard, hear each zone).
-3. **SF2/SFZ import (T4)** — start with SFZ (text), then SF2 via a parser.
-4. **Polish** — auto pitch-detection, per-style overrides UI, export/share an instrument
-   as a zip (round-trips with `build_velocity_samples.py` output).
+1. ✅ **MVP** — Instruments library (list/add/delete) + T1 (one-shot) & T2 (note-named)
+   import + Electron storage + per-part picker wired into playback.
+2. ✅ **Velocity layers (T3)**, **drum kits** (per-piece editor, synth fallback), and the
+   **style-lineup panel** with a per-style / all-styles scope toggle.
+3. ✅ **Per-slot audition** in the kit editor (`soundfonts/audition.ts`): a ▶ per piece
+   plays the user's sample if the slot is filled, or the synth fallback (at the shown
+   style's drum character) if empty, so a mis-mapped file is caught where it's edited.
+4. ⬜ **SF2/SFZ import (T4)** — start with SFZ (text), then SF2 via a parser.
+5. ⬜ **Polish** — mapping preview for chromatic instruments (mini keyboard, hear each
+   zone), auto pitch-detection, export/share an instrument as a zip (round-trips with
+   `build_velocity_samples.py` output), web/OPFS storage.
 
 ## Open questions / risks
 
 - **Formats to accept:** wav/mp3/ogg/flac? (Web Audio decodes all; storage size varies —
   maybe transcode-to-ogg on import to bound footprint.)
-- **CSP:** the custom scheme must be allowed for media without weakening the existing
-  localhost-only policy.
 - **Large libraries:** memory/CPU if a user loads many big multisamples — lazy-load per
   style, cap total decoded buffers.
-- **Drums:** custom drum *kits* map pitch→one-shot, not a chromatic range — likely a
-  separate, later editor from the melodic flow.
+- **Kit editing is one file per piece today.** The map supports velocity layers and
+  round-robins per piece (import builds them from folders/`_rrN`), but the editor's
+  slot picker only assigns a single file, and audition plays the top layer only.
+  Multi-file-per-slot editing is the obvious next increment.
+- **No audition for chromatic instruments yet** — only kit pieces. A mini-keyboard
+  preview for melodic/bass instruments is the counterpart follow-up.

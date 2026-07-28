@@ -14,6 +14,12 @@ import {
   parseSampleName,
   buildManifest,
   resolvePartInstrument,
+  matchDrumSlot,
+  buildKit,
+  setKitSlot,
+  kitFiles,
+  DRUM_SLOTS,
+  KIT_ROOT,
   type InstrumentAssignments,
 } from './customInstruments'
 
@@ -120,5 +126,139 @@ describe('resolvePartInstrument', () => {
       .toEqual({ source: 'builtin', voice: 'melody_lead' })
     expect(resolvePartInstrument(null, 'soul', 'bass', null))
       .toEqual({ source: 'builtin', voice: null })
+  })
+})
+
+// ── Drum kits ────────────────────────────────────────────────────────────────
+
+const pitchOf = (id: string) => DRUM_SLOTS.find(s => s.id === id)!.pitch
+
+describe('matchDrumSlot', () => {
+  it('matches the obvious names', () => {
+    expect(matchDrumSlot('kick.wav')?.id).toBe('kick')
+    expect(matchDrumSlot('Snare_01.wav')?.id).toBe('snare')
+    expect(matchDrumSlot('crash.wav')?.id).toBe('crash')
+    expect(matchDrumSlot('ride.wav')?.id).toBe('ride')
+    expect(matchDrumSlot('clap.wav')?.id).toBe('clap')
+  })
+
+  it('prefers open hat over closed when both words could match', () => {
+    // "open hat" contains "hat", which is also the closed-hat cue — priority decides.
+    expect(matchDrumSlot('open_hat.wav')?.id).toBe('open_hat')
+    expect(matchDrumSlot('OpenHat 03.wav')?.id).toBe('open_hat')
+    expect(matchDrumSlot('closed_hat.wav')?.id).toBe('closed_hat')
+    expect(matchDrumSlot('hihat.wav')?.id).toBe('closed_hat')
+  })
+
+  it('accepts short abbreviations only as whole tokens', () => {
+    expect(matchDrumSlot('BD.wav')?.id).toBe('kick')
+    expect(matchDrumSlot('hh_01.wav')?.id).toBe('closed_hat')
+    expect(matchDrumSlot('oh-2.wav')?.id).toBe('open_hat')
+    // "chord" contains "ch" but is not a closed hat; "snippet" contains "sn".
+    expect(matchDrumSlot('chord_stab.wav')).toBeNull()
+    expect(matchDrumSlot('snippet.wav')).toBeNull()
+  })
+
+  it('distinguishes the toms', () => {
+    expect(matchDrumSlot('tom1.wav')?.id).toBe('tom_hi')
+    expect(matchDrumSlot('tom2.wav')?.id).toBe('tom_mid')
+    expect(matchDrumSlot('floor_tom.wav')?.id).toBe('tom_lo')
+  })
+
+  it('returns null for anything it cannot place', () => {
+    expect(matchDrumSlot('mystery.wav')).toBeNull()
+    expect(matchDrumSlot('take_07.wav')).toBeNull()
+  })
+})
+
+describe('buildKit', () => {
+  it('files each sample on its GM pitch, rooted at a single zone', () => {
+    const { kit, mapped, unmatched } = buildKit(['kick.wav', 'snare.wav', 'hh_closed.wav'])
+    expect(mapped).toBe(3)
+    expect(unmatched).toEqual([])
+    expect(Object.keys(kit).map(Number).sort((a, b) => a - b))
+      .toEqual([pitchOf('kick'), pitchOf('snare'), pitchOf('closed_hat')].sort((a, b) => a - b))
+    // One zone per piece is what stops a kick being pitch-shifted into a ride.
+    const kickLayers = kit[pitchOf('kick')].layers
+    expect(kickLayers).toHaveLength(1)
+    expect(Object.keys(kickLayers[0].urls)).toEqual([KIT_ROOT])
+    expect(kickLayers[0].maxVelocity).toBe(1)
+  })
+
+  it('returns unplaceable files instead of guessing', () => {
+    const { kit, mapped, unmatched } = buildKit(['kick.wav', 'weird_thing.wav'])
+    expect(mapped).toBe(1)
+    expect(unmatched).toEqual(['weird_thing.wav'])
+    expect(Object.keys(kit)).toHaveLength(1)
+  })
+
+  it('builds velocity layers per piece from folder hints', () => {
+    const { kit } = buildKit(['kick/soft/01.wav', 'kick/hard/01.wav', 'snare/hard/01.wav'])
+    const kickLayers = kit[pitchOf('kick')].layers
+    expect(kickLayers).toHaveLength(2)
+    expect(kickLayers.map(l => l.maxVelocity)).toEqual([0.5, 1])
+    // Softest first, and every layer still holds exactly the one kit zone.
+    expect(kickLayers[0].urls[KIT_ROOT]).toBe('kick/soft/01.wav')
+    expect(kickLayers[1].urls[KIT_ROOT]).toBe('kick/hard/01.wav')
+    expect(kit[pitchOf('snare')].layers).toHaveLength(1)
+  })
+
+  it('groups round-robins within a piece, in rr order', () => {
+    const { kit } = buildKit(['kick_rr2.wav', 'kick_rr1.wav'])
+    expect(kit[pitchOf('kick')].layers[0].urls[KIT_ROOT]).toEqual(['kick_rr1.wav', 'kick_rr2.wav'])
+  })
+
+  it('ignores non-audio files', () => {
+    const { mapped, skipped } = buildKit(['kick.wav', 'readme.txt'])
+    expect(mapped).toBe(1)
+    expect(skipped).toEqual(['readme.txt'])
+  })
+})
+
+describe('setKitSlot', () => {
+  it('places a file on a piece', () => {
+    const kit = setKitSlot({}, pitchOf('ride'), ['whatever.wav'])
+    expect(kit[pitchOf('ride')].layers[0].urls[KIT_ROOT]).toBe('whatever.wav')
+  })
+
+  it('clearing a piece removes it, so it falls back to the synth kit', () => {
+    const kit = setKitSlot(setKitSlot({}, 36, ['a.wav']), 36, [])
+    expect(kit[36]).toBeUndefined()
+  })
+
+  it('does not mutate the kit it was given', () => {
+    const before = setKitSlot({}, 36, ['a.wav'])
+    const after = setKitSlot(before, 38, ['b.wav'])
+    expect(Object.keys(before)).toEqual(['36'])
+    expect(Object.keys(after).sort()).toEqual(['36', '38'])
+  })
+
+  it('ignores non-audio paths rather than mapping them', () => {
+    expect(setKitSlot({}, 36, ['notes.txt'])[36]).toBeUndefined()
+  })
+})
+
+describe('kitFiles', () => {
+  it('lists every referenced file once', () => {
+    const { kit } = buildKit(['kick_rr1.wav', 'kick_rr2.wav', 'snare/soft/1.wav', 'snare/hard/1.wav'])
+    expect(kitFiles(kit).sort()).toEqual(
+      ['kick_rr1.wav', 'kick_rr2.wav', 'snare/hard/1.wav', 'snare/soft/1.wav'],
+    )
+  })
+})
+
+describe('resolvePartInstrument — per-style "built-in" override', () => {
+  it('an empty per-style value beats the global default instead of inheriting it', () => {
+    // Without this, choosing "Built-in" for one style would keep playing the
+    // all-styles override — the assignment would look changed but sound identical.
+    const assignments: InstrumentAssignments = {
+      defaults: { chords: 'inst-rhodes' },
+      perStyle: { jazz: { chords: '' } },
+    }
+    expect(resolvePartInstrument(assignments, 'jazz', 'chords', 'electric_piano_1'))
+      .toEqual({ source: 'builtin', voice: 'electric_piano_1' })
+    // Other styles still get the global default.
+    expect(resolvePartInstrument(assignments, 'soul', 'chords', 'electric_piano_1'))
+      .toEqual({ source: 'custom', id: 'inst-rhodes' })
   })
 })

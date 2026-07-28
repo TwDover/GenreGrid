@@ -59,36 +59,57 @@ artifacts derived from permissively-licensed (CC-BY, public-domain) sources, and
 - **Salamander Grand Piano** — Alexander Holm. Licensed CC-BY 3.0. The piano sample
   set bundled at `frontend/public/samples/piano/` (the Tone.js-hosted subset) is
   derived from this work. https://archive.org/details/SalamanderGrandPianoV3
+- **E-Pianos** — Greg Sullivan. Licensed CC-BY 3.0. The `melodic/electric_piano_1/`
+  (Hohner Pianet T) and `melodic/electric_piano_2/` (Wurlitzer EP200) sets are
+  derived from this work. https://github.com/sfzinstruments/GregSullivan.E-Pianos
 
 ## Bundled instrument samples (`frontend/public/samples/`)
 
 These are the audio one-shots the app plays. Samples are **data**, licensed
-separately from the GPL-3.0 code. **Everything shipped now has a confirmed license:**
+separately from the GPL-3.0 code. **Everything shipped has a confirmed license:**
 
 | Set | Source | License | Notes |
 |---|---|---|---|
-| **Piano** (`piano/`) | Salamander Grand Piano (Alexander Holm) | **CC-BY 3.0** | Attributed above. Clean to ship. |
-| **Vibraphone** (`melodic/vibraphone/`) | **VCSL** — Versilian Community Sample Library | **CC0 / public domain** | Velocity-layered (soft/hard mallets) via `scripts/build_velocity_samples.py`. No attribution required; kept here as courtesy. https://github.com/sgossner/VCSL |
+| **Piano** (`piano/`) | Salamander Grand Piano (Alexander Holm) | **CC-BY 3.0** | Attributed above. |
+| **Vibraphone** (`melodic/vibraphone/`) | **VCSL** — Versilian Community Sample Library | **CC0** | Soft/hard mallet layers. https://github.com/sgossner/VCSL |
+| **Rhodes voice** (`melodic/electric_piano_1/`) | Greg Sullivan E-Pianos — **Hohner Pianet T** | **CC-BY 3.0** | Attributed above. Stands in for a Rhodes: no Rhodes multisample exists under a license we may redistribute (jRhodes3 is CC BY-**NC**). |
+| **Wurlitzer voice** (`melodic/electric_piano_2/`) | Greg Sullivan E-Pianos — **Wurlitzer EP200** | **CC-BY 3.0** | Attributed above. The genuine instrument for this voice. |
+| **String ensemble** (`melodic/string_ensemble_1/`) | **VSCO 2 Community Edition** (Versilian Studios) | **CC0** | Cello / viola / violin sections stacked by register. https://github.com/sgossner/VSCO-2-CE |
+| **Upright bass** (`bass/acoustic_bass/`) | D. Smolken — Otto Rubner double bass, pizzicato | **CC0** | https://github.com/sfzinstruments/dsmolken.double-bass |
+| **Fingered bass** (`bass/electric_bass_finger/`) | **Karoryfer Samples** — Growlybass (Squier Jazz Bass) | **CC0** | Also serves the `slap_bass_1` voice (no CC0 slap library exists). https://github.com/sfzinstruments/karoryfer.growlybass |
+| **Picked bass** (`bass/electric_bass_pick/`) | **Karoryfer Samples** — Pastabass (Squier Bass VI, flatwound/picked) | **CC0** | https://github.com/sfzinstruments/karoryfer.pastabass |
+| **Fretless bass** (`bass/fretless_bass/`) | **Karoryfer Samples** — Swagbass (dead flatwounds, neck pickup) | **CC0** | https://github.com/sfzinstruments/karoryfer.swagbass |
+
+All sets except the piano are **velocity-layered**, built reproducibly by
+`scripts/build_velocity_samples.py` (which records each source URL and license in
+its specs). CC0 sources need no attribution; they are credited here as a courtesy.
 
 Every other instrument is **synthesized** in the app (no shipped samples), so there is
 nothing else to license. A **Samples / Synth toggle** in the transport bar switches
 between the sampled voices above and full synthesis.
+
+**Still synthesized for want of a redistributable source** (searched again 2026-07-23):
+clavinet, drawbar organ, accordion, and nylon guitar — no CC0/CC-BY multisample of any
+of them was found (VCSL's organs are pipe organs; the CC0 guitar libraries are all
+electric). `synth_bass_1` is synthesized *by choice*: it is a synth, so the app's own
+oscillator is more honest and more tweakable than a frozen sample of someone else's.
 
 > **Removed for licensing (2026-07-23).** The following sets were deleted because their
 > redistribution rights were **not confirmed** — see `docs/LICENSE_AUDIT.md`:
 > - **MusyngKite** (all `bass/` + 7 `melodic/` voices: electric pianos, clavinet,
 >   accordion, drawbar organ, nylon guitar, string ensemble). The redistributor labels
 >   it CC-BY-SA 3.0, but the soundfont's original author says it is "free to use but
->   **not meant to be redistributed**… or used for commercial purposes." Those voices
->   now synthesize.
+>   **not meant to be redistributed**… or used for commercial purposes." The basses,
+>   electric pianos and strings have since been re-sourced from the CC0/CC-BY libraries
+>   in the table above; the rest still synthesize.
 > - **Tone.js drum samples** (`drums/`). No LICENSE on the source repo; and the app
 >   already synthesizes its drum kit, so the samples were unused. Deleted.
 >
 > **Adding samples back cleanly:** use `scripts/build_velocity_samples.py` with a
-> confirmed **CC0 / public-domain** (VCSL) or **CC-BY** (with attribution) source only.
-> Note that University of Iowa MIS, despite being widely called "free," carries **no
-> explicit license grant**, so it is *not* used here. VCSL is acoustic/orchestral and
-> does not cover the electric/synth voices, which is why they remain synthesized.
+> confirmed **CC0 / public-domain** or **CC-BY** (with attribution) source only.
+> Two traps found while sourcing: University of Iowa MIS, despite being widely called
+> "free," carries **no explicit license grant**; and jRhodes3 — the best-sounding free
+> Rhodes — is **CC BY-NC**, so it cannot ship here however good it sounds.
 
 ## Note on the GPL and data
 

@@ -412,7 +412,11 @@ ipcMain.handle('log-renderer-error', async (_, entry: { timestamp: string; conte
 // audio files. The renderer reads bytes back via 'instruments-read' and plays them as
 // blob: URLs (see useCustomInstruments.ts) — deliberately no custom URL scheme, which
 // the Linux Web Audio path renders silent. See docs/custom-instruments-design.md.
-interface StoredInstrument { id: string; name: string; kind: string; manifest: unknown; createdAt: number }
+// `kit` is present only for kind 'drums' (GM pitch → single-zone manifest); the two
+// mapping shapes are described on CustomInstrument in soundfonts/customInstruments.ts.
+interface StoredInstrument {
+  id: string; name: string; kind: string; manifest: unknown; kit?: unknown; createdAt: number
+}
 
 function instrumentsDir(): string {
   const dir = path.join(app.getPath('userData'), 'instruments')

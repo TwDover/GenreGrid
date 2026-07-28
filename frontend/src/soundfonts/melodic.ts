@@ -25,11 +25,19 @@ const MELODIC_SAMPLE_MAP: Record<string, string> = {
 }
 
 // Voices with a confirmed-license (CC0 / CC-BY) sample set on disk. Only these load
-// a sampler; every other voice is synthesized. The old MusyngKite-derived sets
-// (electric pianos, clavinet, accordion, organ, nylon guitar, strings) were removed
-// for licensing reasons — see docs/LICENSE_AUDIT.md — so they fall back to synths.
+// a sampler; every other voice is synthesized. The old MusyngKite-derived sets were
+// removed for licensing reasons (docs/LICENSE_AUDIT.md); these are re-sourced
+// replacements built by scripts/build_velocity_samples.py, which also records where
+// each one came from. Levels are hand-set because every set is peak-normalised per
+// note, so the source's own loudness is gone by the time it gets here.
+//
+// Still synthesized for want of a redistributable source: clavinet, drawbar_organ,
+// accordion, acoustic_guitar_nylon.
 const INSTRUMENT_VOLUME: Record<string, number> = {
-  vibraphone: -6,   // VCSL CC0, velocity-layered (peak-normalised → quieter than the old set)
+  vibraphone: -6,          // VCSL CC0
+  electric_piano_1: -8,    // Hohner Pianet T (CC-BY) standing in for a Rhodes
+  electric_piano_2: -8,    // Wurlitzer EP200 (CC-BY) — the real thing for this voice
+  string_ensemble_1: -12,  // VSCO 2 CE (CC0); sustained + stacked, so it needs the room
 }
 const DEFAULT_VOLUME = -6
 
@@ -50,6 +58,34 @@ async function buildFxChain(inst: string, out: Tone.ToneAudioNode): Promise<Tone
       const chorus = new Tone.Chorus({ frequency: 2, depth: 0.25, wet: 0.18 }).connect(reverb)
       chorus.start()
       return chorus
+    }
+
+    case 'electric_piano_1': {
+      // Rhodes voice: chorus is what makes a suitcase EP sound like one.
+      const reverb = new Tone.Reverb({ decay: 1.4, wet: 0.2 })
+      await reverb.generate()
+      reverb.connect(out)
+      const chorus = new Tone.Chorus({ frequency: 0.8, depth: 0.4, wet: 0.3 }).connect(reverb)
+      chorus.start()
+      return chorus
+    }
+
+    case 'electric_piano_2': {
+      // Wurlitzer voice: its signature is the amp's tremolo, not chorus.
+      const reverb = new Tone.Reverb({ decay: 1.2, wet: 0.16 })
+      await reverb.generate()
+      reverb.connect(out)
+      const tremolo = new Tone.Tremolo({ frequency: 5.5, depth: 0.35, wet: 0.45 }).connect(reverb)
+      tremolo.start()
+      return tremolo
+    }
+
+    case 'string_ensemble_1': {
+      // A section is heard in a hall; the long tail is most of the sound.
+      const reverb = new Tone.Reverb({ decay: 2.8, wet: 0.35 })
+      await reverb.generate()
+      reverb.connect(out)
+      return reverb
     }
 
     default: {
