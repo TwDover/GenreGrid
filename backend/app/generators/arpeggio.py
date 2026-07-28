@@ -7,6 +7,7 @@
 # version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
 # <https://www.gnu.org/licenses/> for details.
 import random
+from app.core.meter import Meter, DEFAULT_METER
 from typing import List
 
 from app.services.midi_writer import NoteEvent
@@ -43,6 +44,7 @@ def generate_arpeggio(
     melody_rests: list | None = None,
     chord_tones: list | None = None,
     seed_contour: list[int] | None = None,
+    meter: Meter = DEFAULT_METER,
 ) -> List[NoteEvent]:
     """Generate an arpeggio part.
 
@@ -63,7 +65,7 @@ def generate_arpeggio(
     allow_7th = arp_cfg.get("allow_7th", False)
     swing_amount = style.get("drums", {}).get("swing", 0.0)
 
-    beats_per_bar = 4
+    beats_per_bar = meter.bar_beats
     prog_len = len(progression)
     ticks_per_beat = 480
 

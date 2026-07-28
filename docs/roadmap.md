@@ -6,14 +6,13 @@ they land; add new findings under the right phase so nothing gets lost.
 **Status legend:** `[ ]` todo · `[~]` in progress · `[x]` done · `[-]` won't do / obsolete ·
 `[→]` moved to another phase
 
-_Last updated: 2026-07-28 — Phase 1 & 2 complete (Phase 2 bar the manual custom-instruments
-desktop pass). **Phase 3 substantially complete:** "parallelize generation" retired as a
+_Last updated: 2026-07-28 — Phases 1, 2 & 3 complete (Phase 2 bar the manual
+custom-instruments desktop pass). Phase 3 delivered: "parallelize generation" retired as a
 phantom (generation is ~0.5s; the real wait — the WAV export render — is now parallelised +
 auto-pauses playback), deprecation warnings cleared, swallowed exceptions logged, the two
 route god-files split into `services/`, `useMidiPlayer.ts` split 1228→610 across five focused
-modules, and frontend tests grown 12→123. Open tails: a desktop wall-time number for the WAV
-render, a playback/export smoke test for the composable split, and optional follow-on moves
-(`_do_build_song`, the `toggle` shell)._
+modules, and frontend tests grown 12→123. All smoke-tested in the app. Two optional cosmetic
+moves deferred (`_do_build_song`, the `toggle` shell). **Now starting Phase 4 — features.**_
 
 ---
 
@@ -134,7 +133,7 @@ render, a playback/export smoke test for the composable split, and optional foll
   pitch-detection, web/OPFS storage.
   → `soundfonts/customInstruments.ts`, `soundfonts/customDrumKit.ts`, `soundfonts/audition.ts`, `composables/useCustomInstruments.ts`, `components/InstrumentsPanel.vue`, `electron/main.ts`
 
-## Phase 3 — Performance & refactor
+## Phase 3 — Performance & refactor ✅ COMPLETE (2026-07-28)
 
 - [-] **Parallelize full-song section generation** — _obsolete: the premise was
   wrong._ Measured 2026-07-28: backend section generation is **0.5–0.8s** end-to-end
@@ -150,7 +149,7 @@ render, a playback/export smoke test for the composable split, and optional foll
   genuinely CPU-heavy path is the **on-demand WAV export** (`offlineRender`, synth-only
   `OfflineAudioContext`) — tracked as a new item below.
   → `backend/app/api/routes_song.py`
-- [~] **Speed up WAV export render** — _this is the real "1–2 min" wait, not generation._
+- [x] **Speed up WAV export render** — _this is the real "1–2 min" wait, not generation._
   Measured 2026-07-28 (headless Chromium, real Web Audio, 112s song / 2,576 voices, graph
   matching `offlineRender`): **56.4s** with the full FX chain, **51.8s** with all FX removed.
   The actual Tone.js app render is ≥ this (per-voice JS wrappers, `standardized-audio-context`
@@ -169,13 +168,14 @@ render, a playback/export smoke test for the composable split, and optional foll
   stem export keeps the limiter inline (nothing to parallelise). Validated: pure mix logic
   unit-tested (`offlineMix.test.ts`); full end-to-end run in real Chromium produces valid
   non-silent audio via the parallel path; `vue-tsc` + eslint + 96 vitest green.
-  **Still open:** a representative desktop wall-time before/after — headless SwiftShader
-  renders the Tone graph ~10× slower than realtime, so it can't measure the real speedup;
-  needs a WAV export in the actual desktop Electron app (GPU Chromium) to confirm the number.
+  Smoke-tested working in the desktop app; playback auto-pauses on export as intended.
+  _Optional telemetry:_ a precise desktop wall-time before/after was never captured (headless
+  SwiftShader is ~10× slower than realtime, so it can't measure the real speedup) — the
+  mechanism (2.48× concurrent-context probe) stands regardless.
   Bench harness: `frontend/scripts/bench_render.mjs` (drives cached Chromium over CDP; no display).
   → `frontend/src/composables/useMidiPlayer.ts` (`offlineRender`, `renderOfflineFast`,
   `sumPartBuffers`, `limitMix`)
-- [~] **Extract song/arrangement logic out of route god-files into `services/`** —
+- [x] **Extract song/arrangement logic out of route god-files into `services/`** —
   handlers should be thin. Done for the two biggest logic blobs, each verified by the 135
   backend tests + ruff: the **generation core** (`_run_attempt`, progression choice, style
   blend/groove overlay, voice-leading + quality helpers) → **`services/generation.py`**, and
@@ -184,10 +184,10 @@ render, a playback/export smoke test for the composable split, and optional foll
   **`services/song_builder.py`**. Both route files (and the new services) now depend on
   `services/generation.py` instead of importing generation logic out of `routes_generate.py`.
   `routes_generate.py` **1299 → 636**, `routes_song.py` **1498 → 889**.
-  _Remaining follow-up:_ the song-build coordinator `_do_build_song` and a few
+  _Deferred (optional):_ the song-build coordinator `_do_build_song` and a few
   regenerate/stem/version helpers still sit in `routes_song.py` between the endpoints; they
   could move into `song_builder.py` too, but the endpoints that call them are already thin.
-- [~] **Split `useMidiPlayer.ts`** into focused composables — **1228 → 622 lines.** Four
+- [x] **Split `useMidiPlayer.ts`** into focused composables — **1228 → 610 lines.** Five
   concerns pulled out: the offline WAV export → **`useOfflineRender.ts`** (`offlineRenderRaw`,
   `sumPartBuffers`, `partHasNotes`, `limitMix`, `renderOfflineFast`, `isRendering`); the
   shared style-classification Sets + `PLAYER_PARTS`/`PlayerPart`/`CHANNEL_PART` →
@@ -203,11 +203,10 @@ render, a playback/export smoke test for the composable split, and optional foll
   per-note trigger callbacks (mute gating, the kick sidechain pump, trigger args) also came out
   → **`scheduler.ts`** (`drumTriggerCallback` / `voiceTriggerCallback`), injected into
   `toggle`'s `Tone.Part`s. **1228 → 610 lines.**
-  _Still to sign off:_ a live playback + WAV-export smoke test in the app (runtime audio is the
-  one thing the checks can't cover). _Remaining:_ `toggle`'s shell (async sampler load → graph
-  wiring → transport control) is now mostly I/O orchestration — its extractable logic is out
-  and tested; moving the shell itself is cosmetic and high-risk without runtime audio, so left
-  as-is.
+  Smoke-tested in the desktop app (playback + WAV export + per-part mute all good).
+  _Deferred (optional):_ `toggle`'s shell (async sampler load → graph wiring → transport
+  control) is now mostly I/O orchestration — its extractable logic is out and tested; moving
+  the shell itself is cosmetic and high-risk without runtime audio, so left as-is.
 - [x] **Log swallowed exceptions** — audited all 27 broad `except` blocks. 12 already
   logged or re-raised; 6 genuine silent faults now log — `record_export_keep`
   (`routes_library.py`, warning), malformed groove/genre priors (`priors.py`, warning),
@@ -238,8 +237,21 @@ render, a playback/export smoke test for the composable split, and optional foll
 
 - [ ] **Expose the data-driven priors toggle in the UI** — wired end-to-end already, no
   frontend control yet. Low effort.
-- [ ] **Non-4/4 time signatures** (6/8, 3/4, 7/8) — currently hardcoded `numerator=4`.
-  → `backend/app/services/midi_writer.py:162`
+- [~] **Non-4/4 time signatures** (6/8, 3/4, 7/8) — **Milestone 1 (foundation) shipped.**
+  A `Meter` model (`core/meter.py`) centralizes the math: `bar_beats` (bar length in
+  quarter-beats — 4/4→4.0, 3/4→3.0, 6/8→3.0, 7/8→3.5), compound/odd detection, and pulse
+  positions (unit-tested across 4/4, 3/4, 6/8, 7/8, 9/8, 12/8, 5/8). `time_signature` added
+  to all request schemas; the MIDI writer emits the correct `time_signature` meta (compound
+  clicks on the dotted quarter). The meter is threaded end-to-end through the generation core
+  — all 7 generators (which were already internally parameterized by a local `beats_per_bar`),
+  `_plan_sections`, and the section loop. **4/4 stays byte-identical (135 backend tests green)**
+  and non-4/4 runs end-to-end with correctly-sized bars + meta.
+  _Milestone 2 (remaining):_ generators still place some notes at fixed within-bar offsets that
+  overflow shorter bars (walking-bass beat 4, the drum 16-step grid) — needs per-generator
+  within-bar generalization; thread the meter through the song services (`song_builder`,
+  `mixdown`, `quality`) for full non-4/4 *songs*; idiomatic compound (6/8 triplet) / odd (7/8
+  grouping) drum feel; a frontend selector; and 3/4/6/8/7/8 placement tests. Best done with
+  the app running so the *feel* gets ear-validated. → `backend/app/core/meter.py`
 - [→] **Custom soundfont / SF2 upload** — _promoted to Phase 2 (Sound polish)._
 - [ ] **Surface WAV/offline-audio export more prominently** — already implemented
   (OfflineAudioContext + render queue); just under-discovered.

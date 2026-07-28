@@ -7,6 +7,7 @@
 # version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
 # <https://www.gnu.org/licenses/> for details.
 import random
+from app.core.meter import Meter, DEFAULT_METER
 from typing import List
 
 from app.services.midi_writer import NoteEvent
@@ -193,6 +194,7 @@ def generate_melody(
     harmony_complexity: float | None = None,
     seed_motif: list[int] | None = None,
     section_type: str | None = None,
+    meter: Meter = DEFAULT_METER,
 ) -> List[NoteEvent]:
     """`melody_model` — optional mined melody prior (interval/phrase-bigram stats).
 
@@ -289,7 +291,7 @@ def generate_melody(
     use_hi_register = False
     current_phrase_idx = -1
 
-    beats_per_bar = 4
+    beats_per_bar = meter.bar_beats
     step = 0.25  # 16th notes
     _harmony_cplx = complexity if harmony_complexity is None else harmony_complexity
     chords_per_bar = 2 if _harmony_cplx > 0.6 else 1

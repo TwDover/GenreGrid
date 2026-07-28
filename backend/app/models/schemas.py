@@ -41,6 +41,7 @@ class GenerateRequest(BaseModel):
     scale: str = "minor"
     bpm: int = Field(default=140, ge=40, le=240)
     bars: int = Field(default=8, ge=1, le=128)
+    time_signature: str = "4/4"  # "N/D" — 4/4, 3/4, 6/8, 7/8, … (denominator 2/4/8/16); bad input falls back to 4/4
     complexity: float = Field(default=0.5, ge=0.0, le=1.0)
     variation: float = Field(default=0.4, ge=0.0, le=1.0)
     dynamics: float = Field(default=0.5, ge=0.0, le=1.0)  # arrangement drama: 0.5 = classic behavior, 0 = flat beat-tape, 1 = every drop/fill/lift pushed
@@ -65,6 +66,7 @@ class RegeneratePartRequest(BaseModel):
     scale: str = "minor"
     bpm: int = Field(default=140, ge=40, le=240)
     bars: int = Field(default=8, ge=1, le=128)
+    time_signature: str = "4/4"  # must match the original generation for faithful replay
     complexity: float = Field(default=0.5, ge=0.0, le=1.0)
     variation: float = Field(default=0.4, ge=0.0, le=1.0)
     dynamics: float = Field(default=0.5, ge=0.0, le=1.0)  # must match the original generation for faithful drum replay
@@ -148,6 +150,7 @@ class BuildSongRequest(BaseModel):
     key: str = "C"
     scale: str = "minor"
     bpm: int = Field(default=120, ge=40, le=240)
+    time_signature: str = "4/4"  # "N/D" — 4/4, 3/4, 6/8, 7/8, … ; bad input falls back to 4/4
     complexity: float = Field(default=0.6, ge=0.0, le=1.0)
     variation: float = Field(default=0.4, ge=0.0, le=1.0)
     dynamics: float = Field(default=0.5, ge=0.0, le=1.0)  # arrangement drama: scales drops/fills/breakdowns/section contrast; 0.5 = classic

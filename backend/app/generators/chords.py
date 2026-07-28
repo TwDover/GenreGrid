@@ -7,6 +7,7 @@
 # version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
 # <https://www.gnu.org/licenses/> for details.
 import random
+from app.core.meter import Meter, DEFAULT_METER
 from typing import List
 
 from app.services.midi_writer import NoteEvent
@@ -332,6 +333,7 @@ def generate_chords(
     prev_voicing: list[int] | None = None,
     push_windows: set[int] | None = None,
     section_type: str | None = None,
+    meter: Meter = DEFAULT_METER,
 ) -> List[NoteEvent]:
     """`harmony_complexity` — the value that decides chords-per-bar, shared with
     melody/bass so all three parts agree on the harmonic grid (falls back to
@@ -467,7 +469,7 @@ def generate_chords(
         t = bar / max(1, total - 1)
         return max(1, min(127, int(base * (start + (1.0 - start) * t))))
 
-    beats_per_bar = 4
+    beats_per_bar = meter.bar_beats
     phrase_beats = beats_per_bar * 4  # 4-bar phrase = 16 beats
     _harmony_cplx = complexity if harmony_complexity is None else harmony_complexity
     chords_per_bar = 2 if _harmony_cplx > 0.6 else 1

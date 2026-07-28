@@ -7,6 +7,7 @@
 # version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
 # <https://www.gnu.org/licenses/> for details.
 import random
+from app.core.meter import Meter, DEFAULT_METER
 from typing import List
 
 from app.services.midi_writer import NoteEvent
@@ -72,11 +73,12 @@ def _generate_walking_bass(
     progression: list,
     kick_times: list[float] | None = None,
     harmony_complexity: float | None = None,
+    meter: Meter = DEFAULT_METER,
 ) -> List[NoteEvent]:
     """Jazz-style 4-to-the-floor walking bass with chord-tone navigation and chromatic approach."""
     events: List[NoteEvent] = []
     prog_len = len(progression)
-    beats_per_bar = 4
+    beats_per_bar = meter.bar_beats
     swing_amount = style.get("drums", {}).get("swing", 0.0)
     ticks_per_beat = 480
 
@@ -222,11 +224,12 @@ def _generate_808_bass(
     harmony_complexity: float | None = None,
     push_windows: set[int] | None = None,
     rhythm_cell: list[float] | None = None,
+    meter: Meter = DEFAULT_METER,
 ) -> List[NoteEvent]:
     """Long-sustain 808-style bass with a randomly selected rhythmic pattern per generation."""
     events: List[NoteEvent] = []
     prog_len = len(progression)
-    beats_per_bar = 4
+    beats_per_bar = meter.bar_beats
 
     # The chords/melody switch to 2 chords per bar above harmony_complexity 0.6
     # (their shared grid). Each 808 hit takes the root of the chord actually
@@ -359,6 +362,7 @@ def generate_bass(
     rhythm_cell: list[float] | None = None,   # the song's rhythmic cell (theme onset offsets) — the bass quotes it
     cell_contour: list[int] | None = None,   # the song's melodic cell (scale-step deltas) — shapes call-response answers
     section_type: str | None = None,   # riff mode: the bass doubles the guitar riff in riff sections
+    meter: Meter = DEFAULT_METER,
 ) -> List[NoteEvent]:
     if progression is None:
         templates = style.get("progression_templates", [["i", "VI", "III", "VII"]])
@@ -381,12 +385,12 @@ def generate_bass(
         return _fold_to_range(
             _generate_808_bass(style, key, scale, bars, complexity, variation, progression,
                                kick_times, harmony_complexity=harmony_complexity,
-                               push_windows=push_windows, rhythm_cell=rhythm_cell), _bass_profile)
+                               push_windows=push_windows, rhythm_cell=rhythm_cell, meter=meter), _bass_profile)
 
     if bass_cfg.get("bass_style") == "walking":
         return _fold_to_range(
             _generate_walking_bass(style, key, scale, bars, complexity, variation, progression,
-                                   kick_times, harmony_complexity=harmony_complexity), _bass_profile)
+                                   kick_times, harmony_complexity=harmony_complexity, meter=meter), _bass_profile)
 
     events: List[NoteEvent] = []
     density = bass_cfg.get("pattern_density", 0.5)
@@ -402,7 +406,7 @@ def generate_bass(
         tick = int(beat * ticks_per_beat)
         return apply_swing(tick, swing_amount, ticks_per_beat) / ticks_per_beat
 
-    beats_per_bar = 4
+    beats_per_bar = meter.bar_beats
     # Match the chord generator's chord density: 2 chords/bar at high complexity
     _harmony_cplx = complexity if harmony_complexity is None else harmony_complexity
     chords_per_bar = 2 if _harmony_cplx > 0.6 else 1

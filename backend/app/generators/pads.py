@@ -7,6 +7,7 @@
 # version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
 # <https://www.gnu.org/licenses/> for details.
 import random
+from app.core.meter import Meter, DEFAULT_METER
 from typing import List
 
 from app.services.midi_writer import NoteEvent
@@ -26,6 +27,7 @@ def generate_pads(
     progression: list | None = None,
     harmony_complexity: float | None = None,
     melody_top: int | None = None,
+    meter: Meter = DEFAULT_METER,
 ) -> List[NoteEvent]:
     """Sustained atmospheric chord layer above the comp chords.
 
@@ -76,7 +78,7 @@ def generate_pads(
     # 9th color adds shimmer at higher complexity
     color_9th_prob = pad_cfg.get("color_9th_prob", 0.35 if complexity > 0.5 else 0.0)
 
-    beats_per_bar = 4
+    beats_per_bar = meter.bar_beats
     # Pads follow the SAME harmonic grid as the chords (2 windows per bar above
     # harmony_complexity 0.6). They used to hold one chord per whole bar, which
     # left the pad sustaining the departed chord across the second window of

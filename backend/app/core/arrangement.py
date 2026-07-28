@@ -13,6 +13,7 @@ Split out of routes_generate.py so arrangement policy lives apart from the
 HTTP endpoints and per-part mixing concerns (see app/services/mixdown.py).
 """
 import random
+from app.core.meter import Meter, DEFAULT_METER
 
 from app.services.midi_writer import NoteEvent
 
@@ -142,13 +143,15 @@ def _apply_section_ramp(
 
 
 def _plan_sections(total_bars: int, complexity: float, requested_parts: list[str],
-                   base_key: str = "C", key_shift: int = 0) -> list[dict]:
+                   base_key: str = "C", key_shift: int = 0,
+                   meter: Meter = DEFAULT_METER) -> list[dict]:
     """Return an arrangement arc as a list of section dicts.
 
     Each dict has: bars, complexity, parts, offset (in beats).
     Sections progress from sparse (foundation only) → full arrangement → sparse outro,
     so the output feels like a song with an energy curve rather than a looping pattern.
     """
+    bb = meter.bar_beats   # bar length in quarter-beats (4.0 for 4/4 → offsets unchanged)
     full   = list(requested_parts)
     no_arp = [p for p in requested_parts if p != "arpeggio"]
     sparse = [p for p in requested_parts if p in ("drums", "bass", "chords")]
@@ -166,7 +169,7 @@ def _plan_sections(total_bars: int, complexity: float, requested_parts: list[str
         intro = max(1, total_bars // 4)
         return [
             sec(intro,              0.35, found, 0,          dyn=0.72),
-            sec(total_bars - intro, 1.0,  full,  intro * 4,  dyn=1.0),
+            sec(total_bars - intro, 1.0,  full,  intro * bb,  dyn=1.0),
         ]
 
     if total_bars <= 16:
@@ -176,9 +179,9 @@ def _plan_sections(total_bars: int, complexity: float, requested_parts: list[str
         verse  = mid // 2
         chorus = mid - verse
         secs, off = [], 0
-        secs.append(sec(intro,  0.3,  found,  off, dyn=0.70)); off += intro  * 4
-        secs.append(sec(verse,  0.65, sparse, off, dyn=0.85)); off += verse  * 4
-        secs.append(sec(chorus, 1.0,  full,   off, key=chorus_key, dyn=1.00)); off += chorus * 4
+        secs.append(sec(intro,  0.3,  found,  off, dyn=0.70)); off += intro  * bb
+        secs.append(sec(verse,  0.65, sparse, off, dyn=0.85)); off += verse  * bb
+        secs.append(sec(chorus, 1.0,  full,   off, key=chorus_key, dyn=1.00)); off += chorus * bb
         secs.append(sec(outro,  0.35, found,  off, dyn=0.72))
         return secs
 
@@ -193,9 +196,9 @@ def _plan_sections(total_bars: int, complexity: float, requested_parts: list[str
             chorus = 4
             verse  = mid - chorus
         secs, off = [], 0
-        secs.append(sec(intro,  0.25, found,  off, dyn=0.70)); off += intro  * 4
-        secs.append(sec(verse,  0.6,  no_arp, off, dyn=0.85)); off += verse  * 4
-        secs.append(sec(chorus, 1.0,  full,   off, key=chorus_key, dyn=1.00)); off += chorus * 4
+        secs.append(sec(intro,  0.25, found,  off, dyn=0.70)); off += intro  * bb
+        secs.append(sec(verse,  0.6,  no_arp, off, dyn=0.85)); off += verse  * bb
+        secs.append(sec(chorus, 1.0,  full,   off, key=chorus_key, dyn=1.00)); off += chorus * bb
         secs.append(sec(outro,  0.3,  found,  off, dyn=0.72))
         return secs
 
@@ -209,9 +212,9 @@ def _plan_sections(total_bars: int, complexity: float, requested_parts: list[str
         chorus = 8
         verse  = mid - chorus
     secs, off = [], 0
-    secs.append(sec(intro,  0.25, found,  off, dyn=0.70)); off += intro  * 4
-    secs.append(sec(verse,  0.6,  no_arp, off, dyn=0.85)); off += verse  * 4
-    secs.append(sec(chorus, 1.0,  full,   off, key=chorus_key, dyn=1.00)); off += chorus * 4
+    secs.append(sec(intro,  0.25, found,  off, dyn=0.70)); off += intro  * bb
+    secs.append(sec(verse,  0.6,  no_arp, off, dyn=0.85)); off += verse  * bb
+    secs.append(sec(chorus, 1.0,  full,   off, key=chorus_key, dyn=1.00)); off += chorus * bb
     secs.append(sec(outro,  0.3,  found,  off, dyn=0.72))
     return secs
 
