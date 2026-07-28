@@ -56,7 +56,7 @@ def test_groove_overlay_and_runtime(tmp_path, monkeypatch):
     """A groove prior should overlay the style's drums and drive live generation."""
     import app.services.priors as priors
     from app.services.priors import groove_fields_for
-    from app.api.routes_generate import _overlay_groove
+    from app.services.generation import _overlay_groove
     from app.models.schemas import GenerateRequest
     from app.api.routes_generate import generate
 

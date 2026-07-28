@@ -12,7 +12,7 @@ import { ref } from 'vue'
 import * as Tone from 'tone'
 import { Midi } from '@tonejs/midi'
 import { downloadUrl } from '../services/api'
-import { getPianoSampler, getMasterLimiterNode, getBassBus, getMelodicBus, getDrumBus, duckOnKick, resetBusLevels, makeMasterLimiter, applyMelodicFxPreset, setMasterTrimDb } from '../soundfonts/loader'
+import { getPianoSampler, getMasterLimiterNode, getBassBus, getMelodicBus, getDrumBus, duckOnKick, resetBusLevels, makeMasterLimiter, softClipCurve, applyMelodicFxPreset, setMasterTrimDb } from '../soundfonts/loader'
 import { MELODIC_FX_PRESETS, MASTER_TRIM_DB, fxFamilyFor } from '../soundfonts/fxPresets'
 import { drumCharacterForStyle } from '../soundfonts/drums'
 import { makeSynthKit } from '../soundfonts/synthDrums'
@@ -289,6 +289,64 @@ async function renderOfflineFast(
   const context = new Tone.OfflineContext(channels, duration, Tone.getContext().sampleRate)
   await callback(context)
   return await context.render(true)
+}
+
+// Does the parsed MIDI carry any notes for a given part? Mirrors the render's own
+// channel→voice routing (percussion / ch9 → drums; everything else via CHANNEL_PART,
+// with unknown non-perc channels falling through to chords like the scheduler does).
+// Used to decide which parts to spin up as parallel per-part renders.
+function partHasNotes(midi: Midi, part: PlayerPart): boolean {
+  return midi.tracks.some(t => {
+    if (t.notes.length === 0) return false
+    const perc = t.instrument.percussion || (t.channel ?? 0) === 9
+    const p = perc ? 'drums' : CHANNEL_PART[t.channel ?? 0] ?? 'chords'
+    return p === part
+  })
+}
+
+// Sum several rendered part buffers into one stereo pair. Pure (no Web Audio), so it's
+// unit-testable. The per-part offline graphs never share nodes, so summing their outputs
+// reproduces exactly the signal the single-pass graph summed at its master bus — the
+// pre-limiter mix. Exported for the mix-identity test.
+export function sumPartBuffers(
+  buffers: Array<Pick<AudioBuffer, 'length' | 'sampleRate' | 'numberOfChannels' | 'getChannelData'>>,
+): { length: number; sampleRate: number; channels: [Float32Array<ArrayBuffer>, Float32Array<ArrayBuffer>] } {
+  const length = buffers.reduce((m, b) => Math.max(m, b.length), 0)
+  const sampleRate = buffers[0]?.sampleRate ?? 44100
+  const L = new Float32Array(length)
+  const R = new Float32Array(length)
+  for (const b of buffers) {
+    const bl = b.getChannelData(0)
+    const br = b.numberOfChannels > 1 ? b.getChannelData(1) : bl
+    for (let i = 0; i < b.length; i++) { L[i] += bl[i]; R[i] += br[i] }
+  }
+  return { length, sampleRate, channels: [L, R] }
+}
+
+// Sum the parallel per-part renders and apply the master soft-clip limiter ONCE, in a
+// raw Web-Audio pass. The limiter is non-linear, so it must run on the summed mix, not
+// per part. A raw WaveShaperNode reproduces makeMasterLimiter exactly: Tone samples the
+// `mapping` over [-1, 1] into `length` points (curve[i] = softClipCurve(i/(len-1)*2-1))
+// and sets oversample '4x' — so the parallel path's output is bit-for-bit the single-
+// pass path's, minus float summation order (inaudible).
+async function limitMix(
+  buffers: Array<Pick<AudioBuffer, 'length' | 'sampleRate' | 'numberOfChannels' | 'getChannelData'>>,
+): Promise<AudioBuffer> {
+  const { length, sampleRate, channels } = sumPartBuffers(buffers)
+  const ctx = new OfflineAudioContext(2, length, sampleRate)
+  const mix = ctx.createBuffer(2, length, sampleRate)
+  mix.copyToChannel(channels[0], 0)
+  mix.copyToChannel(channels[1], 1)
+  const src = ctx.createBufferSource()
+  src.buffer = mix
+  const ws = ctx.createWaveShaper()
+  const curve = new Float32Array(4096)
+  for (let i = 0; i < 4096; i++) curve[i] = softClipCurve((i / 4095) * 2 - 1)
+  ws.curve = curve
+  ws.oversample = '4x'
+  src.connect(ws).connect(ctx.destination)
+  src.start(0)
+  return await ctx.startRendering()
 }
 
 export function useMidiPlayer() {
@@ -678,6 +736,16 @@ export function useMidiPlayer() {
   ): Promise<Blob> {
     isRendering.value = true
     onProgress?.(0.02)
+    // A WAV render walks the song timeline on the MAIN thread (Tone's render clock, plus
+    // the per-part sum + limiter passes), which starves the live Transport's main-thread
+    // lookahead scheduler and makes playback stutter/freeze mid-export. Pause live playback
+    // for the duration: the render is offline and position-independent, so pausing doesn't
+    // change the exported audio, and playback holds its spot to resume from. (MIDI export
+    // does no audio work, so it never had this problem.)
+    if (currentlyPlaying.value !== null && !isPaused.value) {
+      Tone.getTransport().pause()
+      isPaused.value = true
+    }
     try {
       const fetchUrl = url.startsWith('blob:') || url.startsWith('data:') ? url : downloadUrl(url)
       const buf = await fetch(fetchUrl).then(r => r.arrayBuffer())
@@ -723,15 +791,26 @@ export function useMidiPlayer() {
         )
       })
 
-      const renderPromise = renderOfflineFast(async (context) => {
+      // Build the synth graph for a subset of parts. `wants(p)` picks which parts this
+      // pass renders; `withLimiter` puts the master soft-clip limiter inline. The
+      // parallel path renders each part on its OWN OfflineAudioContext WITHOUT the
+      // limiter (Chromium bounces them on separate threads) and limits the summed mix
+      // once afterwards; a single-part stem render keeps the limiter inline because its
+      // output already IS the final mix. See the orchestration below.
+      const buildGraph = async (context: Tone.OfflineContext, wants: (p: PlayerPart) => boolean, withLimiter: boolean) => {
         const dest = context.destination
         dest.volume.value = 0
         // Plain gain, not a Tone.Compressor — a DynamicsCompressorNode renders silence on
         // Linux packaged Electron (see getMasterCompressor in loader.ts), which would make
         // WAV exports silent there too. A WaveShaper soft-clip limiter after it catches
         // peaks so the exported WAV can't clip, matching live playback's master chain.
-        const limiter = makeMasterLimiter(context).connect(dest)
-        const comp = new Tone.Gain({ context, gain: 1 }).connect(limiter)
+        let busOut: Tone.ToneAudioNode = dest
+        if (withLimiter) {
+          const limiter = makeMasterLimiter(context)
+          limiter.connect(dest)
+          busOut = limiter
+        }
+        const comp = new Tone.Gain({ context, gain: 1 }).connect(busOut)
 
         // Only needed so Transport-relative delay-time notation ('8n', '4n', …)
         // in the effects below resolves against the song's real tempo — no note
@@ -744,13 +823,13 @@ export function useMidiPlayer() {
         // ── Drum kit ─────────────────────────────────────────────────────
         // Same synthesized engine as live playback, routed to the offline
         // compressor so the export matches what the user auditions.
-        const drumKit = wantsPart('drums')
+        const drumKit = wants('drums')
           ? makeSynthKit(drumCharacterForStyle(styleId), comp, context)
           : null
 
         // ── Bass synth ───────────────────────────────────────────────────
         let bassSynth: Tone.MonoSynth | null = null
-        if (wantsPart('bass')) {
+        if (wants('bass')) {
           bassSynth = new Tone.MonoSynth({
             context,
             oscillator: { type: 'sawtooth' },
@@ -909,11 +988,11 @@ export function useMidiPlayer() {
           midi.tracks.some(t => (t.channel ?? 0) === ch && t.notes.length > 0)
         // Only built when wanted AND the file actually carries the part — keeps
         // the offline graph light for single-stem renders.
-        if (wantsPart('chords'))   chordsSynth = mkVoice('chords', panForChannel(0))
-        if (wantsPart('melody'))   leadSynth   = mkVoice('lead',   panForChannel(2))
-        if (wantsPart('arpeggio')) arpSynth    = mkVoice('arp',    panForChannel(3))
-        if (wantsPart('pads') && hasTrackOn(4))           padsSynth    = mkVoice('pads',    panForChannel(4))
-        if (wantsPart('counter_melody') && hasTrackOn(5)) stringsSynth = mkVoice('strings', panForChannel(5))
+        if (wants('chords'))   chordsSynth = mkVoice('chords', panForChannel(0))
+        if (wants('melody'))   leadSynth   = mkVoice('lead',   panForChannel(2))
+        if (wants('arpeggio')) arpSynth    = mkVoice('arp',    panForChannel(3))
+        if (wants('pads') && hasTrackOn(4))           padsSynth    = mkVoice('pads',    panForChannel(4))
+        if (wants('counter_melody') && hasTrackOn(5)) stringsSynth = mkVoice('strings', panForChannel(5))
 
         // ── Schedule MIDI events ─────────────────────────────────────────
         // Triggered directly at each note's absolute time (seconds from render
@@ -980,25 +1059,54 @@ export function useMidiPlayer() {
           lastTime = time
           t.fn(time)
         }
-      }, totalDuration, 2)
+      }
 
-      // If the timeout wins the race, the render keeps running in the background
-      // (an OfflineAudioContext can't be cancelled) — swallow its eventual
-      // settlement so a late rejection doesn't surface as an unhandled promise.
-      renderPromise.catch(() => {})
+      // The individual parts this render covers: the wanted universe intersected with
+      // the parts the file actually carries. Each renders on its own OfflineAudioContext
+      // so Chromium can bounce them on separate threads (measured ~2.5× faster on 8
+      // cores); the per-part graphs never interact, so the summed mix is the same signal
+      // the single-pass graph fed its limiter. A lone part (stem export) has nothing to
+      // parallelise, so it renders inline with the limiter — its output IS the mix.
+      const present = PLAYER_PARTS.filter(p => wantsPart(p) && partHasNotes(midi, p))
 
-      let toneBuffer: Awaited<typeof renderPromise>
+      // If the timeout wins a race, the render keeps going in the background (an
+      // OfflineAudioContext can't be cancelled) — the `.catch(() => {})` on each promise
+      // swallows its eventual settlement so a late rejection isn't an unhandled promise.
+      let finalBuffer: AudioBuffer
       try {
-        toneBuffer = await Promise.race([renderPromise, timeout])
+        if (present.length <= 1) {
+          const single = renderOfflineFast(c => buildGraph(c, wantsPart, true), totalDuration, 2)
+          single.catch(() => {})
+          const toneBuffer = await Promise.race([single, timeout])
+          const ab = toneBuffer.get()
+          if (!ab) throw new Error('Offline render returned empty buffer')
+          finalBuffer = ab
+        } else {
+          // Render every part in parallel (no limiter); progress advances as each lands.
+          let done = 0
+          const partRenders = present.map(p =>
+            renderOfflineFast(c => buildGraph(c, q => q === p, false), totalDuration, 2)
+              .then(buf => {
+                done += 1
+                onProgress?.(0.08 + 0.8 * (done / present.length))
+                return buf
+              }),
+          )
+          partRenders.forEach(pr => pr.catch(() => {}))
+          const dry = await Promise.race([Promise.all(partRenders), timeout])
+          const buffers = dry.map(b => b.get()).filter((b): b is AudioBuffer => !!b)
+          if (buffers.length === 0) throw new Error('Offline render returned empty buffer')
+          onProgress?.(0.9)
+          // Sum the parts and apply the master limiter once, on the full mix.
+          finalBuffer = await limitMix(buffers)
+        }
       } finally {
         clearInterval(progressTimer)
         if (timeoutHandle !== null) clearTimeout(timeoutHandle)
       }
 
       onProgress?.(0.92)
-      const ab = toneBuffer.get()
-      if (!ab) throw new Error('Offline render returned empty buffer')
-      const blob = encodeWav(ab)
+      const blob = encodeWav(finalBuffer)
       onProgress?.(1)
       return blob
     } finally {

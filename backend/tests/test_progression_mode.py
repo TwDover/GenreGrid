@@ -20,7 +20,8 @@ import glob
 import json
 from pathlib import Path
 
-from app.api.routes_generate import _choose_progression, _scale_mode, _template_tonic_mode
+from app.services.generation import _choose_progression, _template_tonic_mode
+from app.theory.scales import scale_mode as _scale_mode
 
 STYLES_DIR = Path(__file__).parent.parent / "app" / "styles"
 
@@ -79,7 +80,7 @@ def test_no_shipped_style_has_mixed_tonic_templates():
 
 
 def test_resolve_avoid_notes():
-    from app.api.routes_generate import _resolve_avoid_notes
+    from app.services.generation import _resolve_avoid_notes
     from app.services.midi_writer import NoteEvent
 
     c_minor_pcs = {0, 2, 3, 5, 7, 8, 10}

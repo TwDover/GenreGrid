@@ -230,9 +230,13 @@ async function createWindow(): Promise<void> {
 
   // ── DEBUG: mirror the whole renderer console into the main-process stdout, so the full
   // renderer log (audio setup, errors, everything) shows in the terminal without DevTools.
-  win.webContents.on('console-message', (_e, level, message) => {
-    const tag = ['LOG', 'WARN', 'ERR', 'INFO'][level] ?? 'LOG'
-    console.log(`[renderer:${tag}] ${message}`)
+  // Electron 36+ replaced the positional (event, level:number, message, …) signature with a
+  // single details object whose `level` is a string — the old form is deprecated. Map the
+  // string severity to a short tag (the old numeric mapping was also wrong: 0-3 is
+  // verbose/info/warning/error, not the log/warn/err/info it assumed).
+  win.webContents.on('console-message', (details) => {
+    const tag = ({ info: 'INFO', warning: 'WARN', error: 'ERR', debug: 'LOG' } as const)[details.level] ?? 'LOG'
+    console.log(`[renderer:${tag}] ${details.message}`)
   })
   win.webContents.on('did-fail-load', (_e, code, desc, url) => {
     console.error(`[main] renderer FAILED to load: code=${code} "${desc}" url=${url}`)

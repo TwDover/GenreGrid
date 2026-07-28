@@ -6,11 +6,15 @@
 # Foundation, either version 3 of the License, or (at your option) any later
 # version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
 # <https://www.gnu.org/licenses/> for details.
+import logging
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.services.library import save_generation, list_library, exclude_generation
 from app.core.config import EXPORTS_DIR
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/library", tags=["library"])
 
@@ -38,6 +42,7 @@ def record_export_keep(gen_id: str) -> bool:
         )
         return True
     except Exception:
+        logger.warning("Failed to record export keep for gen_id=%s", gen_id, exc_info=True)
         return False
 
 
