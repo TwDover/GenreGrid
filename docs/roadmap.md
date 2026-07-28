@@ -7,10 +7,13 @@ they land; add new findings under the right phase so nothing gets lost.
 `[→]` moved to another phase
 
 _Last updated: 2026-07-28 — Phase 1 & 2 complete (Phase 2 bar the manual custom-instruments
-desktop pass). Phase 3 well underway: the "parallelize generation" item was retired as a
-phantom (generation is ~0.5s; the real wait is the WAV export render, now parallelised),
-deprecation warnings cleared, swallowed exceptions logged, and the two route god-files
-split into `services/`. Remaining Phase 3: split `useMidiPlayer.ts`, grow frontend tests._
+desktop pass). **Phase 3 substantially complete:** "parallelize generation" retired as a
+phantom (generation is ~0.5s; the real wait — the WAV export render — is now parallelised +
+auto-pauses playback), deprecation warnings cleared, swallowed exceptions logged, the two
+route god-files split into `services/`, `useMidiPlayer.ts` split 1228→610 across five focused
+modules, and frontend tests grown 12→123. Open tails: a desktop wall-time number for the WAV
+render, a playback/export smoke test for the composable split, and optional follow-on moves
+(`_do_build_song`, the `toggle` shell)._
 
 ---
 
@@ -184,7 +187,27 @@ split into `services/`. Remaining Phase 3: split `useMidiPlayer.ts`, grow fronte
   _Remaining follow-up:_ the song-build coordinator `_do_build_song` and a few
   regenerate/stem/version helpers still sit in `routes_song.py` between the endpoints; they
   could move into `song_builder.py` too, but the endpoints that call them are already thin.
-- [ ] **Split `useMidiPlayer.ts`** (1018 lines) into focused composables.
+- [~] **Split `useMidiPlayer.ts`** into focused composables — **1228 → 622 lines.** Four
+  concerns pulled out: the offline WAV export → **`useOfflineRender.ts`** (`offlineRenderRaw`,
+  `sumPartBuffers`, `partHasNotes`, `limitMix`, `renderOfflineFast`, `isRendering`); the
+  shared style-classification Sets + `PLAYER_PARTS`/`PlayerPart`/`CHANNEL_PART` →
+  **`playerConstants.ts`** (playback + render read one source, no import cycle); the 7 synth
+  voice factories → **`soundfonts/synthVoices.ts`** (next to `synthDrums.ts`; they take the
+  player's `disposables` array so cleanup still disposes their nodes); and the pure
+  voice-routing decision (which instrument a part plays) + the CC10 pan map →
+  **`voiceRouting.ts`** (`resolveMelodicVoiceKind` / `panFromCC10`), so the fragile branch
+  logic is unit-testable — `getMelodicInstrument` now switches on the returned kind. The
+  pause-on-export stays a thin wrapper in `useMidiPlayer` (it owns the playback refs);
+  `useMidiPlayer` re-exports `PLAYER_PARTS`/`PlayerPart` so external importers are unaffected.
+  Pure moves — verified by `vue-tsc` + eslint + production build + 123 vitest. The scheduler's
+  per-note trigger callbacks (mute gating, the kick sidechain pump, trigger args) also came out
+  → **`scheduler.ts`** (`drumTriggerCallback` / `voiceTriggerCallback`), injected into
+  `toggle`'s `Tone.Part`s. **1228 → 610 lines.**
+  _Still to sign off:_ a live playback + WAV-export smoke test in the app (runtime audio is the
+  one thing the checks can't cover). _Remaining:_ `toggle`'s shell (async sampler load → graph
+  wiring → transport control) is now mostly I/O orchestration — its extractable logic is out
+  and tested; moving the shell itself is cosmetic and high-risk without runtime audio, so left
+  as-is.
 - [x] **Log swallowed exceptions** — audited all 27 broad `except` blocks. 12 already
   logged or re-raised; 6 genuine silent faults now log — `record_export_keep`
   (`routes_library.py`, warning), malformed groove/genre priors (`priors.py`, warning),
@@ -194,9 +217,16 @@ split into `services/`. Remaining Phase 3: split `useMidiPlayer.ts`, grow fronte
   `except` is by-design control flow (exotic modes have no MIDI key sig, documented), and
   the generator inner-loop `except`s (bass/melody/quality/answer/corpus) are intentional
   musical graceful-degradation, not swallowed faults — logging each would be pure noise.
-- [ ] **Grow frontend test coverage** — 12 tests vs 132 backend; the audio scheduler and
-  WAV-render path (most fragile code) are untested. _(Up to 96 frontend tests now — the
-  WAV-render mix path gained `offlineMix.test.ts` — but the scheduler is still untested.)_
+- [x] **Grow frontend test coverage** — 12 → **123 tests**. The two fragile areas the
+  survey flagged now have real coverage. WAV-render path: `offlineMix.test.ts`
+  (`sumPartBuffers` mixing + `partHasNotes` channel→part mapping), `wavEncoder.test.ts`
+  (`encodeWav` RIFF header, stereo interleaving, int16 clamping, mono byte-rate). Live
+  playback: `voiceRouting.test.ts` (the melodic voice-selection precedence table + CC10 pan)
+  and `scheduler.test.ts` (the `Tone.Part` trigger callbacks — mute gating, the kick sidechain
+  pump, and trigger arguments, all driven without a Tone context via injected collaborators).
+  The scheduler logic became testable by extracting the callbacks (see the split above); the
+  remaining untested surface is `toggle`'s async sampler-load / graph-wiring I/O, which is
+  integration-shaped rather than unit-testable.
 - [x] **Clear deprecation warnings** — **Starlette `TestClient`**: moved the test dep from
   `httpx` to `httpx2` (`requirements.txt`); TestClient prefers httpx2 and the
   `StarletteDeprecationWarning` is gone, 135 backend tests still green. **Electron
