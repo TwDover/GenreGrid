@@ -21,11 +21,12 @@ fonts/icons, and our own license declaration + source headers.
 | Piano samples | ✅ Salamander, CC-BY 3.0 (attributed) |
 | Vibraphone samples | ✅ VCSL, CC0 |
 | **Drum samples** | ✅ unconfirmed license + **unused** — deleted |
-| **Bass + melodic samples** | ✅ MusyngKite removed — those voices now synthesize |
+| **Bass + melodic samples** | ✅ MusyngKite removed; 7 of those voices re-sourced from CC0/CC-BY libraries (§6) |
 
-**Result: the app ships no asset with unconfirmed redistribution rights.** Remaining
-sampled voices are piano (CC-BY 3.0) and vibraphone (CC0); everything else synthesizes,
-toggleable via the transport bar's Samples / Synth control.
+**Result: the app ships no asset with unconfirmed redistribution rights.** Sampled
+voices are piano (CC-BY 3.0), vibraphone + 4 basses + string ensemble (CC0), and two
+electric pianos (CC-BY 3.0). Everything else synthesizes, toggleable via the transport
+bar's Samples / Synth control.
 
 ---
 
@@ -94,8 +95,35 @@ Goal: ship **no** MusyngKite-derived audio, achieved as follows:
 - **Freesound** — many CC0 samples exist, but the API requires auth unavailable in the
   automation environment; a manual, per-sample CC0 curation pass remains a future option.
 
-Confirmed-clean, direct-download sources that *were* usable: **VCSL (CC0)** and **Salamander
-(CC-BY)** — which only cover piano + vibraphone among GenreGrid's voices.
+---
+
+## 6. Re-sourcing the removed voices (2026-07-23, follow-up)
+
+The MusyngKite removal left 13 voices synthesizing. Seven have since been restored from
+libraries with **explicit, verifiable** license files, all fetched by
+`scripts/build_velocity_samples.py`:
+
+| Voice | Source | License |
+|---|---|---|
+| `electric_bass_finger` (+ `slap_bass_1`) | Karoryfer **Growlybass** (Squier Jazz Bass) | CC0 |
+| `electric_bass_pick` | Karoryfer **Pastabass** ("linguine": flatwound, picked) | CC0 |
+| `fretless_bass` | Karoryfer **Swagbass** (dead flatwounds, neck pickup) | CC0 |
+| `acoustic_bass` | D. Smolken **Otto Rubner double bass**, pizzicato | CC0 |
+| `electric_piano_2` | Greg Sullivan **Wurlitzer EP200** | CC-BY 3.0 |
+| `electric_piano_1` | Greg Sullivan **Hohner Pianet T** (stands in for a Rhodes) | CC-BY 3.0 |
+| `string_ensemble_1` | **VSCO 2 CE** cello/viola/violin sections | CC0 |
+
+The [`sfzinstruments`](https://github.com/sfzinstruments) GitHub organisation was the
+find that unblocked this: it hosts dozens of sample libraries each with a machine-readable
+SPDX license, so CC0 sets can be identified without guesswork. Licenses were confirmed by
+reading each repository's `LICENSE` file, not the GitHub badge alone.
+
+**Rejected during this pass:** **jRhodes3** — the best-sounding free Rhodes, and exactly
+the voice we most wanted — is **CC BY-NC 4.0**. NonCommercial is incompatible with shipping
+here, so `electric_piano_1` uses the Pianet T instead.
+
+**Still synthesized, no clean source found:** clavinet, drawbar organ, accordion, nylon
+guitar. (`synth_bass_1` is synthesized deliberately — it is a synth.)
 
 ---
 

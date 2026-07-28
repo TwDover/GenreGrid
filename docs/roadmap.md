@@ -6,8 +6,9 @@ they land; add new findings under the right phase so nothing gets lost.
 **Status legend:** `[ ]` todo · `[~]` in progress · `[x]` done · `[-]` won't do / obsolete ·
 `[→]` moved to another phase
 
-_Last updated: 2026-07-23 — Phase 1 complete; Phase 2 nearly done (limiter, per-style FX,
-loudness norm, velocity-layer engine landed; multi-velocity sample sourcing open)._
+_Last updated: 2026-07-23 — Phase 1 complete. Phase 2 complete except for desktop runtime
+testing of the custom-instruments MVP: limiter, per-style FX, loudness norm, velocity-layer
+engine, license compliance, and the sample re-sourcing pass have all landed._
 
 ---
 
@@ -52,15 +53,14 @@ loudness norm, velocity-layer engine landed; multi-velocity sample sourcing open
   `masterOut → limiter → dest`, offline WAV render, and the live MediaRecorder tap now reads
   post-limiter). New pure-math unit tests cover the transfer curve.
   → `frontend/src/soundfonts/loader.ts` (`makeMasterLimiter`), `useMidiPlayer.ts`
-- [~] **Velocity layers / round-robins in sample sets** — _engine done + vibraphone; broad
-  sample coverage gated on finding confirmed-CC0 sources._ Built `LayeredSampler`
+- [x] **Velocity layers / round-robins in sample sets** — Built `LayeredSampler`
   (`layeredSampler.ts`): a drop-in over `Tone.Sampler` that plays a different sample per
   velocity range (real dynamics, not just gain) + cycles round-robins, driven by a per-instrument
   `velocity.json` manifest. Backward-compatible; wired into the piano/bass/melodic loaders (offline
   WAV path is synth-only, untouched). Reproducible pipeline (`scripts/build_velocity_samples.py`,
-  `soundfile`+`lameenc`) fetches CC0 WAVs → trimmed mono mp3 + manifest. **Vibraphone** migrated
-  to VCSL CC0 (soft/hard layers). Broad coverage is blocked because no confirmed-CC0 library
-  covers the electric/synth voices — see the licensing work below.
+  `soundfile`+`lameenc`) fetches CC0/CC-BY WAV/FLAC → trimmed mono mp3 + manifest. **8 instruments**
+  now ship layered (vibraphone, 4 basses, 2 electric pianos, string ensemble) — see the re-sourcing
+  item below.
   → `frontend/src/soundfonts/layeredSampler.ts`, `scripts/build_velocity_samples.py`
 - [x] **License compliance pass** (added scope) — full audit (`docs/LICENSE_AUDIT.md`) of samples,
   npm + pip deps, fonts/icons, and our own GPL declaration. Findings/fixes: deps all
@@ -79,15 +79,27 @@ loudness norm, velocity-layer engine landed; multi-velocity sample sourcing open
   lush tail, electronic more movement, trap/drill tight & dry, lo-fi wobbly. Applied live by
   mutating the shared nodes' params; the reverb IR is only regenerated when decay changes.
   → `frontend/src/soundfonts/fxPresets.ts`, `loader.ts` (`applyMelodicFxPreset`)
-- [ ] **Re-source clean samples for the synth-only voices** — after the July 2026 license
-  pass, 13 voices (all 6 basses + Rhodes/DX7/clavinet/accordion/drawbar organ/nylon guitar/
-  string ensemble) synthesize because their MusyngKite samples were removed. Restore real
-  samples from **confirmed CC0 / CC-BY** sources only, via `scripts/build_velocity_samples.py`
-  (add each voice id to `SAMPLED_VOICES` / `SAMPLED_BASS_VOICES`). Blocked on sourcing: VCSL
-  (CC0) doesn't cover them, and Iowa MIS has no explicit license; a manual Freesound-CC0
-  curation pass (needs API auth) or another PD library is required. Prioritize the **basses**
-  (most audible downgrade). The engine + Samples/Synth toggle already support them the moment
-  a legal set + `velocity.json` exists. → `docs/LICENSE_AUDIT.md`, `DATA_LICENSES.md`
+- [x] **Re-source clean samples for the synth-only voices** — _unblocked; 7 of 13 restored._
+  The [`sfzinstruments`](https://github.com/sfzinstruments) GitHub org was the find: dozens of
+  sample libraries with machine-readable SPDX licenses, so CC0 sets can be identified without
+  guesswork. Restored, all velocity-layered via `scripts/build_velocity_samples.py`:
+  **all 4 acoustic/electric basses** (Karoryfer Growlybass / Pastabass / Swagbass + Smolken's
+  double bass, CC0 — `slap_bass_1` aliases to the fingered set), **both electric pianos**
+  (Greg Sullivan Wurlitzer EP200 + Pianet T, CC-BY 3.0), and the **string ensemble**
+  (VSCO 2 CE cello/viola/violin sections, CC0). Sample tree 3.4 MB → 20 MB.
+  Script gained FLAC input, a per-spec octave `shift` (several libraries name files by
+  *written* rather than sounding pitch — every one verified by measuring the fundamental),
+  per-note gain (normalising each file separately was flattening the very dynamics the
+  velocity layers exist for), and stale-output pruning.
+  **Found and fixed en route:** the shipped vibraphone was mapped **an octave too low** (VCSL
+  names middle C as C3). New `sampleManifests.test.ts` validates every shipped `velocity.json`
+  — note names parse, referenced files exist, layers ascend to 1.0, and each set's pitch span
+  sits in a tight window, so an octave slip fails the suite instead of someone's ears.
+  Also repaired `test_playback_voices.py`, red since the license pass deleted `samples/bass/`.
+  **Still synth-only (4):** clavinet, drawbar organ, accordion, nylon guitar — no CC0/CC-BY
+  multisample found (VCSL's organs are pipe organs; the CC0 guitar libraries are all electric).
+  `synth_bass_1` stays synthesized by choice. Rejected: **jRhodes3** is CC BY-**NC**, so the
+  Rhodes voice uses a Hohner Pianet T instead. → `docs/LICENSE_AUDIT.md` §6, `DATA_LICENSES.md`
 - [~] **User-uploaded custom instruments** (SF2/samples) + per-part instrument picker
   _(promoted from Phase 4; MVP built, needs desktop runtime testing)_ — users add their own
   samples, mapped to notes/velocities, and pick which instrument plays **each** part; also
@@ -96,10 +108,26 @@ loudness norm, velocity-layer engine landed; multi-velocity sample sourcing open
   T2 note-named tiers):** pure mapping core (`customInstruments.ts`, +15 tests), library store
   (`useCustomInstruments.ts`), Electron storage IPC (`userData/instruments/`, played as blob:
   URLs — no custom scheme, avoids the Linux Web-Audio silence bug), per-part resolution in
-  `useMidiPlayer.ts`, and the Instruments panel + 🎹 transport button. **TODO:** runtime-test on
-  desktop (import/assign/play/delete), then velocity-layer preview, SF2/SFZ import (T4), auto
-  pitch-detection, per-style overrides, web/OPFS storage.
-  → `soundfonts/customInstruments.ts`, `composables/useCustomInstruments.ts`, `components/InstrumentsPanel.vue`, `electron/main.ts`
+  `useMidiPlayer.ts`, and the Instruments panel + 🎹 transport button.
+  **Second pass** closed the three things that made the first cut confusing:
+  (a) **`kind` was dead metadata** — collected, stored, displayed, read by nothing; it now
+  selects the mapping shape and filters which instruments a part offers;
+  (b) **drum kits now exist** — `drums` was missing from both the kind dropdown *and* the part
+  resolution loop, so a kit could be neither added nor played. Kits are a separate shape
+  (GM pitch → single-zone manifest, never pitch-shifted), import matches filenames to the
+  twelve `DRUM_MAP` pieces and hands back anything it can't place instead of guessing, and
+  unfilled pieces fall through to the synth kit so a two-file kit works immediately;
+  (c) **the panel shows a style's real instrument lineup** with a this-style / all-styles scope
+  toggle — per-style assignment was already fully supported by the store and resolver, the UI
+  just never passed a `styleId`. A per-style "Built-in" now correctly beats the global default
+  instead of silently inheriting it.
+  The kit editor has a **per-slot audition** (`soundfonts/audition.ts`): ▶ plays the mapped
+  sample, or the synth fallback when a slot is empty, so a mis-mapped file is caught where
+  it's edited rather than on playback.
+  **TODO:** runtime-test on desktop (import/assign/play/audition/edit-kit/delete), then
+  multi-file kit slots, chromatic-instrument preview, SF2/SFZ import (T4), auto
+  pitch-detection, web/OPFS storage.
+  → `soundfonts/customInstruments.ts`, `soundfonts/customDrumKit.ts`, `soundfonts/audition.ts`, `composables/useCustomInstruments.ts`, `components/InstrumentsPanel.vue`, `electron/main.ts`
 
 ## Phase 3 — Performance & refactor
 
@@ -167,8 +195,22 @@ loudness norm, velocity-layer engine landed; multi-velocity sample sourcing open
     license). Net: no shipped asset has unconfirmed redistribution rights.
   - Frontend suite 12→29 green; `vue-tsc` + eslint + production build clean.
 
-**Phase 1 complete.** Phase 2 (sound polish) mostly done: limiter, per-style FX, loudness
-normalization, the velocity-layer engine, and the license compliance pass all landed.
-**Open Phase 2 items:** re-source clean samples for the 13 synth-only voices (basses first),
-and custom soundfont / SF2 upload (promoted from Phase 4) — both now tracked as explicit
-items above.
+- **2026-07-23 — Phase 2 sample re-sourcing:**
+  - Unblocked the "13 synth-only voices" item via the `sfzinstruments` GitHub org (SPDX-tagged
+    sample libraries). **7 voices restored**, all velocity-layered: 4 basses (CC0), 2 electric
+    pianos (CC-BY 3.0), string ensemble (CC0). `slap_bass_1` aliases to the fingered bass.
+  - `build_velocity_samples.py` gained FLAC decoding, per-spec octave `shift` (verified by
+    measuring each source's fundamental — several libraries name files by written pitch),
+    per-note rather than per-file gain, per-spec tail caps, URL-escaped note names, and
+    pruning of outputs the manifest no longer references.
+  - **Bug fixed:** the vibraphone shipped an octave too low (VCSL's C3-is-middle-C naming).
+  - **Bug fixed:** `test_playback_voices.py` had been failing since the license pass deleted
+    `frontend/public/samples/bass/`; it now models sample-dir aliases and carries an explicit,
+    self-checking list of the voices that synthesize on purpose.
+  - Tests: frontend 29→71, backend 133(+1 red)→135 green. Sample tree 3.4 MB → 20 MB.
+
+**Phase 1 complete. Phase 2 complete** apart from desktop runtime testing of the
+custom-instruments MVP (below) — limiter, per-style FX, loudness normalization, the
+velocity-layer engine, the license compliance pass, and the sample re-sourcing pass have
+all landed. **The one open Phase 2 task** is the manual desktop pass on custom instruments
+(import / assign / play / delete), which automation can't perform.

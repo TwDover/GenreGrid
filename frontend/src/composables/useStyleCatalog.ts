@@ -16,8 +16,17 @@ import type { StyleInfo } from '../types/midi'
 // hold a styleId can resolve instrument labels without prop-drilling the list.
 const catalog = ref<Map<string, StyleInfo>>(new Map())
 
+// The style the player last loaded — i.e. the one you are actually hearing. The
+// Instruments panel opens on this style's lineup so "override the Rhodes" means
+// the Rhodes you can hear, not whichever style a form happens to have selected.
+export const activeStyleId = ref<string | null>(null)
+
 export function setStyleCatalog(styles: StyleInfo[]): void {
   catalog.value = new Map(styles.map(s => [s.id, s]))
+}
+
+export function setActiveStyle(styleId: string | undefined): void {
+  if (styleId) activeStyleId.value = styleId
 }
 
 /** Instrument display name for a part in a style ("Alto Sax"), or null when
@@ -36,5 +45,5 @@ export function voiceFor(styleId: string | undefined, part: string): string | nu
 }
 
 export function useStyleCatalog() {
-  return { catalog, setStyleCatalog, instrumentLabel, voiceFor }
+  return { catalog, activeStyleId, setStyleCatalog, setActiveStyle, instrumentLabel, voiceFor }
 }

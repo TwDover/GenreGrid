@@ -153,6 +153,19 @@ export class LayeredSampler {
     return this
   }
 
+  /** Play a note and let it ring to the end of its sample, choosing the velocity
+   *  layer and cycling round-robins as `triggerAttackRelease` does. This is what
+   *  one-shots (drum kit pieces) want: a fixed duration would either cut a crash
+   *  short or hold a closed hat open. */
+  triggerAttack(note: Tone.Unit.Frequency, time?: Tone.Unit.Time, velocity = 1): this {
+    const layer = this.layers[selectLayerIndex(this.layers, velocity)]
+    if (layer) {
+      const sampler = layer.samplers[this.rr++ % layer.samplers.length]
+      sampler.triggerAttack(note, time, velocity)
+    }
+    return this
+  }
+
   /** Route every inner sampler to the destination (they sum there). */
   connect(destination: Tone.InputNode): this {
     for (const layer of this.layers) for (const s of layer.samplers) s.connect(destination)

@@ -3,29 +3,33 @@
     {
       "maxVelocity": 0.5,
       "urls": {
-        "C3": "soft/C3.mp3",
-        "E3": "soft/E3.mp3",
-        "G3": "soft/G3.mp3",
-        "B3": "soft/B3.mp3",
-        "D4": "soft/D4.mp3",
-        "F4": "soft/F4.mp3",
-        "A4": "soft/A4.mp3",
-        "C5": "soft/C5.mp3",
-        "E5": "soft/E5.mp3"
+        "F3": "soft/F3.mp3",
+        "A3": "soft/A3.mp3",
+        "C4": "soft/C4.mp3",
+        "E4": "soft/E4.mp3",
+        "G4": "soft/G4.mp3",
+        "B4": "soft/B4.mp3",
+        "D5": "soft/D5.mp3",
+        "F5": "soft/F5.mp3",
+        "A5": "soft/A5.mp3",
+        "C6": "soft/C6.mp3",
+        "E6": "soft/E6.mp3"
       }
     },
     {
       "maxVelocity": 1.0,
       "urls": {
-        "C3": "hard/C3.mp3",
-        "E3": "hard/E3.mp3",
-        "G3": "hard/G3.mp3",
-        "B3": "hard/B3.mp3",
-        "D4": "hard/D4.mp3",
-        "F4": "hard/F4.mp3",
-        "A4": "hard/A4.mp3",
-        "C5": "hard/C5.mp3",
-        "E5": "hard/E5.mp3"
+        "F3": "hard/F3.mp3",
+        "A3": "hard/A3.mp3",
+        "C4": "hard/C4.mp3",
+        "E4": "hard/E4.mp3",
+        "G4": "hard/G4.mp3",
+        "B4": "hard/B4.mp3",
+        "D5": "hard/D5.mp3",
+        "F5": "hard/F5.mp3",
+        "A5": "hard/A5.mp3",
+        "C6": "hard/C6.mp3",
+        "E6": "hard/E6.mp3"
       }
     }
   ]

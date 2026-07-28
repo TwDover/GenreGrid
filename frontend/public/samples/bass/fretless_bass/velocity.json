@@ -1,0 +1,58 @@
+{
+  "layers": [
+    {
+      "maxVelocity": 0.45,
+      "urls": {
+        "A0": "p/A0.mp3",
+        "C1": "p/C1.mp3",
+        "Eb1": "p/Eb1.mp3",
+        "Gb1": "p/Gb1.mp3",
+        "A1": "p/A1.mp3",
+        "C2": "p/C2.mp3",
+        "Eb2": "p/Eb2.mp3",
+        "Gb2": "p/Gb2.mp3",
+        "A2": "p/A2.mp3",
+        "C3": "p/C3.mp3",
+        "Eb3": "p/Eb3.mp3",
+        "Gb3": "p/Gb3.mp3",
+        "A3": "p/A3.mp3"
+      }
+    },
+    {
+      "maxVelocity": 0.8,
+      "urls": {
+        "A0": "f/A0.mp3",
+        "C1": "f/C1.mp3",
+        "Eb1": "f/Eb1.mp3",
+        "Gb1": "f/Gb1.mp3",
+        "A1": "f/A1.mp3",
+        "C2": "f/C2.mp3",
+        "Eb2": "f/Eb2.mp3",
+        "Gb2": "f/Gb2.mp3",
+        "A2": "f/A2.mp3",
+        "C3": "f/C3.mp3",
+        "Eb3": "f/Eb3.mp3",
+        "Gb3": "f/Gb3.mp3",
+        "A3": "f/A3.mp3"
+      }
+    },
+    {
+      "maxVelocity": 1.0,
+      "urls": {
+        "A0": "fff/A0.mp3",
+        "C1": "fff/C1.mp3",
+        "Eb1": "fff/Eb1.mp3",
+        "Gb1": "fff/Gb1.mp3",
+        "A1": "fff/A1.mp3",
+        "C2": "fff/C2.mp3",
+        "Eb2": "fff/Eb2.mp3",
+        "Gb2": "fff/Gb2.mp3",
+        "A2": "fff/A2.mp3",
+        "C3": "fff/C3.mp3",
+        "Eb3": "fff/Eb3.mp3",
+        "Gb3": "fff/Gb3.mp3",
+        "A3": "fff/A3.mp3"
+      }
+    }
+  ]
+}

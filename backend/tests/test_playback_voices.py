@@ -36,6 +36,31 @@ _SAMPLES = _REPO_ROOT / "frontend" / "public" / "samples"
 #   pad_synth   -> makePad          (sustained pad voice)
 FRONTEND_SYNTH_VOICES = {"melody_lead", "synth_lead", "pad_synth"}
 
+# Voices with no sample directory of their own, played from another voice's set.
+# Mirrors BASS_SAMPLE_DIR in frontend/src/soundfonts/bass.ts.
+VOICE_SAMPLE_DIR_ALIASES = {
+    # No CC0 slap-bass library exists, so slap borrows the fingered Jazz Bass.
+    "slap_bass_1": "electric_bass_finger",
+}
+
+# Voices that fall through to a generic synth **on purpose**. This is a real gap
+# in instrument identity, not an oversight, so it is listed rather than asserted
+# away — each entry is a voice the app plays with someone else's timbre.
+#
+#   clavinet / drawbar_organ / accordion / acoustic_guitar_nylon
+#       No CC0 or CC-BY multisample of any of them has been found; see
+#       docs/LICENSE_AUDIT.md §6. Remove an entry the moment one is sourced.
+#   synth_bass_1
+#       Synthesized by choice — it IS a synth, so the app's own oscillator beats
+#       a frozen sample of someone else's.
+DELIBERATELY_SYNTHESIZED = {
+    "clavinet",
+    "drawbar_organ",
+    "accordion",
+    "acoustic_guitar_nylon",
+    "synth_bass_1",
+}
+
 
 def _sampled_voices() -> set[str]:
     """Voice ids backed by a sample directory on disk (melodic + bass)."""
@@ -45,6 +70,7 @@ def _sampled_voices() -> set[str]:
         assert d.is_dir(), f"Missing sample family dir {d}"
         voices |= {p.name for p in d.iterdir() if p.is_dir()}
     assert voices, "Found zero sample directories — the samples tree moved; fix this test"
+    voices |= {alias for alias, target in VOICE_SAMPLE_DIR_ALIASES.items() if target in voices}
     return voices
 
 
@@ -54,7 +80,7 @@ def test_sample_tree_is_present():
 
 
 def test_every_registry_voice_is_implemented_by_the_frontend():
-    implemented = _sampled_voices() | FRONTEND_SYNTH_VOICES
+    implemented = _sampled_voices() | FRONTEND_SYNTH_VOICES | DELIBERATELY_SYNTHESIZED
     orphans = {
         inst_id: inst["playback_voice"]
         for inst_id, inst in INSTRUMENTS.items()
@@ -66,6 +92,21 @@ def test_every_registry_voice_is_implemented_by_the_frontend():
         "frontend/public/samples/, a synth family in the player, or point the "
         "entry at an implemented voice."
     )
+
+
+def test_deliberately_synthesized_list_is_current():
+    # Two ways this list rots: a voice gets a real sample set (so the entry is
+    # now a lie that hides a working instrument), or the registry stops using it.
+    sampled = _sampled_voices()
+    now_sampled = DELIBERATELY_SYNTHESIZED & sampled
+    assert not now_sampled, (
+        f"These voices now have sample sets: {now_sampled}. Drop them from "
+        "DELIBERATELY_SYNTHESIZED (and from the 'still synthesized' notes in "
+        "DATA_LICENSES.md / docs/LICENSE_AUDIT.md)."
+    )
+    used = {inst["playback_voice"] for inst in INSTRUMENTS.values()}
+    dead = DELIBERATELY_SYNTHESIZED - used
+    assert not dead, f"DELIBERATELY_SYNTHESIZED lists voices no instrument uses: {dead}"
 
 
 def test_synth_family_list_has_no_dead_entries():

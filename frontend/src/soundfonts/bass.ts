@@ -19,12 +19,27 @@ import { LayeredSampler, loadLayeredSampler } from './layeredSampler'
 // is the single source of truth (see docs/instrument-identity-design.md).
 const DEFAULT_INSTRUMENT = 'electric_bass_finger'
 
-// Bass voices with a confirmed-license sample set on disk. The MusyngKite-derived
-// bass sets (electric/acoustic/fretless/slap/synth) were removed for licensing
-// reasons — see docs/LICENSE_AUDIT.md — and no confirmed-CC0 bass-guitar library
-// covers them, so this is empty and all bass currently plays through the synth bass.
-// Drop a re-sourced CC0/CC-BY voice id here (and its samples) to re-enable sampling.
-export const SAMPLED_BASS_VOICES = new Set<string>()
+// Bass voices with a confirmed-license, velocity-layered sample set on disk. The
+// MusyngKite-derived sets were removed for licensing reasons (docs/LICENSE_AUDIT.md);
+// these replacements are re-sourced from CC0 libraries by scripts/build_velocity_samples.py.
+//
+// synth_bass_1 is deliberately absent: it IS a synth, so the app's own oscillator
+// is both more honest and more tweakable than a frozen sample of someone else's.
+export const SAMPLED_BASS_VOICES = new Set<string>([
+  'acoustic_bass',
+  'electric_bass_finger',
+  'electric_bass_pick',
+  'fretless_bass',
+  'slap_bass_1',
+])
+
+// Voice id → sample directory. Only needed where a voice has no set of its own:
+// no CC0 slap-bass library exists, so slap borrows the fingered Jazz Bass — the
+// nearest sampled instrument, the same substitution the registry already makes
+// for marimba → vibraphone. Unlisted voices use a directory of their own name.
+export const BASS_SAMPLE_DIR: Record<string, string> = {
+  slap_bass_1: 'electric_bass_finger',
+}
 
 const BASS_SAMPLE_MAP: Record<string, string> = {
   A1: 'A1.mp3', C2: 'C2.mp3', E2: 'E2.mp3', G2: 'G2.mp3',
@@ -51,7 +66,7 @@ export function getBassSampler(voice?: string | null): Promise<LayeredSampler> {
   const fxInput = buildBassFx(inst, getBassBus())
 
   const promise = loadLayeredSampler({
-    baseUrl: `/samples/bass/${inst}/`,
+    baseUrl: `/samples/bass/${BASS_SAMPLE_DIR[inst] ?? inst}/`,
     legacyUrls: BASS_SAMPLE_MAP,
     volume: -4,
   }).then((sampler) => {
