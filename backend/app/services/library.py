@@ -74,7 +74,7 @@ def save_generation(
                 if prev.get("source") in ("thumbs_up", "export") and source == "score":
                     source = prev["source"]   # don't demote an explicit keep
             except Exception:
-                pass
+                _logger.debug("Ignoring unreadable prior library entry %s", path, exc_info=True)
         entry = {
             "gen_id":   gen_id,
             "style_id": style_id,

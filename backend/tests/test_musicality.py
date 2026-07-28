@@ -304,7 +304,7 @@ def test_dj_edit_adds_beat_only_bookends():
 
 
 def test_bridge_escape_opens_off_path_and_walks_home():
-    from app.api.routes_song import _bridge_escape_progression
+    from app.services.song_builder import _bridge_escape_progression
 
     # I-heavy major song → bridge opens on vi (unused), ends on a dominant pedal.
     prog, opener = _bridge_escape_progression(["I", "IV", "V", "I"], "major")

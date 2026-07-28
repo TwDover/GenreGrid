@@ -42,7 +42,7 @@ def test_regenerate_song_part_isolates_the_target():
 def test_recurring_sections_reuse_the_theme():
     """Verse 2 reuses Verse's theme (with light variation); drums stay fresh."""
     from app.services.style_loader import load_style
-    from app.api.routes_song import _generate_song_sections
+    from app.services.song_builder import _generate_song_sections
 
     req = BuildSongRequest(style_id="lofi", key="C", scale="major", bpm=90,
                            template="verse_chorus", parts=["chords", "bass", "melody", "drums"],

@@ -6,9 +6,11 @@ they land; add new findings under the right phase so nothing gets lost.
 **Status legend:** `[ ]` todo · `[~]` in progress · `[x]` done · `[-]` won't do / obsolete ·
 `[→]` moved to another phase
 
-_Last updated: 2026-07-23 — Phase 1 complete. Phase 2 complete except for desktop runtime
-testing of the custom-instruments MVP: limiter, per-style FX, loudness norm, velocity-layer
-engine, license compliance, and the sample re-sourcing pass have all landed._
+_Last updated: 2026-07-28 — Phase 1 & 2 complete (Phase 2 bar the manual custom-instruments
+desktop pass). Phase 3 well underway: the "parallelize generation" item was retired as a
+phantom (generation is ~0.5s; the real wait is the WAV export render, now parallelised),
+deprecation warnings cleared, swallowed exceptions logged, and the two route god-files
+split into `services/`. Remaining Phase 3: split `useMidiPlayer.ts`, grow frontend tests._
 
 ---
 
@@ -131,19 +133,76 @@ engine, license compliance, and the sample re-sourcing pass have all landed._
 
 ## Phase 3 — Performance & refactor
 
-- [ ] **Parallelize full-song section generation** — song builds take ~1–2 min and
-  sections generate serially though they're embarrassingly parallel. SSE progress
-  plumbing (`generate-stream`) already exists.
+- [-] **Parallelize full-song section generation** — _obsolete: the premise was
+  wrong._ Measured 2026-07-28: backend section generation is **0.5–0.8s** end-to-end
+  (`_do_build_song`, every style, up to max complexity / 12-section templates), not the
+  claimed "~1–2 min". Building a song never renders audio — it calls the backend (~0.5s)
+  then plays back **live**, so the "1–2 min" was the song's own playback length (a 56-bar
+  song at 120 BPM *is* ~112s of audio), not generation time. Parallelizing a sub-second
+  step would *regress* latency (process-pool spawn + pickling > the serial work) and, per
+  the dependency audit, isn't even embarrassingly parallel: the section loop threads real
+  cross-section state (`prev_voicing` seam voice-leading, `verse_motif`/`rhythm_cell`
+  motif glue, `type_theme` repeat reuse) and generation uses the process-global `random`
+  module (17 `random.seed()` calls) so threads can't run it deterministically. The only
+  genuinely CPU-heavy path is the **on-demand WAV export** (`offlineRender`, synth-only
+  `OfflineAudioContext`) — tracked as a new item below.
   → `backend/app/api/routes_song.py`
-- [ ] **Extract song/arrangement logic out of route god-files into `services/`** —
-  handlers should be thin. → `routes_song.py` (1498), `routes_generate.py` (1299)
+- [~] **Speed up WAV export render** — _this is the real "1–2 min" wait, not generation._
+  Measured 2026-07-28 (headless Chromium, real Web Audio, 112s song / 2,576 voices, graph
+  matching `offlineRender`): **56.4s** with the full FX chain, **51.8s** with all FX removed.
+  The actual Tone.js app render is ≥ this (per-voice JS wrappers, `standardized-audio-context`
+  shims, `render(true)` yields). **The bottleneck is per-note voice synthesis (~92%), NOT the
+  reverb (~8%)** — so caching the convolution IR is nearly worthless (an earlier guess, now
+  disproven by measurement).
+  **Shipped — parallel per-part render.** Empirically, concurrent `OfflineAudioContext`
+  renders run on separate Chromium threads (probe: 4 contexts, 9.2s serial → 3.7s parallel,
+  **2.48× on 8 cores**), so `offlineRender` now renders each part on its own context via
+  `Promise.all` instead of one big context. The offline graph has no shared reverb — every
+  voice runs its own delay/chorus/filter into a plain gain — so the per-part outputs SUM to
+  exactly the old pre-limiter mix; the master soft-clip limiter is then applied once to the
+  sum in a raw-WaveShaper pass that reproduces `makeMasterLimiter` bit-for-bit (curve =
+  `softClipCurve` sampled Tone's way, `oversample='4x'`). Result is mathematically identical
+  to the old single-pass render (bar float summation order), just parallelised. A single-part
+  stem export keeps the limiter inline (nothing to parallelise). Validated: pure mix logic
+  unit-tested (`offlineMix.test.ts`); full end-to-end run in real Chromium produces valid
+  non-silent audio via the parallel path; `vue-tsc` + eslint + 96 vitest green.
+  **Still open:** a representative desktop wall-time before/after — headless SwiftShader
+  renders the Tone graph ~10× slower than realtime, so it can't measure the real speedup;
+  needs a WAV export in the actual desktop Electron app (GPU Chromium) to confirm the number.
+  Bench harness: `frontend/scripts/bench_render.mjs` (drives cached Chromium over CDP; no display).
+  → `frontend/src/composables/useMidiPlayer.ts` (`offlineRender`, `renderOfflineFast`,
+  `sumPartBuffers`, `limitMix`)
+- [~] **Extract song/arrangement logic out of route god-files into `services/`** —
+  handlers should be thin. Done for the two biggest logic blobs, each verified by the 135
+  backend tests + ruff: the **generation core** (`_run_attempt`, progression choice, style
+  blend/groove overlay, voice-leading + quality helpers) → **`services/generation.py`**, and
+  the **song arrangement engine** (`_generate_song_sections` — the 465-line section loop —
+  plus its motif/voice-leading helpers, the combined-MIDI writer, and bridge-escape) →
+  **`services/song_builder.py`**. Both route files (and the new services) now depend on
+  `services/generation.py` instead of importing generation logic out of `routes_generate.py`.
+  `routes_generate.py` **1299 → 636**, `routes_song.py` **1498 → 889**.
+  _Remaining follow-up:_ the song-build coordinator `_do_build_song` and a few
+  regenerate/stem/version helpers still sit in `routes_song.py` between the endpoints; they
+  could move into `song_builder.py` too, but the endpoints that call them are already thin.
 - [ ] **Split `useMidiPlayer.ts`** (1018 lines) into focused composables.
-- [ ] **Log swallowed exceptions** — 27 broad/bare `except`; several return silently
-  (e.g. `record_export_keep`). Add logging.
+- [x] **Log swallowed exceptions** — audited all 27 broad `except` blocks. 12 already
+  logged or re-raised; 6 genuine silent faults now log — `record_export_keep`
+  (`routes_library.py`, warning), malformed groove/genre priors (`priors.py`, warning),
+  library keep-merge on a corrupt prior entry (`library.py`, debug), style-load for track
+  names (`routes_song.py` ×2, warning), and the arpeggio chord-tone derivation
+  (`routes_generate.py`, debug). The rest were left deliberately: `mido_key_signature`'s
+  `except` is by-design control flow (exotic modes have no MIDI key sig, documented), and
+  the generator inner-loop `except`s (bass/melody/quality/answer/corpus) are intentional
+  musical graceful-degradation, not swallowed faults — logging each would be pure noise.
 - [ ] **Grow frontend test coverage** — 12 tests vs 132 backend; the audio scheduler and
-  WAV-render path (most fragile code) are untested.
-- [ ] **Clear deprecation warnings** — Starlette `TestClient` httpx warning; Electron
-  numeric-level `console-message` signature. → `frontend/electron/main.ts:206`
+  WAV-render path (most fragile code) are untested. _(Up to 96 frontend tests now — the
+  WAV-render mix path gained `offlineMix.test.ts` — but the scheduler is still untested.)_
+- [x] **Clear deprecation warnings** — **Starlette `TestClient`**: moved the test dep from
+  `httpx` to `httpx2` (`requirements.txt`); TestClient prefers httpx2 and the
+  `StarletteDeprecationWarning` is gone, 135 backend tests still green. **Electron
+  `console-message`**: rewrote the handler for the Electron 36+ single-`details` signature
+  (string `level` instead of the deprecated positional numeric level — which the old code
+  also mapped wrong). → `frontend/electron/main.ts`
 
 ## Phase 4 — Features
 
@@ -159,6 +218,28 @@ engine, license compliance, and the sample re-sourcing pass have all landed._
 ---
 
 ## Done log
+
+- **2026-07-28 — Phase 3 performance & refactor (first pass):**
+  - **Retired "parallelize section generation"** — measured generation at **0.5–0.8s**
+    (not the claimed 1–2 min), so parallelising it would only add process overhead. The real
+    "1–2 min" is the on-demand **WAV export render** (~56s, headless-Chromium bench).
+  - **Parallel per-part WAV export** — `offlineRender` now renders each part on its own
+    `OfflineAudioContext` concurrently (Chromium runs them on separate threads — measured
+    2.48× on 8 cores), sums them, and applies the master limiter once in a raw-WaveShaper
+    pass that reproduces `makeMasterLimiter` bit-for-bit. Mathematically identical to the old
+    single-pass mix. Pure mix logic unit-tested (`offlineMix.test.ts`); real-browser e2e
+    produced valid audio. Desktop wall-time number still to confirm.
+  - **Auto-pause playback on WAV export** — the render walks the timeline on the main thread
+    and starved the live Transport scheduler (playback froze mid-export); `offlineRender` now
+    pauses playback for the duration (MIDI export was never affected).
+  - **Route god-files split into `services/`** — generation core → `services/generation.py`,
+    song arrangement engine → `services/song_builder.py`. `routes_generate.py` 1299→636,
+    `routes_song.py` 1498→889; killed the route→route generation import.
+  - **Deprecation warnings cleared** — test dep `httpx`→`httpx2` (Starlette TestClient);
+    Electron `console-message` rewritten for the 36+ single-`details` signature.
+  - **Swallowed exceptions logged** — 6 genuine silent faults now log (`record_export_keep`,
+    malformed priors, style-load for track names, …); by-design fallbacks left alone.
+  - Tests: backend 135 green + ruff clean; frontend 92→96 green + `vue-tsc`/eslint clean.
 
 - **2026-07-23 — Phase 1 security hardening** (uncommitted working changes):
   - Export downloads hardened against path traversal (`_safe_export_dir` containment

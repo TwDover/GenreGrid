@@ -14,8 +14,11 @@ from what real songs of a genre actually do, instead of only hand-written
 templates. Priors live in ``backend/app/priors/<genre>.json``.
 """
 import json
+import logging
 import random
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _PRIORS_DIR = Path(__file__).resolve().parent.parent / "priors"
 _GROOVES_DIR = _PRIORS_DIR / "grooves"
@@ -47,6 +50,7 @@ def load_groove(name: str) -> dict | None:
         try:
             g = json.loads(path.read_text())
         except Exception:
+            logger.warning("Malformed groove prior %s — ignoring", path, exc_info=True)
             g = None
     _groove_cache[name] = g
     return g
@@ -78,6 +82,7 @@ def load_prior(genre: str) -> dict | None:
         try:
             prior = json.loads(path.read_text())
         except Exception:
+            logger.warning("Malformed genre prior %s — ignoring", path, exc_info=True)
             prior = None
     _cache[genre] = prior
     return prior

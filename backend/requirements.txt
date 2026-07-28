@@ -5,7 +5,9 @@ mido>=1.3.2
 python-multipart>=0.0.32
 pytest>=8.2.0
 pytest-asyncio>=0.23.7
-httpx>=0.27.0
+# httpx2 (not httpx): Starlette 1.3+ TestClient prefers httpx2 and warns on plain
+# httpx as deprecated. Test-only dependency (nothing imports httpx at runtime).
+httpx2>=2.0.0
 
 # Security floors for transitive deps (patched versions — see Dependabot alerts)
 starlette>=1.3.1
