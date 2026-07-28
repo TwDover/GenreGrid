@@ -7,6 +7,7 @@
 # version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
 # <https://www.gnu.org/licenses/> for details.
 import random
+from app.core.meter import Meter, DEFAULT_METER
 from typing import List
 
 from app.services.midi_writer import NoteEvent
@@ -106,6 +107,7 @@ def generate_drums(
     section_type: str | None = None,
     next_section_type: str | None = None,
     dynamics: float = 0.5,
+    meter: Meter = DEFAULT_METER,
 ) -> List[NoteEvent]:
     """`section_type` / `next_section_type` — song-section context (loop-mode song
     building). The groove *arranges* per section instead of playing the same beat
@@ -181,7 +183,7 @@ def generate_drums(
     section_ends = set(section_end_bars) if section_end_bars else set()
     hat_note     = DRUM_MAP["ride"] if use_ride else DRUM_MAP["closed_hat"]
 
-    beats_per_bar  = 4
+    beats_per_bar  = meter.bar_beats
     step           = 0.25      # sixteenth note
     ticks_per_beat = 480
     hat_base_vel   = 74        # peak velocity for the 16-step accent curve

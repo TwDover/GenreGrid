@@ -7,6 +7,7 @@
 # version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
 # <https://www.gnu.org/licenses/> for details.
 import random
+from app.core.meter import Meter, DEFAULT_METER
 from typing import List
 
 from app.services.midi_writer import NoteEvent
@@ -26,6 +27,7 @@ def generate_counter_melody(
     melody_rests: list | None = None,
     cell: list[int] | None = None,
     section_type: str | None = None,
+    meter: Meter = DEFAULT_METER,
 ) -> List[NoteEvent]:
     """The melody's second voice — dual mode depending on the section.
 
@@ -50,7 +52,7 @@ def generate_counter_melody(
     vel_scale = cm_cfg.get("velocity_scale", 0.72)
     floor = cm_cfg.get("floor", 55)   # don't harmonize below this — muddiness guard
 
-    beats_per_bar = 4
+    beats_per_bar = meter.bar_beats
     prog_len = len(progression) if progression else 0
 
     # ── Answer mode ───────────────────────────────────────────────────────────

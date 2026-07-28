@@ -36,6 +36,7 @@ from app.core.arrangement import (
     _part_seed, scaled_profile,
     _apply_section_ramp, _plan_sections, _auto_arc_section_type, _section_end_bars,
 )
+from app.core.meter import parse_meter
 from app.services.mixdown import (
     _PART_CHANNELS, _VELOCITY_SCALE, _generate_part_cc, _generate_melody_expression_cc, _generate_bass_expression_cc,
     _generate_808_pitch_bends, _shift,
@@ -443,12 +444,15 @@ def _run_attempt(
     _sec_var  = min(1.0, req.variation  * _sec_profile.get("variation_scale",  1.0))
     _sec_dyn  = _sec_profile.get("velocity_scale", 1.0)
 
+    # Time signature: bar length in quarter-beats (4/4 → 4.0, so 4/4 is unchanged).
+    meter = parse_meter(getattr(req, "time_signature", None))
+
     if is_loop:
         sections = [{"bars": req.bars, "complexity": _sec_cplx, "parts": req.parts,
                      "offset": 0, "key": req.key, "dynamic": _sec_dyn}]
     else:
         key_shift = style.get("chorus_key_shift", 0)
-        sections = _plan_sections(req.bars, req.complexity, req.parts, req.key, key_shift)
+        sections = _plan_sections(req.bars, req.complexity, req.parts, req.key, key_shift, meter=meter)
 
     all_events: dict[str, list[NoteEvent]] = {part: [] for part in req.parts}
     _chords_prev = list(chords_prev_voicing) if chords_prev_voicing else None
@@ -477,7 +481,7 @@ def _run_attempt(
                            if section_i + 1 < len(sections) else None)
 
         if s_sec_type == "chorus":
-            chorus_spans.append((float(s_off), float(s_off) + s_bars * 4.0))
+            chorus_spans.append((float(s_off), float(s_off) + s_bars * meter.bar_beats))
 
         # A section only gets the "final cadence" static-root bass treatment if
         # it's genuinely the song's last section. In loop mode (song builder)
@@ -521,7 +525,7 @@ def _run_attempt(
                                        is_loop=is_loop,
                                        section_type=s_sec_type,
                                        next_section_type=s_next_type,
-                                       dynamics=_dynamics)
+                                       dynamics=_dynamics, meter=meter)
             drum_evts = _apply_dynamic(drum_evts, s_dyn)
             all_events["drums"].extend(_shift(drum_evts, s_off))
             kick_times = [e.start for e in drum_evts if e.pitch == DRUM_MAP["kick"]]
@@ -558,7 +562,7 @@ def _run_attempt(
                                        melody_model=_melody_model,
                                        harmony_complexity=harmony_cplx,
                                        seed_motif=melody_seed_motif,
-                                       section_type=s_sec_type)
+                                       section_type=s_sec_type, meter=meter)
             mel_evts = _apply_dynamic(mel_evts, s_dyn)
             all_events["melody"].extend(_shift(mel_evts, s_off))
             if mel_evts:
@@ -587,7 +591,7 @@ def _run_attempt(
             cm_evts = generate_counter_melody(mel_evts, s_key, req.scale, s_bars,
                                               s_resolved, style,
                                               melody_rests=mel_rests, cell=_answer_cell,
-                                              section_type=s_sec_type)
+                                              section_type=s_sec_type, meter=meter)
             cm_evts = _apply_dynamic(cm_evts, s_dyn)
             all_events["counter_melody"].extend(_shift(cm_evts, s_off))
 
@@ -607,7 +611,7 @@ def _run_attempt(
                                        harmony_complexity=harmony_cplx,
                                        prev_voicing=_chords_prev,
                                        push_windows=push_windows,
-                                       section_type=s_sec_type)
+                                       section_type=s_sec_type, meter=meter)
                 section_chord_tones = _chord_tones_by_bar(
                     [(e.start, e.pitch) for e in evts], s_bars)
                 _chords_prev = _final_chord_voicing(evts)
@@ -615,7 +619,8 @@ def _run_attempt(
                 evts = generate_pads(style, s_key, req.scale, s_bars, backing_cplx,
                                      eff_var, s_resolved,
                                      harmony_complexity=harmony_cplx,
-                                     melody_top=(mel_range[1] if melody_ceiling is not None else None))
+                                     melody_top=(mel_range[1] if melody_ceiling is not None else None),
+                                     meter=meter)
             elif part == "bass":
                 evts = generate_bass(style, s_key, req.scale, s_bars, backing_cplx,
                                      eff_var, bass_prog, kick_times,
@@ -624,7 +629,7 @@ def _run_attempt(
                                      push_windows=push_windows,
                                      rhythm_cell=rhythm_cell,
                                      cell_contour=_answer_cell,
-                                     section_type=s_sec_type)
+                                     section_type=s_sec_type, meter=meter)
             elif part == "arpeggio":
                 arp_octave = 6 if has_melody else 5
                 # When melody is active, pull arpeggio back so it supports rather than competes.
@@ -634,7 +639,7 @@ def _run_attempt(
                                          eff_var, s_resolved, arp_octave,
                                          melody_rests=mel_rests if has_melody else None,
                                          chord_tones=section_chord_tones,
-                                         seed_contour=arp_contour)
+                                         seed_contour=arp_contour, meter=meter)
             evts = _apply_dynamic(evts, s_dyn)
             all_events[part].extend(_shift(evts, s_off))
 

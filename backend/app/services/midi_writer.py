@@ -14,6 +14,8 @@ from typing import List
 
 import mido
 
+from app.core.meter import Meter, DEFAULT_METER
+
 from app.core.constants import TICKS_PER_BEAT
 
 
@@ -152,14 +154,21 @@ def _build_tempo_track(
     tempo_events: "list[tuple[float, float]] | None" = None,
     markers: "list[tuple[float, str]] | None" = None,
     key_signature: str | None = None,
+    meter: Meter = DEFAULT_METER,
 ) -> mido.MidiTrack:
     """Tempo/meta track. `tempo_events` — optional (beat, bpm) tempo map; when
     given it replaces the single set_tempo so songs can push choruses slightly
     and ritardando into the ending. An event at beat 0 overrides `bpm`.
     `markers` — optional (beat, label) section markers so DAW timelines show
-    Intro/Verse/Chorus. `key_signature` — optional mido key name (e.g. "Am")."""
+    Intro/Verse/Chorus. `key_signature` — optional mido key name (e.g. "Am").
+    `meter` — the song's time signature (4/4 → the classic meta, byte-identical)."""
     track = mido.MidiTrack()
-    track.append(mido.MetaMessage("time_signature", numerator=4, denominator=4, clocks_per_click=24, notated_32nd_notes_per_beat=8, time=0))
+    # Compound meters click on the dotted quarter (36 MIDI clocks); simple on the
+    # quarter (24). 4/4 → 4,4,24,8 exactly as before, so its output is unchanged.
+    track.append(mido.MetaMessage("time_signature", numerator=meter.numerator,
+                                  denominator=meter.denominator,
+                                  clocks_per_click=36 if meter.is_compound else 24,
+                                  notated_32nd_notes_per_beat=8, time=0))
     points = sorted(tempo_events or [], key=lambda p: p[0])
     if not points or points[0][0] > 0:
         points = [(0.0, float(bpm))] + points
@@ -193,9 +202,10 @@ def write_midi(
     pb_events: "List[PitchBendEvent] | None" = None,
     tempo_events: "list[tuple[float, float]] | None" = None,
     track_name: str | None = None,
+    meter: Meter = DEFAULT_METER,
 ) -> None:
     mid = mido.MidiFile(type=1, ticks_per_beat=ticks_per_beat)
-    mid.tracks.append(_build_tempo_track(bpm, ticks_per_beat, tempo_events))
+    mid.tracks.append(_build_tempo_track(bpm, ticks_per_beat, tempo_events, meter=meter))
     track = _events_to_track(events, ticks_per_beat, cc_events, pb_events)
     if program is not None and events:
         track.insert(0, mido.Message("program_change", channel=events[0].channel, program=program, time=0))
@@ -207,7 +217,8 @@ def write_midi(
     mid.save(str(output_path))
 
 
-def concatenate_midi_files(paths: list[Path], out_ticks: int = TICKS_PER_BEAT) -> mido.MidiFile:
+def concatenate_midi_files(paths: list[Path], out_ticks: int = TICKS_PER_BEAT,
+                           meter: Meter = DEFAULT_METER) -> mido.MidiFile:
     """Sequentially concatenate MIDI files into a single arrangement.
 
     Each file starts immediately after the previous one ends. Tracks from
@@ -228,8 +239,10 @@ def concatenate_midi_files(paths: list[Path], out_ticks: int = TICKS_PER_BEAT) -
             break
 
     t_track = mido.MidiTrack()
-    t_track.append(mido.MetaMessage("time_signature", numerator=4, denominator=4,
-                                    clocks_per_click=24, notated_32nd_notes_per_beat=8, time=0))
+    t_track.append(mido.MetaMessage("time_signature", numerator=meter.numerator,
+                                    denominator=meter.denominator,
+                                    clocks_per_click=36 if meter.is_compound else 24,
+                                    notated_32nd_notes_per_beat=8, time=0))
     t_track.append(mido.MetaMessage("set_tempo", tempo=tempo, time=0))
     t_track.append(mido.MetaMessage("end_of_track", time=0))
     out.tracks.append(t_track)
@@ -283,7 +296,8 @@ def rebuild_combined_from_parts(output_dir: Path, bpm: int, ticks_per_beat: int 
                                 tempo_events: "list[tuple[float, float]] | None" = None,
                                 markers: "list[tuple[float, str]] | None" = None,
                                 key_signature: str | None = None,
-                                track_names: "dict[str, str] | None" = None) -> None:
+                                track_names: "dict[str, str] | None" = None,
+                                meter: Meter = DEFAULT_METER) -> None:
     """Rebuild the combined .mid by merging all per-part .mid files in output_dir.
 
     Called after regenerating a single part so the combined stays in sync without
@@ -297,7 +311,7 @@ def rebuild_combined_from_parts(output_dir: Path, bpm: int, ticks_per_beat: int 
         return
 
     combined = mido.MidiFile(type=1, ticks_per_beat=ticks_per_beat)
-    combined.tracks.append(_build_tempo_track(bpm, ticks_per_beat, tempo_events, markers, key_signature))
+    combined.tracks.append(_build_tempo_track(bpm, ticks_per_beat, tempo_events, markers, key_signature, meter))
 
     for part_file in part_files:
         part_mid = mido.MidiFile(str(part_file))
@@ -322,9 +336,10 @@ def write_combined_midi(
     markers: "list[tuple[float, str]] | None" = None,
     key_signature: str | None = None,
     track_names: "dict[str, str] | None" = None,
+    meter: Meter = DEFAULT_METER,
 ) -> None:
     mid = mido.MidiFile(type=1, ticks_per_beat=ticks_per_beat)
-    mid.tracks.append(_build_tempo_track(bpm, ticks_per_beat, tempo_events, markers, key_signature))
+    mid.tracks.append(_build_tempo_track(bpm, ticks_per_beat, tempo_events, markers, key_signature, meter))
 
     for part_name, events in parts.items():
         track = _events_to_track(
