@@ -96,6 +96,7 @@ class GenerateSummary(BaseModel):
     key: str        # formatted label e.g. "C minor"
     key_root: str   # e.g. "C"
     scale: str      # e.g. "minor"
+    time_signature: str = "4/4"
     bpm: int
     bars: int
     complexity: float

@@ -521,7 +521,7 @@ def _run_attempt(
         if "drums" in req.parts and "drums" in s_parts:
             random.seed(_pseed(section_i, "drums"))
             drum_evts = generate_drums(style, s_bars, s_cplx, eff_var,
-                                       section_end_bars=_section_end_bars(sections, s_off),
+                                       section_end_bars=_section_end_bars(sections, s_off, meter),
                                        is_loop=is_loop,
                                        section_type=s_sec_type,
                                        next_section_type=s_next_type,
@@ -645,7 +645,7 @@ def _run_attempt(
 
     # Smooth dynamic steps at section transitions (verse→chorus lift, etc.)
     if not is_loop and len(sections) > 1:
-        _apply_section_ramp(all_events, sections)
+        _apply_section_ramp(all_events, sections, meter=meter)
 
     if groove_push:
         for gp_part in ("melody", "chords", "arpeggio", "bass", "pads", "counter_melody"):

@@ -74,6 +74,13 @@
         <p v-if="scaleMood" class="scale-mood">{{ scaleMood }}</p>
 
         <div class="field">
+          <label>Time signature</label>
+          <select v-model="form.time_signature">
+            <option v-for="ts in TIME_SIGNATURES" :key="ts.value" :value="ts.value">{{ ts.label }}</option>
+          </select>
+        </div>
+
+        <div class="field">
           <label>BPM <span v-if="selectedStyle" class="hint">{{ selectedStyle.bpm_range[0] }}–{{ selectedStyle.bpm_range[1] }}</span></label>
           <div class="bpm-row">
             <input
@@ -304,10 +311,25 @@ const emit = defineEmits<{
 const keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const allParts = ['chords', 'bass', 'melody', 'drums', 'arpeggio', 'pads', 'counter_melody']
 
+// Curated meters. 4/4 is the default; the rest cover the common simple, compound,
+// and odd feels the generators support (bad values fall back to 4/4 server-side).
+const TIME_SIGNATURES = [
+  { value: '4/4', label: '4/4 · common' },
+  { value: '3/4', label: '3/4 · waltz' },
+  { value: '2/4', label: '2/4 · march' },
+  { value: '6/8', label: '6/8 · compound' },
+  { value: '9/8', label: '9/8 · compound' },
+  { value: '12/8', label: '12/8 · compound' },
+  { value: '5/4', label: '5/4 · odd' },
+  { value: '7/8', label: '7/8 · odd (2+2+3)' },
+  { value: '5/8', label: '5/8 · odd (2+3)' },
+]
+
 const form = reactive<GenerateRequest>({
   style_id: props.styles[0]?.id ?? 'dark_trap',
   key: 'C',
   scale: 'minor',
+  time_signature: '4/4',
   bpm: 140,
   bars: 8,
   complexity: 0.5,
@@ -353,6 +375,7 @@ watch(() => props.replayData, (data) => {
   form.style_id = data.style
   form.key = data.summary.key_root
   form.scale = data.summary.scale
+  form.time_signature = data.summary.time_signature ?? '4/4'
   form.bpm = data.summary.bpm
   form.bars = data.summary.bars
   form.mode = data.summary.mode

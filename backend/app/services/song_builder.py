@@ -26,6 +26,7 @@ from app.services.library import build_scoring_style
 from app.generators.counter_melody import generate_counter_melody
 from app.theory.chords import roman_to_chord
 from app.core.constants import DRUM_MAP
+from app.core.meter import Meter, DEFAULT_METER, parse_meter
 from app.core.arrangement import (
     SECTION_PROFILES, _SONG_TEMPLATES, _part_seed, _transpose_key,
     _apply_section_ramp, _song_tempo_map, apply_arrangement_dynamics,
@@ -121,6 +122,12 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
         template = [dict(sd) for sd in custom_template]
     else:
         template = [dict(sd) for sd in _SONG_TEMPLATES.get(req.template, _SONG_TEMPLATES["verse_chorus"])]
+
+    # The song's meter drives every bar→beat conversion below (section offsets,
+    # tease/outro windows, the ending bar) and is threaded into each section's
+    # generation request. 4/4 → bar_beats 4.0, so all arithmetic stays identical.
+    meter = parse_meter(getattr(req, "time_signature", None))
+    bb = meter.bar_beats
 
     # DJ edit: bookend the arrangement with an 8-bar beat-only (drums+bass)
     # section for mixing — steady, no fills, no melodic content, outside the arc.
@@ -278,6 +285,7 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
             song_parts=list(req.parts),   # full song part list — keeps register decisions consistent in sections that drop parts
             humanize=req.humanize, custom_progression=None, blend_style_id=None,
             blend_amount=0.5, use_priors=req.use_priors,
+            time_signature=str(meter),   # every section inherits the song's meter
         )
 
         # Choruses develop the verse's motif; other section types keep their own
@@ -402,7 +410,7 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
             _onsets = sorted(e.start for e in evts["melody"] if e.start < 8.0)
             rhythm_cell = []
             for _o in _onsets:
-                _q = round((_o % 4) * 4) / 4
+                _q = round((_o % bb) * 4) / 4
                 if _q not in rhythm_cell:
                     rhythm_cell.append(_q)
                 if len(rhythm_cell) >= 4:
@@ -422,7 +430,7 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
             "offset": beat_offset, "bars": sec_bars,
             "dynamic": SECTION_PROFILES.get(sec_type, {}).get("velocity_scale", 1.0),
         })
-        beat_offset += sec_bars * 4
+        beat_offset += sec_bars * bb
         total_bars  += sec_bars
 
     # Smooth velocity jumps at section boundaries (verse→chorus lift, etc.). This
@@ -430,7 +438,7 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     # sections and never across the song builder's independently-generated
     # sections, so every Verse→Chorus/Chorus→Bridge transition was a hard jump.
     if len(ramp_sections) > 1:
-        _apply_section_ramp(song_events, ramp_sections)
+        _apply_section_ramp(song_events, ramp_sections, meter=meter)
 
     # ── Intro hook tease ─────────────────────────────────────────────────────
     # The intro previews the chorus melody: thinned to its structural notes,
@@ -439,7 +447,7 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     if tease_intro and "melody" in song_events:
         chorus_mel = type_theme.get("chorus", {}).get("melody") or []
         if chorus_mel:
-            limit = tease_intro["bars"] * 4
+            limit = tease_intro["bars"] * bb
             in_window = [e for e in chorus_mel if e.start < limit - 0.05]
             # Prefer the hook's structural notes for a clean preview.
             thin = [e for e in in_window
@@ -466,10 +474,10 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     # Dropouts and breakdowns (pre-chorus drop, bridge breakdown, thinned
     # verse 2) — applied before the ending bar so the final cadence survives.
     apply_arrangement_dynamics(song_events, section_results, base_seed,
-                               dynamics=req.dynamics)
+                               dynamics=req.dynamics, meter=meter)
     # Pickups run AFTER dynamics so they lead into melody that survived the
     # dropouts (and can sing across a full-band stop).
-    apply_melodic_pickups(song_events, section_results, base_seed, req.scale, style)
+    apply_melodic_pickups(song_events, section_results, base_seed, req.scale, style, meter=meter)
 
     # ── Ending variety ────────────────────────────────────────────────────────
     # Every song used to end with the identical ring-out formula. Three seeded
@@ -483,8 +491,8 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     if _ending_style == "hook_echo":
         _hook = type_theme.get("chorus", {}).get("melody") or []
         if _outro_sec and _hook and "melody" in song_events:
-            o_start = _outro_sec["start_bar"] * 4.0
-            o_beats = _outro_sec["bars"] * 4.0
+            o_start = _outro_sec["start_bar"] * bb
+            o_beats = _outro_sec["bars"] * bb
             frag = [e for e in sorted(_hook, key=lambda e: e.start) if e.start < 8.0]
             thin = [e for e in frag if (e.start % 1.0) < 0.13 or e.duration >= 0.75] or frag
             song_events["melody"] = [e for e in song_events["melody"]
@@ -510,12 +518,12 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     # covers this bar). Deterministic from base_seed so every regeneration flow
     # reproduces identical ending events for untouched parts.
     random.seed(_part_seed(base_seed, len(template), "ending"))
-    ending_start = float(total_bars * 4)
+    ending_start = float(total_bars * bb)
     tonic_roman = "i" if req.scale in ("minor", "dorian", "phrygian", "harmonic_minor",
                                        "pentatonic_minor", "blues", "locrian") else "I"
     tonic = roman_to_chord(tonic_roman, req.key, req.scale, octave=4)
     # Cold stop: the band hits the final chord staccato and it's over — no ring.
-    ring = 0.35 if _ending_style == "cold" else 4.0
+    ring = 0.35 if _ending_style == "cold" else bb
     if "chords" in song_events:
         # Voice the final chord in the register the song's comp actually ended
         # in (prev_voicing = the outro's closing voicing). The hardcoded
@@ -556,11 +564,12 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     return song_events, section_results, total_bars, section_seeds, song_progression
 
 
-def _section_markers(section_results: list[dict], home_key: str) -> list[tuple[float, str]]:
+def _section_markers(section_results: list[dict], home_key: str,
+                     meter: Meter = DEFAULT_METER) -> list[tuple[float, str]]:
     """MIDI section markers for the DAW timeline; sections that modulate away
     from the home key carry the key in the label (e.g. "Final Chorus (B)")."""
     return [
-        (float(s["start_bar"] * 4),
+        (float(s["start_bar"] * meter.bar_beats),
          s["name"] if s.get("key", home_key) == home_key else f"{s['name']} ({s['key']})")
         for s in section_results
     ]
@@ -569,7 +578,8 @@ def _section_markers(section_results: list[dict], home_key: str) -> list[tuple[f
 def _write_song_output(song_events: dict, output_dir, gen_id: str, bpm: int, style: dict,
                        programs: dict, parts: list[str], total_bars: int,
                        section_results: list[dict], key: str = "C",
-                       scale: str = "minor") -> list[FileInfo]:
+                       scale: str = "minor",
+                       meter: Meter = DEFAULT_METER) -> list[FileInfo]:
     """Write every stem + song.mid for a built song (CC, pitch bends, tempo map).
 
     Shared by build_song and regenerate_song_section so both produce identical
@@ -602,7 +612,7 @@ def _write_song_output(song_events: dict, output_dir, gen_id: str, bpm: int, sty
         ch = _PART_CHANNELS.get("bass", 1)
         song_pb["bass"] = _generate_808_pitch_bends(song_events["bass"], ch)
 
-    tempo_map = _song_tempo_map(section_results, bpm, ending_bars=1)
+    tempo_map = _song_tempo_map(section_results, bpm, ending_bars=1, meter=meter)
     _, track_names = part_midi_meta(style)
 
     files: list[FileInfo] = []
@@ -616,16 +626,16 @@ def _write_song_output(song_events: dict, output_dir, gen_id: str, bpm: int, sty
         fname = f"{part}.mid"
         write_midi(clean, output_dir / fname, bpm=bpm, program=programs.get(part),
                    cc_events=song_cc.get(part), pb_events=song_pb.get(part),
-                   tempo_events=tempo_map, track_name=track_names.get(part))
+                   tempo_events=tempo_map, track_name=track_names.get(part), meter=meter)
         files.append(FileInfo(part=part, filename=fname, url=f"/exports/{gen_id}/{fname}"))
 
     if len([p for p, e in song_events.items() if e]) > 1:
         clean_all = {p: _drop_quiet(_scale_velocity(e, p, _sid)) for p, e in song_events.items() if e}
         write_combined_midi(clean_all, output_dir / "song.mid", bpm=bpm, programs=programs,
                             cc_parts=song_cc, pb_parts=song_pb, tempo_events=tempo_map,
-                            markers=_section_markers(section_results, key),
+                            markers=_section_markers(section_results, key, meter),
                             key_signature=mido_key_signature(key, scale),
-                            track_names=track_names)
+                            track_names=track_names, meter=meter)
         files.append(FileInfo(part="song", filename="song.mid", url=f"/exports/{gen_id}/song.mid"))
     return files
 

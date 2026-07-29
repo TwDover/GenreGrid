@@ -105,6 +105,12 @@
         </div>
         <p v-if="scaleMood" class="scale-mood">{{ scaleMood }}</p>
         <div class="field">
+          <label>Time signature</label>
+          <select v-model="form.time_signature">
+            <option v-for="ts in TIME_SIGNATURES" :key="ts.value" :value="ts.value">{{ ts.label }}</option>
+          </select>
+        </div>
+        <div class="field">
           <label>BPM <span v-if="selectedStyle" class="hint">{{ selectedStyle.bpm_range[0] }}–{{ selectedStyle.bpm_range[1] }}</span></label>
           <input type="number" v-model.number="form.bpm"
                  :min="selectedStyle?.bpm_range[0] ?? 40"
@@ -293,10 +299,23 @@ const templates: TemplateOption[] = [
   },
 ]
 
+const TIME_SIGNATURES = [
+  { value: '4/4', label: '4/4 · common' },
+  { value: '3/4', label: '3/4 · waltz' },
+  { value: '2/4', label: '2/4 · march' },
+  { value: '6/8', label: '6/8 · compound' },
+  { value: '9/8', label: '9/8 · compound' },
+  { value: '12/8', label: '12/8 · compound' },
+  { value: '5/4', label: '5/4 · odd' },
+  { value: '7/8', label: '7/8 · odd (2+2+3)' },
+  { value: '5/8', label: '5/8 · odd (2+3)' },
+]
+
 const form = ref({
   style_id: props.styles[0]?.id ?? '',
   key: 'C',
   scale: 'minor',
+  time_signature: '4/4',
   bpm: 120,
   complexity: 0.6,
   variation: 0.4,

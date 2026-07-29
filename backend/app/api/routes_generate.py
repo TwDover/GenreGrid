@@ -321,7 +321,8 @@ def generate_stream(req: GenerateRequest):
         response = GenerateResponse(
             generation_id=gen_id, style=req.style_id, files=files,
             summary=GenerateSummary(key=f"{req.key} {req.scale}", key_root=req.key,
-                                    scale=req.scale, bpm=bpm, bars=req.bars,
+                                    scale=req.scale, time_signature=getattr(req, "time_signature", "4/4"),
+                                    bpm=bpm, bars=req.bars,
                                     complexity=req.complexity, variation=req.variation,
                                     mode=req.mode, section_type=req.section_type),
             seed=best_seed, quality=quality,

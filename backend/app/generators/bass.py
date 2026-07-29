@@ -131,65 +131,104 @@ def _generate_walking_bass(
         vel = min(127, int((100 + kb) * phrase_dyn) + random.randint(-5, 5))
         events.append(NoteEvent(pitch=root, start=_swing(_snap_to_kick(bar_start, kick_times)), duration=0.88, velocity=vel, channel=1))
 
-        # Beat 2: 3rd or 5th
-        beat2 = bar_start + 1.0
-        kb2 = 6 if _on_kick(beat2, kick_times) else 0
-        if should_trigger(0.15) and bar % 2 == 1:
-            # Occasional octave displacement on bar 2
-            p2 = max(28, min(52, root - 12 if root >= 40 else root + 12))
-        elif pair_direction == 1:
-            # Ascending arc: start mid-low (3rd) so there's room to rise
-            p2 = third if should_trigger(0.62) else fifth
-        else:
-            # Descending arc: start mid-high (5th) so there's room to fall
-            p2 = fifth if should_trigger(0.62) else third
-        events.append(NoteEvent(pitch=p2, start=_swing(beat2), duration=0.88,
-                                velocity=min(127, int((86 + kb2) * phrase_dyn) + random.randint(-8, 8)), channel=1))
+        # The classic four-crotchet walk is 4/4-specific (beats 2/3/4 sit at
+        # fixed +1/+2/+3). In any other meter those offsets overflow a shorter
+        # bar or misplace the pulse, so the walk instead steps one note per felt
+        # pulse (meter.pulse_positions) — 3/4 → three notes, 6/8 → a dotted-
+        # quarter two-feel, 7/8 → the 2+2+3 pulse. 4/4 keeps the exact original
+        # path (and RNG sequence), so 4/4 output stays byte-identical.
+        if beats_per_bar == 4.0:
+            # Beat 2: 3rd or 5th
+            beat2 = bar_start + 1.0
+            kb2 = 6 if _on_kick(beat2, kick_times) else 0
+            if should_trigger(0.15) and bar % 2 == 1:
+                # Occasional octave displacement on bar 2
+                p2 = max(28, min(52, root - 12 if root >= 40 else root + 12))
+            elif pair_direction == 1:
+                # Ascending arc: start mid-low (3rd) so there's room to rise
+                p2 = third if should_trigger(0.62) else fifth
+            else:
+                # Descending arc: start mid-high (5th) so there's room to fall
+                p2 = fifth if should_trigger(0.62) else third
+            events.append(NoteEvent(pitch=p2, start=_swing(beat2), duration=0.88,
+                                    velocity=min(127, int((86 + kb2) * phrase_dyn) + random.randint(-8, 8)), channel=1))
 
-        # Beat 3: 5th or scalar passing note
-        beat3 = bar_start + 2.0
-        kb3 = 6 if _on_kick(beat3, kick_times) else 0
-        if mid_roman != roman:
-            # Harmony changes mid-bar (2 chords/bar): land the incoming chord's
-            # root on beat 3 rather than walking tones of the departed chord.
-            mid_pitches = roman_to_chord(mid_roman, key, scale, octave=2)
-            p3 = max(28, min(52, mid_pitches[0]))
-        elif should_trigger(0.35) and complexity > 0.4:
-            # Scalar passing note between beat-2 pitch and beat-4 approach
-            mid = (p2 + next_root) // 2
-            # Snap to nearest scale or chromatic step
-            candidates = [mid, mid + 1, mid - 1]
-            p3 = max(28, min(52, min(candidates, key=lambda n: abs(n - mid) + (0 if n % 12 in scale_pcs else 1))))
-        elif pair_direction == 1:
-            # Ascending arc: reach upward from p2 toward the 5th
-            p3 = max(p2, fifth) if should_trigger(0.55) else fifth
-            p3 = max(28, min(52, p3))
-        else:
-            # Descending arc: come down from p2 toward the 3rd
-            p3 = min(p2, third) if should_trigger(0.55) else third
-            p3 = max(28, min(52, p3))
-        events.append(NoteEvent(pitch=p3, start=_swing(beat3), duration=0.88,
-                                velocity=min(127, int((84 + kb3) * phrase_dyn) + random.randint(-8, 8)), channel=1))
+            # Beat 3: 5th or scalar passing note
+            beat3 = bar_start + 2.0
+            kb3 = 6 if _on_kick(beat3, kick_times) else 0
+            if mid_roman != roman:
+                # Harmony changes mid-bar (2 chords/bar): land the incoming chord's
+                # root on beat 3 rather than walking tones of the departed chord.
+                mid_pitches = roman_to_chord(mid_roman, key, scale, octave=2)
+                p3 = max(28, min(52, mid_pitches[0]))
+            elif should_trigger(0.35) and complexity > 0.4:
+                # Scalar passing note between beat-2 pitch and beat-4 approach
+                mid = (p2 + next_root) // 2
+                # Snap to nearest scale or chromatic step
+                candidates = [mid, mid + 1, mid - 1]
+                p3 = max(28, min(52, min(candidates, key=lambda n: abs(n - mid) + (0 if n % 12 in scale_pcs else 1))))
+            elif pair_direction == 1:
+                # Ascending arc: reach upward from p2 toward the 5th
+                p3 = max(p2, fifth) if should_trigger(0.55) else fifth
+                p3 = max(28, min(52, p3))
+            else:
+                # Descending arc: come down from p2 toward the 3rd
+                p3 = min(p2, third) if should_trigger(0.55) else third
+                p3 = max(28, min(52, p3))
+            events.append(NoteEvent(pitch=p3, start=_swing(beat3), duration=0.88,
+                                    velocity=min(127, int((84 + kb3) * phrase_dyn) + random.randint(-8, 8)), channel=1))
 
-        # Beat 4: chromatic or scale-step approach to next bar root
-        beat4 = bar_start + 3.0
-        kb4 = 6 if _on_kick(beat4, kick_times) else 0
-        # Alternate between below-approach (most common) and above-approach (encircle feel)
-        if should_trigger(0.35):
-            approach = max(28, min(52, next_root + 1))  # half-step from above
+            # Beat 4: chromatic or scale-step approach to next bar root
+            beat4 = bar_start + 3.0
+            kb4 = 6 if _on_kick(beat4, kick_times) else 0
+            # Alternate between below-approach (most common) and above-approach (encircle feel)
+            if should_trigger(0.35):
+                approach = max(28, min(52, next_root + 1))  # half-step from above
+            else:
+                approach = _approach(root, next_root, 1)    # half-step from below
+            # Occasionally use a two-step approach for larger intervals
+            if abs(next_root - root) > 4 and complexity > 0.5 and should_trigger(0.45):
+                approach = _approach(root, next_root, 2)
+            # Sometimes diatonic (scale-step) instead of chromatic
+            nr2_down_ok = (next_root - 2) % 12 in scale_pcs
+            nr2_up_ok   = (next_root + 2) % 12 in scale_pcs
+            if should_trigger(variation * 0.3) and (nr2_down_ok or nr2_up_ok):
+                approach = (next_root - 2) if nr2_down_ok else (next_root + 2)
+            approach = max(28, min(52, approach))
+            events.append(NoteEvent(pitch=approach, start=_swing(beat4), duration=0.88,
+                                    velocity=min(127, int((88 + kb4) * phrase_dyn) + random.randint(-8, 8)), channel=1))
         else:
-            approach = _approach(root, next_root, 1)    # half-step from below
-        # Occasionally use a two-step approach for larger intervals
-        if abs(next_root - root) > 4 and complexity > 0.5 and should_trigger(0.45):
-            approach = _approach(root, next_root, 2)
-        # Sometimes diatonic (scale-step) instead of chromatic
-        nr2_down_ok = (next_root - 2) % 12 in scale_pcs
-        nr2_up_ok   = (next_root + 2) % 12 in scale_pcs
-        if should_trigger(variation * 0.3) and (nr2_down_ok or nr2_up_ok):
-            approach = (next_root - 2) if nr2_down_ok else (next_root + 2)
-        approach = max(28, min(52, approach))
-        events.append(NoteEvent(pitch=approach, start=_swing(beat4), duration=0.88,
-                                velocity=min(127, int((88 + kb4) * phrase_dyn) + random.randint(-8, 8)), channel=1))
+            # Generalized pulse walk for non-4/4 bars. The downbeat root is
+            # already placed; step through the remaining felt pulses, arcing
+            # between chord tones and leading into the next bar's root on the
+            # final pulse (same ascending/descending logic as the 4/4 walk).
+            pulses = meter.pulse_positions
+            for pi in range(1, len(pulses)):
+                pos = bar_start + pulses[pi]
+                nxt = bar_start + (pulses[pi + 1] if pi + 1 < len(pulses) else beats_per_bar)
+                dur = max(0.2, (nxt - pos) * 0.9)
+                kbp = 6 if _on_kick(pos, kick_times) else 0
+                if pi == len(pulses) - 1:
+                    # Final pulse: approach the next bar's root (chromatic below,
+                    # sometimes above, occasionally a diatonic step).
+                    if should_trigger(0.35):
+                        pitch = max(28, min(52, next_root + 1))
+                    else:
+                        pitch = _approach(root, next_root, 1)
+                    if should_trigger(variation * 0.3) and (next_root - 2) % 12 in scale_pcs:
+                        pitch = next_root - 2
+                    base = 88
+                else:
+                    # Inner pulse: a chord tone chosen by the phrase arc.
+                    if pair_direction == 1:
+                        pitch = third if should_trigger(0.6) else fifth
+                    else:
+                        pitch = fifth if should_trigger(0.6) else third
+                    base = 86
+                pitch = max(28, min(52, pitch))
+                events.append(NoteEvent(
+                    pitch=pitch, start=_swing(_snap_to_kick(pos, kick_times)), duration=dur,
+                    velocity=min(127, int((base + kbp) * phrase_dyn) + random.randint(-8, 8)), channel=1))
 
     bass_jitter = style_jitter(style) * 0.55
     return [NoteEvent(e.pitch, max(0.0, e.start + timing_jitter(bass_jitter)), e.duration, e.velocity, e.channel) for e in events]
@@ -311,7 +350,7 @@ def _generate_808_bass(
 
 def _render_riff_bass(
     style: dict, key: str, scale: str, bars: int, progression: list,
-    section_type: str | None,
+    section_type: str | None, meter: Meter = DEFAULT_METER,
 ) -> List[NoteEvent]:
     """Render the song's riff (app.generators.riff) an octave below the guitar,
     as single notes — the bass locks to the guitar in unison. Accents get a
@@ -331,11 +370,11 @@ def _render_riff_bass(
     # Pedal an octave below the guitar's low register so the two lock in unison.
     ch_low = style.get("chord_register", [40, 60])[0]
     riff = build_riff(style, key, scale, progression, bars, section_type,
-                      pedal_low=max(28, ch_low - 12))
+                      pedal_low=max(28, ch_low - 12), meter=meter)
 
     events: List[NoteEvent] = []
     for rn in riff:
-        bar_num = int(rn.start / 4.0)
+        bar_num = int(rn.start / meter.bar_beats)
         vel = int(vel_base * phrase_breath_factor(bar_num)) + (8 if rn.accent else 0)
         events.append(NoteEvent(
             pitch=min(127, max(0, rn.pitch)),
@@ -378,7 +417,7 @@ def generate_bass(
     from app.generators.riff import riff_section_comp
     if riff_section_comp(style, section_type):
         return _fold_to_range(
-            _render_riff_bass(style, key, scale, bars, progression, section_type),
+            _render_riff_bass(style, key, scale, bars, progression, section_type, meter=meter),
             _bass_profile)
 
     if bass_cfg.get("bass_style") == "808":

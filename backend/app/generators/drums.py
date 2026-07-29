@@ -187,6 +187,14 @@ def generate_drums(
     step           = 0.25      # sixteenth note
     ticks_per_beat = 480
     hat_base_vel   = 74        # peak velocity for the 16-step accent curve
+    # End-of-bar fills/rolls/ghost gestures are written relative to a 4/4 bar
+    # (offsets in the 2.75–3.99 range). Shifting them by (bar_beats − 4) lands
+    # them at the ACTUAL bar end in any meter; for 4/4 the shift is 0, so those
+    # placements stay byte-identical. Full-bar figures instead clip to the bar.
+    fill_shift = beats_per_bar - 4.0
+    # Backbeats are 1-indexed quarter-note beats ([2, 4]); drop any that fall
+    # outside a shorter bar (beat 4 overflows 3/4 and 6/8). Never leave it empty.
+    snare_beats = [b for b in snare_beats if (b - 1) < beats_per_bar] or [2]
 
     # Decide hat subdivision mode once per 4-bar phrase.
     phrase_hat_modes: dict[int, bool] = {}
@@ -259,7 +267,7 @@ def generate_drums(
         if kick_pattern:
             kick_beats_bar1 = [
                 i * step for i, on in enumerate(kick_pattern)
-                if on and should_trigger(0.88 + variation * 0.10)
+                if on and i * step < beats_per_bar and should_trigger(0.88 + variation * 0.10)
             ]
             # Guarantee beat 1
             if not any(b < step for b in kick_beats_bar1):
@@ -279,6 +287,9 @@ def generate_drums(
             if bar_in_pair == 1
             else list(kick_beats_bar1)
         )
+        # The bar-2 anticipation kicks (3.75, 2.75, …) assume a 4/4 bar; drop any
+        # that overflow a shorter one. No RNG here, so 4/4 stays byte-identical.
+        kick_beats = [b for b in kick_beats if b < beats_per_bar]
 
         # Intro: strip the kick to its anchors — the groove arrives with the verse
         if is_intro:
@@ -290,7 +301,7 @@ def generate_drums(
         # Choruses run it more often; never under a stripped or half-time feel.
         elif (double_kick_prob > 0 and not is_outro
                 and should_trigger(min(0.9, double_kick_prob * (1.5 if is_chorus else 1.0) * dyn_f))):
-            kick_beats = [i * step for i in range(16)]
+            kick_beats = [i * step for i in range(meter.steps_per_bar)]
 
         for b in kick_beats:
             t      = bar_start + b
@@ -392,7 +403,7 @@ def generate_drums(
         use_triplet = phrase_hat_modes[bar // 4]
         if use_triplet:
             # 12 triplet 8th notes per bar (3 per beat × 4 beats)
-            hat_steps = [bar_start + i / 3.0 for i in range(12)]
+            hat_steps = [bar_start + i / 3.0 for i in range(int(round(beats_per_bar * 3)))]
         else:
             hat_steps = [bar_start + i * step for i in range(int(beats_per_bar / step))]
         # Half-time bridge: hats fall back to the 8th-note grid
@@ -420,6 +431,8 @@ def generate_drums(
             for s, on in enumerate(_JAZZ_RIDE):
                 if not on:
                     continue
+                if s * step >= beats_per_bar:   # 16-step pattern overflows a short bar
+                    continue
                 t = bar_start + s * step
                 beat_frac = round(s * step % 1.0, 4)
                 base_v = 66 if beat_frac < 0.01 else (54 if abs(beat_frac - 0.5) < 0.01 else 46)
@@ -434,7 +447,7 @@ def generate_drums(
                     channel=DRUM_CHANNEL,
                 ))
             # Hi-hat "chick" on beats 2 and 4
-            for chick_b in [1.0, 3.0]:
+            for chick_b in [b for b in [1.0, 3.0] if b < beats_per_bar]:
                 t = bar_start + chick_b
                 t_tick = int(t * ticks_per_beat)
                 t_tick = apply_swing(t_tick, swing_amount, ticks_per_beat)
@@ -543,7 +556,7 @@ def generate_drums(
 
         # EDM build: accelerating kick hits in last 2 beats
         if edm_build_active:
-            for edm_b in [2.0, 2.5, 3.0, 3.5]:
+            for edm_b in [b for b in [2.0, 2.5, 3.0, 3.5] if b < beats_per_bar]:
                 if not any(abs(edm_b - k) < 0.05 for k in kick_beats):
                     t = bar_start + edm_b
                     t_tick = int(t * ticks_per_beat)
@@ -631,7 +644,7 @@ def generate_drums(
         if (edm_drops and is_section_end and not is_last_bar and complexity > 0.2) or build_roll:
             # Snare roll: 8 32nd notes from 3.5 → 4.0, velocity builds 52 → 120
             for r_i in range(8):
-                r_start = bar_start + 3.5 + r_i * 0.0625
+                r_start = bar_start + fill_shift + 3.5 + r_i * 0.0625
                 r_vel   = min(127, 52 + r_i * 9 + random.randint(-4, 4))
                 events.append(NoteEvent(
                     pitch=DRUM_MAP["snare"],
@@ -657,6 +670,9 @@ def generate_drums(
                     key, vel = entry[1], entry[2]
                     if key not in _FILL_LAYER_KEYS:
                         continue
+                    # Mined fills span a full 4/4 bar; drop steps past a short bar.
+                    if entry[0] * step >= beats_per_bar:
+                        continue
                     fv = int(vel * _vel_scale * phrase_dyn) + random.randint(-5, 5)
                     events.append(NoteEvent(
                         pitch=DRUM_MAP[key],
@@ -675,7 +691,7 @@ def generate_drums(
             _vel_scale = 0.7 + 0.3 * fill_intensity
 
             # Micro fill signal: one soft snare accent 3 16ths before bar end
-            micro_start = bar_start + 3.25
+            micro_start = bar_start + fill_shift + 3.25
             events.append(NoteEvent(
                 pitch=DRUM_MAP["snare"],
                 start=micro_start + _jitter("fill", h),
@@ -718,7 +734,7 @@ def generate_drums(
                 fill_vel = int(base_vel * _vel_scale * phrase_dyn) + random.randint(-6, 6)
                 events.append(NoteEvent(
                     pitch=DRUM_MAP[drum_key],
-                    start=bar_start + b_offset + _jitter("fill", h),
+                    start=bar_start + fill_shift + b_offset + _jitter("fill", h),
                     duration=0.1,
                     velocity=min(127, max(1, fill_vel)),
                     channel=DRUM_CHANNEL,
@@ -741,7 +757,7 @@ def generate_drums(
                 for _mo, _mv in ((3.5, 44), (3.75, 60)):
                     events.append(NoteEvent(
                         pitch=DRUM_MAP["snare"],
-                        start=bar_start + _mo + _jitter("ghost", h),
+                        start=bar_start + fill_shift + _mo + _jitter("ghost", h),
                         duration=0.05,
                         velocity=max(1, min(127, int(_mv * phrase_dyn) + random.randint(-5, 5))),
                         channel=DRUM_CHANNEL,
@@ -750,7 +766,7 @@ def generate_drums(
                 # Kick push: an extra kick on the "and of 4" nudging the turn.
                 events.append(NoteEvent(
                     pitch=DRUM_MAP["kick"],
-                    start=bar_start + 3.5 + _jitter("kick", h),
+                    start=bar_start + fill_shift + 3.5 + _jitter("kick", h),
                     duration=0.1,
                     velocity=max(1, min(127, int(82 * phrase_dyn) + random.randint(-6, 6))),
                     channel=DRUM_CHANNEL,
@@ -758,7 +774,7 @@ def generate_drums(
 
         # ── Percussion layers ─────────────────────────────────────────────────
         if "shaker" in perc_layers:
-            for s in [i * 0.5 for i in range(8)]:
+            for s in [i * 0.5 for i in range(int(round(beats_per_bar * 2)))]:
                 if not should_trigger(0.80):
                     continue
                 t_tick = int((bar_start + s) * ticks_per_beat)
@@ -774,7 +790,7 @@ def generate_drums(
                 ))
 
         if "tambourine" in perc_layers:
-            for tamb_b in [1.0, 3.0]:
+            for tamb_b in [b for b in [1.0, 3.0] if b < beats_per_bar]:
                 t_tick = int((bar_start + tamb_b) * ticks_per_beat)
                 t_tick = apply_swing(t_tick, swing_amount, ticks_per_beat)
                 tamb_vel = int((60 + random.randint(-10, 10)) * phrase_dyn)
