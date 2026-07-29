@@ -147,7 +147,8 @@ export async function buildSongFromMelody(
   params: {
     style_id: string; template: string; parts: string[]
     complexity: number; variation: number; humanize: number
-    use_priors?: boolean; chorus_key_shift?: number; final_chorus_lift?: number; seed?: number
+    use_priors?: boolean; chorus_key_shift?: number; final_chorus_lift?: number
+    tempo_automation?: number; seed?: number
   },
 ): Promise<BuildSongResponse> {
   const fd = new FormData()
@@ -161,6 +162,7 @@ export async function buildSongFromMelody(
   fd.append('use_priors', String(params.use_priors ?? false))
   fd.append('chorus_key_shift', String(params.chorus_key_shift ?? 0))
   fd.append('final_chorus_lift', String(params.final_chorus_lift ?? 1))
+  fd.append('tempo_automation', String(params.tempo_automation ?? 0.5))
   if (params.seed != null) fd.append('seed', String(params.seed))
   const res = await fetch(`${BASE_URL}/build-song-from-melody`, { method: 'POST', body: fd })
   if (!res.ok) {

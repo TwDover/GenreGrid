@@ -579,7 +579,8 @@ def _write_song_output(song_events: dict, output_dir, gen_id: str, bpm: int, sty
                        programs: dict, parts: list[str], total_bars: int,
                        section_results: list[dict], key: str = "C",
                        scale: str = "minor",
-                       meter: Meter = DEFAULT_METER) -> list[FileInfo]:
+                       meter: Meter = DEFAULT_METER,
+                       tempo_automation: float = 0.5) -> list[FileInfo]:
     """Write every stem + song.mid for a built song (CC, pitch bends, tempo map).
 
     Shared by build_song and regenerate_song_section so both produce identical
@@ -612,7 +613,7 @@ def _write_song_output(song_events: dict, output_dir, gen_id: str, bpm: int, sty
         ch = _PART_CHANNELS.get("bass", 1)
         song_pb["bass"] = _generate_808_pitch_bends(song_events["bass"], ch)
 
-    tempo_map = _song_tempo_map(section_results, bpm, ending_bars=1, meter=meter)
+    tempo_map = _song_tempo_map(section_results, bpm, ending_bars=1, meter=meter, intensity=tempo_automation)
     _, track_names = part_midi_meta(style)
 
     files: list[FileInfo] = []

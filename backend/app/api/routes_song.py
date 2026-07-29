@@ -160,7 +160,7 @@ def _do_build_song(req: BuildSongRequest, user_progression: list[str] | None = N
         "style_id": req.style_id, "key": req.key, "scale": req.scale,
         "time_signature": getattr(req, "time_signature", "4/4"),
         "bpm": bpm, "complexity": req.complexity, "variation": req.variation,
-        "dynamics": req.dynamics,
+        "dynamics": req.dynamics, "tempo_automation": req.tempo_automation,
         "humanize": req.humanize, "parts": list(req.parts), "template": req.template,
         "use_priors": req.use_priors, "chorus_key_shift": chorus_key_shift,
         "bridge_key_shift": bridge_key_shift, "base_seed": base_seed,
@@ -180,7 +180,8 @@ def _do_build_song(req: BuildSongRequest, user_progression: list[str] | None = N
     files = _write_song_output(song_events, output_dir, gen_id, bpm, style, programs,
                                list(req.parts), total_bars, section_results,
                                key=req.key, scale=req.scale,
-                               meter=parse_meter(getattr(req, "time_signature", None)))
+                               meter=parse_meter(getattr(req, "time_signature", None)),
+                               tempo_automation=req.tempo_automation)
 
     import json as _jsong
     (output_dir / "song_structure.json").write_text(_jsong.dumps(section_results, indent=2))
@@ -292,7 +293,7 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
     if req.part == "bass" and style.get("bass", {}).get("bass_style") == "808":
         part_pb = _generate_808_pitch_bends(evts, _PART_CHANNELS.get("bass", 1))
 
-    tempo_map = _song_tempo_map(_sections, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4")))
+    tempo_map = _song_tempo_map(_sections, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4")), intensity=meta.get("tempo_automation", 0.5))
     scaled = _drop_quiet(_scale_velocity(evts, req.part, _sid))
     fname = f"{req.part}.mid"
     part_path = output_dir / fname
@@ -366,7 +367,7 @@ def _render_song_part_stem(output_dir, meta: dict, style: dict, part: str, salt:
     if part == "bass" and style.get("bass", {}).get("bass_style") == "808":
         part_pb = _generate_808_pitch_bends(evts, _PART_CHANNELS.get("bass", 1))
 
-    tempo_map = _song_tempo_map(_sections, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4")))
+    tempo_map = _song_tempo_map(_sections, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4")), intensity=meta.get("tempo_automation", 0.5))
     scaled = _drop_quiet(_scale_velocity(evts, part, _sid))
     write_midi(scaled, output_dir / out_name, bpm=bpm, program=programs.get(part),
                cc_events=part_cc, pb_events=part_pb, tempo_events=tempo_map,
@@ -455,7 +456,7 @@ def keep_song_part_candidate(req: KeepSongPartCandidateRequest):
         custom=meta.get("custom_template"))
     rebuild_combined_from_parts(
         output_dir, bpm, combined_name="song.mid", meter=parse_meter(meta.get("time_signature", "4/4")),
-        tempo_events=_song_tempo_map(layout, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4"))),
+        tempo_events=_song_tempo_map(layout, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4")), intensity=meta.get("tempo_automation", 0.5)),
         markers=_section_markers(layout, meta.get("key", "C"), parse_meter(meta.get("time_signature", "4/4"))),
         key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")),
         track_names=track_names)
@@ -498,6 +499,7 @@ async def build_song_from_melody(
     use_priors: bool = Form(False),
     chorus_key_shift: int = Form(0),
     final_chorus_lift: int = Form(1),
+    tempo_automation: float = Form(0.5),
     seed: int | None = Form(None),
 ):
     """Build a full song around an uploaded melody.
@@ -535,6 +537,7 @@ async def build_song_from_melody(
         parts=[p.strip() for p in parts.split(",") if p.strip()],
         template=template, seed=seed, use_priors=use_priors,
         chorus_key_shift=chorus_key_shift, final_chorus_lift=final_chorus_lift,
+        tempo_automation=tempo_automation,
     )
     return _do_build_song(req, user_progression=progression, hook_melody=melody)
 
@@ -589,7 +592,7 @@ def set_part_gain(req: SetPartGainRequest):
                        meta.get("style_id", ""), exc_info=True)
         _track_names = {}
     rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid", meter=parse_meter(meta.get("time_signature", "4/4")),
-                                tempo_events=_song_tempo_map(layout, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4"))),
+                                tempo_events=_song_tempo_map(layout, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4")), intensity=meta.get("tempo_automation", 0.5)),
                                 markers=_section_markers(layout, meta.get("key", "C"), parse_meter(meta.get("time_signature", "4/4"))),
                                 key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")),
                                 track_names=_track_names)
@@ -624,7 +627,7 @@ def edit_part(req: EditPartRequest):
     bpm = meta.get("bpm", 120)
     layout = _template_section_results(meta.get("template", "verse_chorus"), meta.get("key", "C"),
                                        custom=meta.get("custom_template"))
-    tempo_map = _song_tempo_map(layout, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4")))
+    tempo_map = _song_tempo_map(layout, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4")), intensity=meta.get("tempo_automation", 0.5))
     total_bars = sum(s["bars"] for s in layout)
 
     channel = 9 if req.part == "drums" else _PART_CHANNELS.get(req.part, 0)
@@ -782,7 +785,7 @@ def undo_song_part(req: RegenerateSongPartRequest):
     bpm = meta.get("bpm", 120)
     _layout = _template_section_results(meta.get("template", "verse_chorus"), meta.get("key", "C"),
                                         custom=meta.get("custom_template"))
-    tempo_map = _song_tempo_map(_layout, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4")))
+    tempo_map = _song_tempo_map(_layout, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4")), intensity=meta.get("tempo_automation", 0.5))
 
     shutil.copy(prev, output_dir / f"{req.part}.mid")
     prev.unlink()   # one level of undo only
@@ -870,7 +873,8 @@ def regenerate_song_section(req: RegenerateSongSectionRequest):
     files = _write_song_output(song_events, output_dir, req.generation_id, bpm, style,
                                programs, list(meta["parts"]), total_bars, section_results,
                                key=meta.get("key", "C"), scale=meta.get("scale", "minor"),
-                               meter=parse_meter(meta.get("time_signature", "4/4")))
+                               meter=parse_meter(meta.get("time_signature", "4/4")),
+                               tempo_automation=meta.get("tempo_automation", 0.5))
 
     # Part locking: any locked stem is restored to its pre-reroll state (the .prev
     # backup taken above) so it stays byte-identical — the section re-roll only
@@ -884,7 +888,7 @@ def regenerate_song_section(req: RegenerateSongSectionRequest):
                 shutil.copy(prev, output_dir / f"{part}.mid")
         rebuild_combined_from_parts(
             output_dir, bpm, combined_name="song.mid", meter=parse_meter(meta.get("time_signature", "4/4")),
-            tempo_events=_song_tempo_map(section_results, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4"))),
+            tempo_events=_song_tempo_map(section_results, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4")), intensity=meta.get("tempo_automation", 0.5)),
             markers=_section_markers(section_results, meta.get("key", "C"), parse_meter(meta.get("time_signature", "4/4"))),
             key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")),
             track_names=track_names)

@@ -176,6 +176,14 @@
               <option :value="2">+2</option>
             </select>
           </div>
+          <div class="field">
+            <label>Tempo motion <span class="hint">chorus push &amp; ending rit.</span></label>
+            <select v-model.number="form.tempo_automation">
+              <option :value="0">Off (steady)</option>
+              <option :value="0.5">Subtle</option>
+              <option :value="1">Expressive</option>
+            </select>
+          </div>
         </section>
 
         <section class="group">
@@ -331,6 +339,7 @@ const form = ref({
   use_priors: false,
   chorus_key_shift: 0,
   final_chorus_lift: 1,
+  tempo_automation: 0.5,
   blend_style_id: '' as string,
   blend_amount: 0.5,
 })
@@ -403,6 +412,7 @@ async function generate() {
         use_priors: form.value.use_priors,
         chorus_key_shift: form.value.chorus_key_shift,
         final_chorus_lift: form.value.final_chorus_lift,
+        tempo_automation: form.value.tempo_automation,
       })
       emit('built', result, `${templateLabel.value} (your melody)`)
       return

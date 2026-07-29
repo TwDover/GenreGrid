@@ -209,7 +209,7 @@ def test_build_song_from_melody_end_to_end():
         file=upload, style_id="lofi", template="compact",
         parts="chords,bass,melody,drums", complexity=0.6, variation=0.4,
         humanize=0.5, use_priors=False, chorus_key_shift=0, final_chorus_lift=0,
-        seed=64))
+        tempo_automation=0.5, seed=64))
     assert r.key.startswith("C major")
     d = EXPORTS_DIR / r.generation_id
 
@@ -317,3 +317,31 @@ def test_edit_part_404_on_missing_song_or_stem():
     with pytest.raises(HTTPException) as exc:
         edit_part(EditPartRequest(generation_id=r.generation_id, part="melody", notes=note))
     assert exc.value.status_code == 404
+
+
+def test_song_tempo_map_intensity():
+    """The tempo-automation knob scales the chorus push, pre-chorus lean and
+    ending ritardando: 0 = flat, 0.5 = the classic subtle default, 1 = double."""
+    from app.core.arrangement import _song_tempo_map
+    bpm = 120.0
+    sections = [
+        {"start_bar": 0,  "bars": 4, "section_type": "verse"},
+        {"start_bar": 4,  "bars": 2, "section_type": "pre_chorus"},
+        {"start_bar": 6,  "bars": 4, "section_type": "chorus"},
+        {"start_bar": 10, "bars": 4, "section_type": "verse"},   # drops back to base
+    ]
+
+    # Off → a single flat tempo point, no movement anywhere.
+    assert _song_tempo_map(sections, bpm, ending_bars=1, intensity=0.0) == [(0.0, 120.0)]
+
+    # Subtle (default 0.5) → the historical values, byte-for-byte.
+    subtle = {round(b, 4) for _, b in _song_tempo_map(sections, bpm, ending_bars=1, intensity=0.5)}
+    assert round(120 * 1.006, 4) in subtle   # pre-chorus lean
+    assert round(120 * 1.012, 4) in subtle   # chorus push
+    assert round(120 * 0.76, 4) in subtle    # deepest ritardando step
+    assert 120.0 in subtle                    # base + drop-back to base after chorus
+
+    # Expressive (1.0) → the same gestures at double the deviation.
+    expr = {round(b, 4) for _, b in _song_tempo_map(sections, bpm, ending_bars=1, intensity=1.0)}
+    assert round(120 * 1.024, 4) in expr      # chorus push doubled
+    assert round(120 * 0.52, 4) in expr       # deepest ritardando doubled (1 - 0.48)
