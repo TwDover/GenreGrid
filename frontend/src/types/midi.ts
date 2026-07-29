@@ -44,6 +44,7 @@ export interface GenerateRequest {
   style_id: string
   key: string
   scale: string
+  time_signature?: string
   bpm: number
   bars: number
   complexity: number
@@ -83,6 +84,7 @@ export interface GenerateSummary {
   key: string
   key_root: string
   scale: string
+  time_signature?: string
   bpm: number
   bars: number
   complexity: number
@@ -135,6 +137,7 @@ export interface BuildSongRequest {
   style_id: string
   key: string
   scale: string
+  time_signature?: string
   bpm: number
   complexity: number
   variation: number

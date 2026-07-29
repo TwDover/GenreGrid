@@ -246,12 +246,26 @@ moves deferred (`_do_build_song`, the `toggle` shell). **Now starting Phase 4 �
   — all 7 generators (which were already internally parameterized by a local `beats_per_bar`),
   `_plan_sections`, and the section loop. **4/4 stays byte-identical (135 backend tests green)**
   and non-4/4 runs end-to-end with correctly-sized bars + meta.
-  _Milestone 2 (remaining):_ generators still place some notes at fixed within-bar offsets that
-  overflow shorter bars (walking-bass beat 4, the drum 16-step grid) — needs per-generator
-  within-bar generalization; thread the meter through the song services (`song_builder`,
-  `mixdown`, `quality`) for full non-4/4 *songs*; idiomatic compound (6/8 triplet) / odd (7/8
-  grouping) drum feel; a frontend selector; and 3/4/6/8/7/8 placement tests. Best done with
-  the app running so the *feel* gets ear-validated. → `backend/app/core/meter.py`
+  **Milestone 2 (mostly shipped 2026-07-29):** the meter is now threaded through the song
+  services — `song_builder` passes `time_signature` to every section request and scales all
+  bar→beat arithmetic (section offsets, tease/outro windows, the ending bar), and the
+  arrangement helpers (`_song_tempo_map`, `_apply_section_ramp`, `apply_arrangement_dynamics`,
+  `apply_melodic_pickups`, `_section_end_bars`, `_section_markers`) take a `meter` and place
+  ramps/dropouts/pickups/tempo-map/markers at meter-scaled positions. The regen/replay/undo
+  paths persist `time_signature` in `song_meta.json` and thread it back through. Generators no
+  longer overflow a short/odd bar: the **walking bass** steps one note per felt pulse
+  (`meter.pulse_positions`) off 4/4; the **drum grid** clips its 16-step mined patterns,
+  double-kick, jazz ride and bar-2 anticipation kicks to the bar and shifts end-of-bar
+  fills/rolls/ghosts to the real bar end (`fill_shift = bar_beats − 4`); the **riff** cells
+  space and clip to `bar_beats`. A **frontend time-signature selector** (curated simple /
+  compound / odd list) is on both the loop and song forms and round-trips through replay.
+  81 placement tests cover 4/4·3/4·2/4·6/8·9/8·12/8·7/8·5/8 (onsets stay in-bar, walking-bass
+  note-count = pulse-count, song length + `time_signature` meta), and **4/4 stays
+  byte-identical** (216 backend tests green; explicit `Meter(4,4)` == default per generator).
+  _Remaining (best ear-validated with the app running):_ idiomatic compound (6/8 triplet) /
+  odd (7/8 2+2+3) drum *feel* — the current non-4/4 drums are correct and non-overflowing but
+  still swing/accent like a clipped 4/4 groove rather than in the meter's own grouping. →
+  `backend/app/core/meter.py`
 - [→] **Custom soundfont / SF2 upload** — _promoted to Phase 2 (Sound polish)._
 - [ ] **Surface WAV/offline-audio export more prominently** — already implemented
   (OfflineAudioContext + render queue); just under-discovered.

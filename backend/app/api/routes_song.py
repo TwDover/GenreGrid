@@ -32,6 +32,7 @@ from app.models.schemas import (FileInfo, BuildSongRequest, BuildSongResponse,
 from app.services.style_loader import load_style
 from app.services.midi_writer import (NoteEvent, write_midi, rebuild_combined_from_parts, mido_key_signature)
 from app.core.config import EXPORTS_DIR
+from app.core.meter import parse_meter
 from app.core.arrangement import (
     _SONG_TEMPLATES, _song_tempo_map,
 )
@@ -90,6 +91,7 @@ def rebuild_song_progression(req: RebuildSongProgressionRequest):
     custom = meta.get("custom_template")
     song_req = BuildSongRequest(
         style_id=meta["style_id"], key=key, scale=scale, bpm=meta["bpm"],
+        time_signature=meta.get("time_signature", "4/4"),
         complexity=meta["complexity"], variation=meta["variation"],
         dynamics=meta.get("dynamics", 0.5), humanize=meta["humanize"],
         parts=meta["parts"], template=meta.get("template", "verse_chorus"),
@@ -156,6 +158,7 @@ def _do_build_song(req: BuildSongRequest, user_progression: list[str] | None = N
     import json as _jmeta
     (output_dir / "song_meta.json").write_text(_jmeta.dumps({
         "style_id": req.style_id, "key": req.key, "scale": req.scale,
+        "time_signature": getattr(req, "time_signature", "4/4"),
         "bpm": bpm, "complexity": req.complexity, "variation": req.variation,
         "dynamics": req.dynamics,
         "humanize": req.humanize, "parts": list(req.parts), "template": req.template,
@@ -176,7 +179,8 @@ def _do_build_song(req: BuildSongRequest, user_progression: list[str] | None = N
 
     files = _write_song_output(song_events, output_dir, gen_id, bpm, style, programs,
                                list(req.parts), total_bars, section_results,
-                               key=req.key, scale=req.scale)
+                               key=req.key, scale=req.scale,
+                               meter=parse_meter(getattr(req, "time_signature", None)))
 
     import json as _jsong
     (output_dir / "song_structure.json").write_text(_jsong.dumps(section_results, indent=2))
@@ -240,6 +244,7 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
     gen_parts = list(meta["parts"]) + ([req.part] if is_new_part else [])
     song_req = BuildSongRequest.model_construct(
         style_id=meta["style_id"], key=meta["key"], scale=meta["scale"], bpm=meta["bpm"],
+        time_signature=meta.get("time_signature", "4/4"),
         complexity=meta["complexity"], variation=meta["variation"], humanize=meta["humanize"],
         dynamics=meta.get("dynamics", 0.5),
         parts=gen_parts, template=meta["template"], use_priors=meta["use_priors"],
@@ -287,7 +292,7 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
     if req.part == "bass" and style.get("bass", {}).get("bass_style") == "808":
         part_pb = _generate_808_pitch_bends(evts, _PART_CHANNELS.get("bass", 1))
 
-    tempo_map = _song_tempo_map(_sections, bpm, ending_bars=1)
+    tempo_map = _song_tempo_map(_sections, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4")))
     scaled = _drop_quiet(_scale_velocity(evts, req.part, _sid))
     fname = f"{req.part}.mid"
     part_path = output_dir / fname
@@ -300,8 +305,8 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
                track_name=track_names.get(req.part))
 
     # Rebuild song.mid from all stems on disk (new part + untouched others).
-    rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid", tempo_events=tempo_map,
-                                markers=_section_markers(_sections, meta.get("key", "C")),
+    rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid", meter=parse_meter(meta.get("time_signature", "4/4")), tempo_events=tempo_map,
+                                markers=_section_markers(_sections, meta.get("key", "C"), parse_meter(meta.get("time_signature", "4/4"))),
                                 key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")),
                                 track_names=track_names)
 
@@ -325,6 +330,7 @@ def _render_song_part_stem(output_dir, meta: dict, style: dict, part: str, salt:
 
     song_req = BuildSongRequest.model_construct(
         style_id=meta["style_id"], key=meta["key"], scale=meta["scale"], bpm=meta["bpm"],
+        time_signature=meta.get("time_signature", "4/4"),
         complexity=meta["complexity"], variation=meta["variation"], humanize=meta["humanize"],
         dynamics=meta.get("dynamics", 0.5),
         parts=meta["parts"], template=meta["template"], use_priors=meta["use_priors"],
@@ -360,7 +366,7 @@ def _render_song_part_stem(output_dir, meta: dict, style: dict, part: str, salt:
     if part == "bass" and style.get("bass", {}).get("bass_style") == "808":
         part_pb = _generate_808_pitch_bends(evts, _PART_CHANNELS.get("bass", 1))
 
-    tempo_map = _song_tempo_map(_sections, bpm, ending_bars=1)
+    tempo_map = _song_tempo_map(_sections, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4")))
     scaled = _drop_quiet(_scale_velocity(evts, part, _sid))
     write_midi(scaled, output_dir / out_name, bpm=bpm, program=programs.get(part),
                cc_events=part_cc, pb_events=part_pb, tempo_events=tempo_map,
@@ -448,9 +454,9 @@ def keep_song_part_candidate(req: KeepSongPartCandidateRequest):
         meta.get("template", "verse_chorus"), meta.get("key", "C"),
         custom=meta.get("custom_template"))
     rebuild_combined_from_parts(
-        output_dir, bpm, combined_name="song.mid",
-        tempo_events=_song_tempo_map(layout, bpm, ending_bars=1),
-        markers=_section_markers(layout, meta.get("key", "C")),
+        output_dir, bpm, combined_name="song.mid", meter=parse_meter(meta.get("time_signature", "4/4")),
+        tempo_events=_song_tempo_map(layout, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4"))),
+        markers=_section_markers(layout, meta.get("key", "C"), parse_meter(meta.get("time_signature", "4/4"))),
         key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")),
         track_names=track_names)
     return FileInfo(part=req.part, filename=f"{req.part}.mid",
@@ -582,9 +588,9 @@ def set_part_gain(req: SetPartGainRequest):
         logger.warning("Could not load style %r for track names — using defaults",
                        meta.get("style_id", ""), exc_info=True)
         _track_names = {}
-    rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid",
-                                tempo_events=_song_tempo_map(layout, bpm, ending_bars=1),
-                                markers=_section_markers(layout, meta.get("key", "C")),
+    rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid", meter=parse_meter(meta.get("time_signature", "4/4")),
+                                tempo_events=_song_tempo_map(layout, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4"))),
+                                markers=_section_markers(layout, meta.get("key", "C"), parse_meter(meta.get("time_signature", "4/4"))),
                                 key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")),
                                 track_names=_track_names)
     return FileInfo(part=req.part, filename=f"{req.part}.mid",
@@ -618,7 +624,7 @@ def edit_part(req: EditPartRequest):
     bpm = meta.get("bpm", 120)
     layout = _template_section_results(meta.get("template", "verse_chorus"), meta.get("key", "C"),
                                        custom=meta.get("custom_template"))
-    tempo_map = _song_tempo_map(layout, bpm, ending_bars=1)
+    tempo_map = _song_tempo_map(layout, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4")))
     total_bars = sum(s["bars"] for s in layout)
 
     channel = 9 if req.part == "drums" else _PART_CHANNELS.get(req.part, 0)
@@ -645,8 +651,8 @@ def edit_part(req: EditPartRequest):
                cc_events=part_cc, tempo_events=tempo_map,
                track_name=track_names.get(req.part))
 
-    rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid", tempo_events=tempo_map,
-                                markers=_section_markers(layout, meta.get("key", "C")),
+    rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid", meter=parse_meter(meta.get("time_signature", "4/4")), tempo_events=tempo_map,
+                                markers=_section_markers(layout, meta.get("key", "C"), parse_meter(meta.get("time_signature", "4/4"))),
                                 key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")),
                                 track_names=track_names)
     return FileInfo(part=req.part, filename=f"{req.part}.mid",
@@ -776,7 +782,7 @@ def undo_song_part(req: RegenerateSongPartRequest):
     bpm = meta.get("bpm", 120)
     _layout = _template_section_results(meta.get("template", "verse_chorus"), meta.get("key", "C"),
                                         custom=meta.get("custom_template"))
-    tempo_map = _song_tempo_map(_layout, bpm, ending_bars=1)
+    tempo_map = _song_tempo_map(_layout, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4")))
 
     shutil.copy(prev, output_dir / f"{req.part}.mid")
     prev.unlink()   # one level of undo only
@@ -786,8 +792,8 @@ def undo_song_part(req: RegenerateSongPartRequest):
         logger.warning("Could not load style %r for track names — using defaults",
                        meta.get("style_id", ""), exc_info=True)
         _track_names = {}
-    rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid", tempo_events=tempo_map,
-                                markers=_section_markers(_layout, meta.get("key", "C")),
+    rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid", meter=parse_meter(meta.get("time_signature", "4/4")), tempo_events=tempo_map,
+                                markers=_section_markers(_layout, meta.get("key", "C"), parse_meter(meta.get("time_signature", "4/4"))),
                                 key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")),
                                 track_names=_track_names)
     return FileInfo(part=req.part, filename=f"{req.part}.mid",
@@ -837,6 +843,7 @@ def regenerate_song_section(req: RegenerateSongSectionRequest):
 
     song_req = BuildSongRequest.model_construct(
         style_id=meta["style_id"], key=meta["key"], scale=meta["scale"], bpm=meta["bpm"],
+        time_signature=meta.get("time_signature", "4/4"),
         complexity=meta["complexity"], variation=meta["variation"], humanize=meta["humanize"],
         dynamics=meta.get("dynamics", 0.5),
         parts=meta["parts"], template=meta["template"], use_priors=meta["use_priors"],
@@ -862,7 +869,8 @@ def regenerate_song_section(req: RegenerateSongSectionRequest):
 
     files = _write_song_output(song_events, output_dir, req.generation_id, bpm, style,
                                programs, list(meta["parts"]), total_bars, section_results,
-                               key=meta.get("key", "C"), scale=meta.get("scale", "minor"))
+                               key=meta.get("key", "C"), scale=meta.get("scale", "minor"),
+                               meter=parse_meter(meta.get("time_signature", "4/4")))
 
     # Part locking: any locked stem is restored to its pre-reroll state (the .prev
     # backup taken above) so it stays byte-identical — the section re-roll only
@@ -875,9 +883,9 @@ def regenerate_song_section(req: RegenerateSongSectionRequest):
             if prev.exists():
                 shutil.copy(prev, output_dir / f"{part}.mid")
         rebuild_combined_from_parts(
-            output_dir, bpm, combined_name="song.mid",
-            tempo_events=_song_tempo_map(section_results, bpm, ending_bars=1),
-            markers=_section_markers(section_results, meta.get("key", "C")),
+            output_dir, bpm, combined_name="song.mid", meter=parse_meter(meta.get("time_signature", "4/4")),
+            tempo_events=_song_tempo_map(section_results, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4"))),
+            markers=_section_markers(section_results, meta.get("key", "C"), parse_meter(meta.get("time_signature", "4/4"))),
             key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")),
             track_names=track_names)
         # Don't ask the client to reload a locked stem that didn't change.

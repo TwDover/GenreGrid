@@ -110,6 +110,7 @@ def _transpose_key(key: str, semitones: int) -> str:
 def _apply_section_ramp(
     all_events: dict[str, list[NoteEvent]],
     sections: list[dict],
+    meter: Meter = DEFAULT_METER,
 ) -> None:
     """Smooth dynamic steps where a section is louder than its predecessor.
 
@@ -123,7 +124,7 @@ def _apply_section_ramp(
         if curr_dyn <= prev_dyn + 0.05:
             continue
         sec_start   = float(sections[sec_i]["offset"])
-        ramp_beats  = min(8.0, sections[sec_i]["bars"] * 4 * 0.5)
+        ramp_beats  = min(8.0, sections[sec_i]["bars"] * meter.bar_beats * 0.5)
         start_ratio = prev_dyn / curr_dyn   # factor at the downbeat of the new section
         for part, evts in all_events.items():
             if part == "drums":
@@ -236,16 +237,18 @@ def _auto_arc_section_type(sections: list[dict], i: int) -> str | None:
     return "chorus" if sections[i].get("dynamic", 1.0) >= peak - 1e-9 else "verse"
 
 
-def _section_end_bars(sections: list[dict], current_section_offset: int) -> list[int]:
+def _section_end_bars(sections: list[dict], current_section_offset: int,
+                      meter: Meter = DEFAULT_METER) -> list[int]:
     """Return bar indices (relative to current section) that are section boundaries.
 
     Used to tell the drum generator where to place builds/fills at section transitions.
     """
+    bb = meter.bar_beats
     end_bars = []
     for sec in sections:
-        sec_end_beat = sec["offset"] + sec["bars"] * 4
+        sec_end_beat = sec["offset"] + sec["bars"] * bb
         # Convert to bar index within the current section
-        bar_idx = (sec_end_beat - current_section_offset) // 4 - 1
+        bar_idx = (sec_end_beat - current_section_offset) // bb - 1
         if 0 <= bar_idx:
             end_bars.append(int(bar_idx))
     return end_bars
@@ -345,7 +348,8 @@ def scaled_profile(section_type: str | None, dynamics: float = 0.5) -> dict:
 def apply_arrangement_dynamics(song_events: dict[str, list],
                                section_results: list[dict],
                                base_seed: int,
-                               dynamics: float = 0.5) -> None:
+                               dynamics: float = 0.5,
+                               meter: Meter = DEFAULT_METER) -> None:
     """Classic arrangement dropouts, applied in place to the assembled song.
 
     Real records breathe: instruments drop out so others lead. Section
@@ -377,6 +381,7 @@ def apply_arrangement_dynamics(song_events: dict[str, list],
     stripped.
     """
     rng = random.Random(_part_seed(base_seed, 911, "dynamics"))
+    bb = meter.bar_beats   # bar length in quarter-beats (4.0 for 4/4 → offsets unchanged)
     # Dynamics macro scales every device's odds around the historical values
     # (0.5 = exactly the old probabilities). Threshold-only scaling: the number
     # of rng draws never changes, so seed replay stays stable per version.
@@ -402,7 +407,7 @@ def apply_arrangement_dynamics(song_events: dict[str, list],
     chorus_occurrence = 0
     for sec in section_results:
         stype = sec.get("section_type")
-        start_beat = sec.get("start_bar", 0) * 4.0
+        start_beat = sec.get("start_bar", 0) * bb
         bars = sec.get("bars", 0)
 
         if stype == "chorus":
@@ -440,7 +445,7 @@ def apply_arrangement_dynamics(song_events: dict[str, list],
             _breakdown_roll = rng.random()
             if (chorus_occurrence == n_choruses and n_choruses > 1 and bars >= 8
                     and _breakdown_roll < _p(0.3)):
-                half = start_beat + (bars // 2) * 4.0
+                half = start_beat + (bars // 2) * bb
                 _strip("chords", start_beat, half)
                 _strip("pads", start_beat, half)
                 _strip("arpeggio", start_beat, half)
@@ -448,12 +453,12 @@ def apply_arrangement_dynamics(song_events: dict[str, list],
                 _strip("drums", start_beat, half, keep=_KICK_HATS | {39})
             # Arp growth: only when a LATER chorus exists to be the bigger one
             if chorus_occurrence == 1 and n_choruses > 1 and bars >= 4 and rng.random() < _p(0.5):
-                _strip("arpeggio", start_beat, start_beat + (bars // 2) * 4.0)
+                _strip("arpeggio", start_beat, start_beat + (bars // 2) * bb)
 
         elif stype == "bridge" and bars >= 4 and rng.random() < _p(0.75):
-            _strip("drums", start_beat, start_beat + (bars // 2) * 4.0)
+            _strip("drums", start_beat, start_beat + (bars // 2) * bb)
             if rng.random() < _p(0.4):
-                _strip("bass", start_beat, start_beat + (bars // 2) * 4.0)
+                _strip("bass", start_beat, start_beat + (bars // 2) * bb)
 
         elif stype == "verse":
             verse_occurrence += 1
@@ -468,26 +473,27 @@ def apply_arrangement_dynamics(song_events: dict[str, list],
                                        for e in song_events.get("melody", []))
                 if not intro_had_melody:
                     entry_bars = min(4, max(2, bars // 4))
-                    _strip("melody", start_beat, start_beat + entry_bars * 4.0)
+                    _strip("melody", start_beat, start_beat + entry_bars * bb)
             elif verse_occurrence == 2:
                 if rng.random() < _p(0.5):
                     thin_bars = min(4, max(2, bars // 4))
-                    _strip("drums", start_beat, start_beat + thin_bars * 4.0, keep=_KICK_HATS)
+                    _strip("drums", start_beat, start_beat + thin_bars * bb, keep=_KICK_HATS)
                     if rng.random() < _p(0.5):
-                        _strip("chords", start_beat, start_beat + thin_bars * 4.0)
+                        _strip("chords", start_beat, start_beat + thin_bars * bb)
                 # Arp holds back through verse 2's first half — mirrors the
                 # chorus's arp growth, so a full-length arp doesn't flatten the
                 # verse/chorus contrast (measured: verse-2 arp ran wall-to-wall
                 # at chorus density, making the chorus entry read no bigger).
                 if bars >= 4 and rng.random() < _p(0.5):
-                    _strip("arpeggio", start_beat, start_beat + (bars // 2) * 4.0)
+                    _strip("arpeggio", start_beat, start_beat + (bars // 2) * bb)
 
 
 def apply_melodic_pickups(song_events: dict[str, list],
                           section_results: list[dict],
                           base_seed: int,
                           scale: str,
-                          style: dict) -> None:
+                          style: dict,
+                          meter: Meter = DEFAULT_METER) -> None:
     """Melodic pickups (anacrusis) into sections, applied in place.
 
     The classic "and-4-and | ONE": a short stepwise run in the last beats of
@@ -512,15 +518,16 @@ def apply_melodic_pickups(song_events: dict[str, list],
     profile = instrumentation_for(style).get("melody")
     _PICKUP_PROB = {"chorus": 0.55, "verse": 0.3, "bridge": 0.3}
 
+    bb = meter.bar_beats
     added: list = []
     for sec in section_results:
         prob = _PICKUP_PROB.get(sec.get("section_type"), 0.0)
-        boundary = sec.get("start_bar", 0) * 4.0
+        boundary = sec.get("start_bar", 0) * bb
         # RNG draws must not depend on event content — draw first, always.
         roll = rng.random()
         n_notes = rng.choice([2, 3])
         from_below = rng.random() < 0.7
-        if prob == 0.0 or boundary < 4.0 or roll >= prob:
+        if prob == 0.0 or boundary < bb or roll >= prob:
             continue
 
         # The target: the section's first melody note, on or just after its downbeat
@@ -565,7 +572,8 @@ def apply_melodic_pickups(song_events: dict[str, list],
 
 
 def _song_tempo_map(section_results: list[dict], bpm: float,
-                    ending_bars: int = 0) -> list[tuple[float, float]]:
+                    ending_bars: int = 0,
+                    meter: Meter = DEFAULT_METER) -> list[tuple[float, float]]:
     """Tempo map for a built song: subtle chorus push + final ritardando.
 
     Choruses run ~1.2% faster than the base tempo — enough to feel lifted
@@ -574,10 +582,11 @@ def _song_tempo_map(section_results: list[dict], bpm: float,
     final chord lands with weight. Returns (beat, bpm) points for the MIDI
     tempo track; deterministic, so regeneration reproduces it exactly.
     """
+    bb = meter.bar_beats
     points: list[tuple[float, float]] = [(0.0, float(bpm))]
     in_push = False
     for sec in section_results:
-        start_beat = float(sec["start_bar"] * 4)
+        start_beat = float(sec["start_bar"] * bb)
         stype = sec["section_type"]
         is_chorus = stype in ("chorus", "post_chorus")
         if stype == "pre_chorus" and not in_push:
@@ -592,10 +601,10 @@ def _song_tempo_map(section_results: list[dict], bpm: float,
             in_push = False
     if ending_bars > 0 and section_results:
         last = section_results[-1]
-        end_start = float((last["start_bar"] + last["bars"]) * 4)
+        end_start = float((last["start_bar"] + last["bars"]) * bb)
         # last["bars"] already includes any ending bar appended by the caller;
         # the ritardando covers the final `ending_bars` bars.
-        rit_start = end_start - ending_bars * 4
+        rit_start = end_start - ending_bars * bb
         for i, factor in enumerate((0.96, 0.90, 0.84, 0.76)):
-            points.append((rit_start + i * (ending_bars * 4) / 4.0, bpm * factor))
+            points.append((rit_start + i * (ending_bars * bb) / 4.0, bpm * factor))
     return points

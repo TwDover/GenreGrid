@@ -22,6 +22,7 @@ def _render_riff_guitar(
     style: dict, key: str, scale: str, bars: int, progression: list,
     section_type: str | None, ch_low: int, ch_high: int,
     velocity_base: int, vel_arc_start: float, swing_amount: float, strum_speed: float,
+    meter: Meter = DEFAULT_METER,
 ) -> List[NoteEvent]:
     """Render the song's riff (app.generators.riff) as a distorted guitar part:
     power-chord stabs (root+5th, +octave when it fits) on the figure's accents,
@@ -37,10 +38,10 @@ def _render_riff_guitar(
         tick = int(beat * ticks_per_beat)
         return _apply_swing(tick, swing_amount, ticks_per_beat) / ticks_per_beat
 
-    riff = build_riff(style, key, scale, progression, bars, section_type, pedal_low=ch_low)
+    riff = build_riff(style, key, scale, progression, bars, section_type, pedal_low=ch_low, meter=meter)
     events: List[NoteEvent] = []
     for rn in riff:
-        bar_num = int(rn.start / 4.0)
+        bar_num = int(rn.start / meter.bar_beats)
         t = bar_num / max(1, bars - 1)
         base = int(velocity_base * (vel_arc_start + (1.0 - vel_arc_start) * t))
         base = int(base * phrase_breath_factor(bar_num))
@@ -436,7 +437,7 @@ def generate_chords(
         return _render_riff_guitar(
             style, key, scale, bars, prog_source or progression, section_type,
             ch_low, ch_high, style.get("velocity_base", 74),
-            style.get("vel_arc_start", 0.75), swing_amount, strum_speed)
+            style.get("vel_arc_start", 0.75), swing_amount, strum_speed, meter=meter)
 
     chord_rhythm = _COMP_RHYTHMS.get(comp_style) if comp_style else style.get("chord_rhythm")
 

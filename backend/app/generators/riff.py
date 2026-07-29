@@ -24,6 +24,7 @@ import zlib
 from dataclasses import dataclass
 
 from app.theory.chords import roman_to_chord
+from app.core.meter import Meter, DEFAULT_METER
 
 _STEP = 0.25          # 16th note in beats
 _STEPS = 16
@@ -75,6 +76,7 @@ def build_riff(
     bars: int,
     section_type: str | None = None,
     pedal_low: int = 40,
+    meter: Meter = DEFAULT_METER,
 ) -> list[RiffNote]:
     """The section's riff as pedal-register RiffNotes (root octave ≈ `pedal_low`).
 
@@ -100,7 +102,11 @@ def build_riff(
         next_root = _fit(roman_to_chord(next_roman, key, scale, octave=2)[0], pedal_low, pedal_high)
 
         for step in steps:
-            start = bar * 4.0 + step * _STEP
+            # Riff cells are a 4/4 16-step grid; in a shorter/odd bar drop the
+            # steps that overflow (4/4 keeps every step → byte-identical).
+            if step * _STEP >= meter.bar_beats:
+                continue
+            start = bar * meter.bar_beats + step * _STEP
             accent = step in accents
             dur = base_dur
             # Last 16th of the bar, heading into a new chord → chromatic approach.
