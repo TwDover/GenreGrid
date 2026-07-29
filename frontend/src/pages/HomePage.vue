@@ -150,7 +150,7 @@
         <button class="btn btn-quiet" @click="saveSession" title="Save history &amp; pins to a file (Ctrl+S)">Save</button>
         <label class="btn btn-quiet" title="Load session from file">
           Load
-          <input ref="loadInput" type="file" accept=".json" style="display:none" @change="loadSession" />
+          <input type="file" accept=".json" style="display:none" @change="loadSession" />
         </label>
       </div>
     </section>
@@ -276,7 +276,6 @@ async function checkForUpdates() {
     }
   }
 }
-const loadInput = ref<HTMLInputElement | null>(null)
 
 const styles = ref<StyleInfo[]>([])
 const loading = ref(false)
