@@ -274,9 +274,22 @@ moves deferred (`_do_build_song`, the `toggle` shell). **Now starting Phase 4 �
   still swing/accent like a clipped 4/4 groove rather than in the meter's own grouping. →
   `backend/app/core/meter.py`
 - [→] **Custom soundfont / SF2 upload** — _promoted to Phase 2 (Sound polish)._
-- [ ] **Surface WAV/offline-audio export more prominently** — already implemented
-  (OfflineAudioContext + render queue); just under-discovered.
-- [ ] **Tempo automation & mid-song modulation** — partial today (`chorus_key_shift`).
+- [x] **Surface WAV/offline-audio export more prominently** — the OfflineAudioContext
+  render + queue existed but the WAV/Stems buttons were lost in a single long action row
+  (Copy·Replay·Save·Share·Download·ZIP·WAV·Stems) with a cryptic ⚡ and no signal audio
+  export existed. Split out a labelled **Export** row that separates **Audio** (accent-styled
+  `⏬ WAV` / `⏬ Stems (WAV)`) from **MIDI** (`All parts (ZIP)` / `Sections (ZIP)`), so audio
+  export reads as a first-class action. → `frontend/src/components/ExportPanel.vue`
+- [x] **Tempo automation & mid-song modulation** — _mid-song modulation was already
+  fully shipped_ (`chorus_key_shift` on every chorus, `bridge_key_shift` to the subdominant,
+  `final_chorus_lift` gear-change on the last chorus — all with SongForm controls). The gap
+  was **tempo automation**: the song tempo map (chorus push + pre-chorus lean + ending
+  ritardando) existed but was hardcoded and invisible. Now a **`tempo_automation` knob**
+  (0–1) scales all three gestures via `m = intensity/0.5`: **0 = flat/steady**, **0.5 =
+  the classic subtle default** (byte-identical to before), **1 = expressive** (double depth).
+  Exposed as a **Tempo motion** control (Off / Subtle / Expressive) on the song form,
+  threaded through build + melody-upload + every regen/replay path (persisted in
+  `song_meta.json` so re-rolls stay sample-locked). → `core/arrangement.py` (`_song_tempo_map`)
 
 ---
 

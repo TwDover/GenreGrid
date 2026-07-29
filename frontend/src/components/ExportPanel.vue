@@ -87,43 +87,51 @@
               {{ shared === response.generation_id ? '✓ Copied' : 'Share' }}
             </button>
             <button
-              class="btn btn-sm"
-              :disabled="zipLoading === `${response.generation_id}:bundle`"
-              @click.stop="handleZipDownload(response, 'bundle')"
-              title="Download all parts as ZIP"
-            >{{ zipLoading === `${response.generation_id}:bundle` ? '…' : 'Download All' }}</button>
-            <button
-              v-if="response.summary.mode === 'arrangement'"
-              class="btn btn-sm"
-              :disabled="zipLoading === `${response.generation_id}:sections`"
-              @click.stop="handleZipDownload(response, 'sections')"
-              title="Download per-section stems as ZIP"
-            >{{ zipLoading === `${response.generation_id}:sections` ? '…' : 'Sections ZIP' }}</button>
-            <button
               v-if="response.files.some(f => f.part === 'combined')"
               class="btn btn-sm"
               @click.stop="addToArrange(response)"
               title="Add to arrangement builder"
             >+ Arrange</button>
+          </div>
+
+          <!-- Export: audio (WAV) is a first-class action here, visually set apart
+               from the MIDI/data downloads so it's actually findable. -->
+          <div class="export-row">
+            <span class="export-label">Export</span>
+            <span class="export-kind">Audio</span>
             <template v-if="response.files.some(f => f.part === 'combined')">
               <div v-if="exportingId === response.generation_id" class="export-progress">
                 {{ exportStem ? `${exportStem} ` : '' }}{{ Math.round(exportProgress * 100) }}%
               </div>
               <template v-else>
                 <button
-                  class="btn btn-sm"
+                  class="btn btn-sm btn-audio"
                   :disabled="isRecording"
                   @click.stop="handleOfflineExport(response, 'wav')"
-                  title="Offline render — full mix as WAV (fast). Progress also shows in the ⬇ header button."
-                >WAV ⚡</button>
+                  title="Render the full mix to a WAV file (offline, fast). Progress also shows in the ⬇ header button."
+                >⏬ WAV</button>
                 <button
-                  class="btn btn-sm"
+                  class="btn btn-sm btn-audio"
                   :disabled="isRecording"
                   @click.stop="handleOfflineExport(response, 'stems')"
-                  title="Offline render — drums / bass / melodic as separate WAV files (fast). Progress also shows in the ⬇ header button."
-                >Stems ⚡</button>
+                  title="Render drums / bass / melodic as separate WAV files (offline, fast). Progress also shows in the ⬇ header button."
+                >⏬ Stems (WAV)</button>
               </template>
             </template>
+            <span class="export-kind export-kind-midi">MIDI</span>
+            <button
+              class="btn btn-sm"
+              :disabled="zipLoading === `${response.generation_id}:bundle`"
+              @click.stop="handleZipDownload(response, 'bundle')"
+              title="Download all parts as MIDI (ZIP)"
+            >{{ zipLoading === `${response.generation_id}:bundle` ? '…' : 'All parts (ZIP)' }}</button>
+            <button
+              v-if="response.summary.mode === 'arrangement'"
+              class="btn btn-sm"
+              :disabled="zipLoading === `${response.generation_id}:sections`"
+              @click.stop="handleZipDownload(response, 'sections')"
+              title="Download per-section stems as MIDI (ZIP)"
+            >{{ zipLoading === `${response.generation_id}:sections` ? '…' : 'Sections (ZIP)' }}</button>
           </div>
           <div v-if="response.progression?.length" class="progression-row">
             <span class="prog-label">Progression</span>
@@ -726,6 +734,38 @@ async function handleZipDownload(response: GenerateResponse, kind: 'bundle' | 's
   color: var(--accent);
   font-family: var(--f-mono);
 }
+
+/* Export row — a labelled home for the downloads, so WAV/audio export isn't
+   lost among the seed/save/share actions. Mirrors .seed-row's chrome. */
+.export-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--panel-deep);
+  border-radius: 6px;
+  border: 1px solid var(--surface);
+}
+.export-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+.export-kind {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  font-weight: 600;
+}
+.export-kind-midi { color: var(--text-faint); margin-left: 0.35rem; }
+
+/* Audio-export buttons carry the accent so they read as the primary export. */
+.btn-audio { color: var(--accent); border-color: var(--accent-edge); }
+.btn-audio:hover:not(:disabled) { background: var(--accent-wash); color: var(--accent); border-color: var(--accent); }
 
 .regen-error {
   font-size: 0.75rem;

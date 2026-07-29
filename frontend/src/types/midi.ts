@@ -143,6 +143,7 @@ export interface BuildSongRequest {
   complexity: number
   variation: number
   dynamics?: number
+  tempo_automation?: number          // tempo movement: 0 = flat, 0.5 = subtle, 1 = expressive
   humanize: number
   parts: string[]
   template: string

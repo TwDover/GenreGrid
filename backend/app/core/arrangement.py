@@ -573,15 +573,22 @@ def apply_melodic_pickups(song_events: dict[str, list],
 
 def _song_tempo_map(section_results: list[dict], bpm: float,
                     ending_bars: int = 0,
-                    meter: Meter = DEFAULT_METER) -> list[tuple[float, float]]:
-    """Tempo map for a built song: subtle chorus push + final ritardando.
+                    meter: Meter = DEFAULT_METER,
+                    intensity: float = 0.5) -> list[tuple[float, float]]:
+    """Tempo map for a built song: chorus push + pre-chorus lean + final ritardando.
 
-    Choruses run ~1.2% faster than the base tempo — enough to feel lifted
-    without reading as a tempo change — and drop back at the next section.
-    When an ending bar is appended, the last bar slows in four steps so the
-    final chord lands with weight. Returns (beat, bpm) points for the MIDI
-    tempo track; deterministic, so regeneration reproduces it exactly.
+    `intensity` scales how much the tempo moves, via ``m = intensity / 0.5``:
+      • 0.0 → flat — a single tempo, no movement at all;
+      • 0.5 → the classic subtle default (m = 1): choruses ~1.2% faster than
+        base, pre-choruses lean +0.6%, and a four-step ending ritardando —
+        byte-for-byte the historical behavior;
+      • 1.0 → expressive (m = 2): the same gestures at double the depth.
+    Choruses drop back to base at the next section. Returns (beat, bpm) points
+    for the MIDI tempo track; deterministic, so regeneration reproduces it.
     """
+    if intensity <= 0.0:
+        return [(0.0, float(bpm))]     # flat: automation off
+    m = intensity / 0.5
     bb = meter.bar_beats
     points: list[tuple[float, float]] = [(0.0, float(bpm))]
     in_push = False
@@ -592,9 +599,9 @@ def _song_tempo_map(section_results: list[dict], bpm: float,
         if stype == "pre_chorus" and not in_push:
             # Micro-accel through the build: half the chorus push, so the
             # pre-chorus leans forward and the chorus completes the lift.
-            points.append((start_beat, bpm * 1.006))
+            points.append((start_beat, bpm * (1.0 + 0.006 * m)))
         if is_chorus and not in_push:
-            points.append((start_beat, bpm * 1.012))
+            points.append((start_beat, bpm * (1.0 + 0.012 * m)))
             in_push = True
         elif not is_chorus and stype != "pre_chorus" and in_push:
             points.append((start_beat, float(bpm)))
@@ -605,6 +612,6 @@ def _song_tempo_map(section_results: list[dict], bpm: float,
         # last["bars"] already includes any ending bar appended by the caller;
         # the ritardando covers the final `ending_bars` bars.
         rit_start = end_start - ending_bars * bb
-        for i, factor in enumerate((0.96, 0.90, 0.84, 0.76)):
-            points.append((rit_start + i * (ending_bars * bb) / 4.0, bpm * factor))
+        for i, depth in enumerate((0.04, 0.10, 0.16, 0.24)):
+            points.append((rit_start + i * (ending_bars * bb) / 4.0, bpm * (1.0 - depth * m)))
     return points

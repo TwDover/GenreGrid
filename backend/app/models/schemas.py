@@ -156,6 +156,7 @@ class BuildSongRequest(BaseModel):
     complexity: float = Field(default=0.6, ge=0.0, le=1.0)
     variation: float = Field(default=0.4, ge=0.0, le=1.0)
     dynamics: float = Field(default=0.5, ge=0.0, le=1.0)  # arrangement drama: scales drops/fills/breakdowns/section contrast; 0.5 = classic
+    tempo_automation: float = Field(default=0.5, ge=0.0, le=1.0)  # tempo movement: chorus push + pre-chorus lean + ending ritardando. 0 = flat/off, 0.5 = subtle (classic), 1 = expressive
     humanize: float = Field(default=0.5, ge=0.0, le=1.0)
     parts: List[str] = ["chords", "bass", "melody", "drums"]
     template: str = "verse_chorus"
