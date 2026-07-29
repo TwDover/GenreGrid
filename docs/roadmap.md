@@ -8,8 +8,8 @@ they land; add new findings under the right phase so nothing gets lost.
 
 _**2026-07-29 — Phases 1–4 complete.** Custom-instruments desktop pass done (+ a kit-editing
 IPC bug fixed), non-4/4 drum feel validated + the feel-layer bar-drift fixed, and compound
-triplet swing landed. What's next lives in **[`backlog.md`](backlog.md)** (post-roadmap
-nice-to-haves, prioritized). History below._
+triplet swing landed. What's next lives in **[`roadmap-v2.md`](roadmap-v2.md)** — the detailed
+forward plan (creator workflow, sound ceiling, distribution, bigger bets). History below._
 
 _Last updated: 2026-07-28 — Phases 1, 2 & 3 complete (Phase 2 bar the manual
 custom-instruments desktop pass). Phase 3 delivered: "parallelize generation" retired as a

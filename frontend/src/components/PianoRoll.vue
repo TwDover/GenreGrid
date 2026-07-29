@@ -12,7 +12,8 @@
     class="piano-roll"
     :class="{ editable }"
     :tabindex="editable ? 0 : undefined"
-    @click="onCanvasClick"
+    @mousedown="onPointerDown"
+    @mousemove="onHover"
     @keydown="onKeyDown"
   />
 </template>
@@ -23,6 +24,7 @@ import { useTheme, themeColor } from '../composables/useTheme'
 import * as Tone from 'tone'
 import type { ParsedNote } from '../composables/useMidiPlayer'
 import { scaleNotes } from '../utils/chordResolver'
+import { timeAtX, pitchAtY, buildInsertedNote, nearRightEdge, resizedDuration } from '../utils/pianoRollEdit'
 
 const props = withDefaults(defineProps<{
   notes: ParsedNote[]
@@ -48,6 +50,17 @@ let ro: ResizeObserver | null = null
 const localNotes = ref<ParsedNote[]>(props.notes.map(n => ({ ...n })))
 const selectedIdx = ref<number | null>(null)
 const dirty = ref(false)
+
+// Drag-to-insert state: the note being drawn (rendered as a live preview) and the
+// press position it grew from. A percussion part maps pitch → drum piece, so insert
+// (which places by pitch) is disabled there — select/nudge/delete still work.
+const draftNote = ref<ParsedNote | null>(null)
+let insertAnchorSec = 0
+let insertMidi = 60
+// Resize state: grabbing a note's right edge drags its duration (start stays put).
+let resizing = false
+let resizeIdx = -1
+const isDrumPart = computed(() => displayNotes.value.some(n => n.isPercussion))
 
 const displayNotes = computed<ParsedNote[]>(() =>
   props.editable ? localNotes.value : props.notes)
@@ -147,6 +160,16 @@ function draw(playheadTime = 0) {
     }
   }
 
+  // Live insert preview — the note being dragged, before it's committed.
+  if (props.editable && draftNote.value) {
+    const r = noteRect(draftNote.value, w, h, minP, pitchRange, dur)
+    ctx.fillStyle = _rgba('--accent', 0.85, '#00c8ff')
+    ctx.fillRect(r.x, r.y, r.w, r.h)
+    ctx.strokeStyle = cAccent
+    ctx.lineWidth = 1.5
+    ctx.strokeRect(r.x - 1, r.y - 1, r.w + 2, r.h + 2)
+  }
+
   if (props.playing || playheadTime > 0) {
     const px = Math.min(w - 1, (playheadTime / dur) * w)
     const grad = ctx.createLinearGradient(px - 4, 0, px + 4, 0)
@@ -164,31 +187,139 @@ function redraw() {
 
 // ── Editing interactions ─────────────────────────────────────────────────────
 
-function onCanvasClick(e: MouseEvent) {
+// CSS size differs from the canvas buffer size — map a pointer event into buffer pixels.
+function pointerBufferXY(e: MouseEvent): { px: number; py: number } | null {
+  const el = canvasEl.value
+  if (!el) return null
+  const rect = el.getBoundingClientRect()
+  if (rect.width === 0 || rect.height === 0) return null
+  return {
+    px: (e.clientX - rect.left) * (el.width / rect.width),
+    py: (e.clientY - rect.top) * (el.height / rect.height),
+  }
+}
+
+function geometry() {
+  const el = canvasEl.value!
+  const dur = props.duration || 1
+  const { min: minP, max: maxP } = getPitchRange()
+  return { w: el.width, h: el.height, dur, minP, pitchRange: maxP - minP || 1 }
+}
+
+// Index of the topmost note under a point, or null. Topmost = last-drawn wins.
+function hitTest(px: number, py: number): number | null {
+  const { w, h, dur, minP, pitchRange } = geometry()
+  const notes = displayNotes.value
+  for (let i = notes.length - 1; i >= 0; i--) {
+    const r = noteRect(notes[i], w, h, minP, pitchRange, dur)
+    if (px >= r.x - 1 && px <= r.x + Math.max(3, r.w) + 1 &&
+        py >= r.y - 1 && py <= r.y + r.h + 1) return i
+  }
+  return null
+}
+
+// mousedown: grab a note's right edge to resize, else select the note under the
+// pointer, else begin a drag-to-insert (melodic parts only). A plain click with no
+// drag still inserts a one-grid note.
+function onPointerDown(e: MouseEvent) {
   if (!props.editable) return
   const el = canvasEl.value
   if (!el) return
   el.focus()   // capture arrow/delete keys only while the roll has focus
+  const pt = pointerBufferXY(e)
+  if (!pt) return
 
-  // CSS size differs from the canvas buffer size — map into buffer pixels.
-  const rect = el.getBoundingClientRect()
-  if (rect.width === 0 || rect.height === 0) return
-  const px = (e.clientX - rect.left) * (el.width / rect.width)
-  const py = (e.clientY - rect.top) * (el.height / rect.height)
-
-  const dur = props.duration || 1
-  const { min: minP, max: maxP } = getPitchRange()
-  const pitchRange = maxP - minP || 1
-  const notes = displayNotes.value
-
-  let hit: number | null = null
-  for (let i = notes.length - 1; i >= 0; i--) {   // topmost (last-drawn) wins
-    const r = noteRect(notes[i], el.width, el.height, minP, pitchRange, dur)
-    if (px >= r.x - 1 && px <= r.x + Math.max(3, r.w) + 1 &&
-        py >= r.y - 1 && py <= r.y + r.h + 1) { hit = i; break }
+  const hit = hitTest(pt.px, pt.py)
+  if (hit !== null) {
+    const { w, h, dur, minP, pitchRange } = geometry()
+    const r = noteRect(displayNotes.value[hit], w, h, minP, pitchRange, dur)
+    if (!isDrumPart.value && nearRightEdge(pt.px, r.x, r.w)) {
+      selectedIdx.value = hit
+      resizeIdx = hit
+      resizing = true
+      e.preventDefault()
+      window.addEventListener('mousemove', onResizeMove)
+      window.addEventListener('mouseup', onResizeUp)
+      redraw()
+      return
+    }
+    selectedIdx.value = hit
+    redraw()
+    return
   }
-  selectedIdx.value = hit
+  if (isDrumPart.value) { selectedIdx.value = null; redraw(); return }
+
+  // Start an insert: anchor at the snapped press position/pitch and draw a preview.
+  e.preventDefault()
+  const { w, h, dur, minP, pitchRange } = geometry()
+  insertAnchorSec = timeAtX(pt.px, w, dur)
+  insertMidi = pitchAtY(pt.py, h, minP, pitchRange)
+  draftNote.value = buildInsertedNote(insertAnchorSec, insertAnchorSec, insertMidi, props.secondsPerBeat)
+  selectedIdx.value = null
+  window.addEventListener('mousemove', onInsertMove)
+  window.addEventListener('mouseup', onInsertUp)
   redraw()
+}
+
+function onInsertMove(e: MouseEvent) {
+  if (!draftNote.value) return
+  const pt = pointerBufferXY(e)
+  if (!pt) return
+  const { w, dur } = geometry()
+  const endSec = timeAtX(pt.px, w, dur)
+  draftNote.value = buildInsertedNote(insertAnchorSec, endSec, insertMidi, props.secondsPerBeat)
+  redraw()
+}
+
+function onInsertUp() {
+  window.removeEventListener('mousemove', onInsertMove)
+  window.removeEventListener('mouseup', onInsertUp)
+  const draft = draftNote.value
+  draftNote.value = null
+  if (!draft) return
+  localNotes.value.push(draft)
+  selectedIdx.value = localNotes.value.length - 1
+  dirty.value = true
+  emit('notes-changed', localNotes.value.map(x => ({ ...x })), true)
+  redraw()
+}
+
+function onResizeMove(e: MouseEvent) {
+  if (!resizing || resizeIdx < 0) return
+  const pt = pointerBufferXY(e)
+  if (!pt) return
+  const n = localNotes.value[resizeIdx]
+  if (!n) return
+  const { w, dur } = geometry()
+  n.duration = resizedDuration(n.time, timeAtX(pt.px, w, dur), props.secondsPerBeat)
+  redraw()
+}
+
+function onResizeUp() {
+  window.removeEventListener('mousemove', onResizeMove)
+  window.removeEventListener('mouseup', onResizeUp)
+  if (!resizing) return
+  resizing = false
+  resizeIdx = -1
+  dirty.value = true
+  emit('notes-changed', localNotes.value.map(x => ({ ...x })), true)
+  redraw()
+}
+
+// Hover feedback: show a resize cursor when the pointer is over a note's right edge.
+function onHover(e: MouseEvent) {
+  const el = canvasEl.value
+  if (!props.editable || !el || draftNote.value || resizing) return
+  const pt = pointerBufferXY(e)
+  if (!pt) return
+  let onEdge = false
+  const hit = hitTest(pt.px, pt.py)
+  if (hit !== null && !isDrumPart.value) {
+    const { w, h, dur, minP, pitchRange } = geometry()
+    const r = noteRect(displayNotes.value[hit], w, h, minP, pitchRange, dur)
+    onEdge = nearRightEdge(pt.px, r.x, r.w)
+  }
+  el.style.cursor = onEdge ? 'ew-resize' : ''
 }
 
 function onKeyDown(e: KeyboardEvent) {
@@ -281,6 +412,10 @@ onMounted(() => {
 onUnmounted(() => {
   stopRaf()
   ro?.disconnect()
+  window.removeEventListener('mousemove', onInsertMove)
+  window.removeEventListener('mouseup', onInsertUp)
+  window.removeEventListener('mousemove', onResizeMove)
+  window.removeEventListener('mouseup', onResizeUp)
 })
 </script>
 
