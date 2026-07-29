@@ -10,6 +10,18 @@
 import random
 import zlib
 
+from app.core.meter import Meter, DEFAULT_METER
+
+
+def _bar_slot(start: float, bar_beats: float) -> int:
+    """The 16th-note feel slot for a note, anchored to ITS bar. The feel/pocket
+    tables are one 4/4 bar (16 slots); indexing by absolute ``start / 0.25 % 16``
+    only repeats per bar when a bar IS 16 sixteenths, so in any other meter the
+    micro-timing pattern drifts across bar lines (a groove reading as a clipped
+    4/4). Folding onto the bar first keeps the feel repeating each bar. For 4/4
+    (bar_beats 4.0 → 16 slots) this equals the old index exactly — byte-identical."""
+    return int(round((start % bar_beats) / 0.25)) % 16
+
 
 def humanize_velocity(velocity: int, amount: float = 0.1) -> int:
     spread = int(velocity * amount)
@@ -135,7 +147,8 @@ def groove_pocket_table(style: dict) -> list[float]:
     return table
 
 
-def apply_groove_pocket(parts_events: dict, style: dict, skip: set | None = None) -> None:
+def apply_groove_pocket(parts_events: dict, style: dict, skip: set | None = None,
+                        meter: Meter = DEFAULT_METER) -> None:
     """Shift every part onto the style's shared groove pocket, in place.
 
     Each note takes the offset of its nearest 16th slot, scaled by the part's
@@ -150,19 +163,20 @@ def apply_groove_pocket(parts_events: dict, style: dict, skip: set | None = None
 
     skip = skip or set()
     table = groove_pocket_table(style)
+    bar_beats = meter.bar_beats
     for part, events in parts_events.items():
         if not events or part in skip:
             continue
         tightness = _POCKET_TIGHTNESS.get(part, 0.7)
         parts_events[part] = [
             NoteEvent(e.pitch,
-                      max(0.0, e.start + table[int(round(e.start / 0.25)) % 16] * tightness),
+                      max(0.0, e.start + table[_bar_slot(e.start, bar_beats)] * tightness),
                       e.duration, e.velocity, e.channel)
             for e in events
         ]
 
 
-def apply_feel(parts_events: dict, style: dict) -> set:
+def apply_feel(parts_events: dict, style: dict, meter: Meter = DEFAULT_METER) -> set:
     """Apply the style's systematic groove feel to drums and bass, in place.
 
     Drums take a per-instrument-class timing offset and velocity factor for
@@ -184,6 +198,7 @@ def apply_feel(parts_events: dict, style: dict) -> set:
     hs      = _humanize_scale(style)
     t_scale = 0.25 + hs * 1.5        # timing: matches the pocket's scaling
     v_scale = 0.5 + hs * 0.5         # velocity: flat→full, never over-driven
+    bar_beats = meter.bar_beats
     handled: set = set()
 
     drums = parts_events.get("drums")
@@ -191,7 +206,7 @@ def apply_feel(parts_events: dict, style: dict) -> set:
         placed = []
         for e in drums:
             cls  = drum_class(e.pitch)
-            slot = int(round(e.start / 0.25)) % 16
+            slot = _bar_slot(e.start, bar_beats)
             cf   = feel.get(cls) or {}
             toff = (cf.get("timing")   or [0.0] * 16)[slot] * t_scale
             vf   = (cf.get("velocity") or [1.0] * 16)[slot]
@@ -213,6 +228,58 @@ def apply_feel(parts_events: dict, style: dict) -> set:
         handled.add("bass")
 
     return handled
+
+
+# ── Compound-meter triplet swing ─────────────────────────────────────────────
+# A compound bar (6/8, 9/8, 12/8) is felt in dotted-quarter pulses of THREE
+# eighths. Their character isn't a straight march — it lilts: the pulse head is
+# strong, the middle eighth sits back and soft, the third is a lighter pickup
+# into the next head ("DUM-da-dum, DUM-da-dum"). The rest of the feel layer works
+# on a 16-slot 4/4 grid and can't express that, so compound meters get this
+# dedicated pass: a per-triplet-position VELOCITY contour plus a micro-timing
+# SWING that pushes the middle eighth late. Amount 0 = straight (no-op); 1 = a
+# strong shuffle. Purely positional, so it's deterministic and every part lilts
+# together. Only fires for compound meters — 4/4, simple and odd stay identical.
+COMPOUND_SWING_DEFAULT = 0.5      # used when a style declares no `compound_swing`
+_COMPOUND_SWING_MAX = 0.16        # middle-eighth lateness (beats) at amount 1.0
+_COMPOUND_VEL = (0.10, -0.22, -0.04)   # head / middle / pickup velocity deltas at amount 1.0
+
+
+def compound_eighth(start: float, pulse: float = 1.5) -> int:
+    """Which eighth of its dotted-quarter pulse a note sits nearest: 0 head,
+    1 middle, 2 pickup. (A note past the last eighth wraps to the next head.)"""
+    return int((start % pulse) / 0.5 + 0.5) % 3
+
+
+def compound_swing_delay(eighth: int, amount: float) -> float:
+    """Beats to push a note late for the swing — only the middle eighth moves."""
+    return _COMPOUND_SWING_MAX * amount if eighth == 1 else 0.0
+
+
+def apply_compound_swing(parts_events: dict, meter: Meter, amount: float) -> None:
+    """Give a compound-meter groove its triplet lilt, in place. No-op unless the
+    meter is compound and amount > 0 (so all other meters stay byte-identical)."""
+    if not meter.is_compound or amount <= 0:
+        return
+    from app.services.midi_writer import NoteEvent
+
+    pulse = meter.pulse            # dotted quarter (1.5) for compound
+    bar_beats = meter.bar_beats
+    for part, events in parts_events.items():
+        if not events:
+            continue
+        placed = []
+        for e in events:
+            eighth = compound_eighth(e.start, pulse)
+            start = e.start + compound_swing_delay(eighth, amount)
+            # A late middle eighth must not cross into the next bar.
+            bar_end = (int(e.start // bar_beats) + 1) * bar_beats
+            start = min(start, bar_end - 1e-4)
+            vel = e.velocity
+            if part == "drums":
+                vel = max(1, min(127, int(round(e.velocity * (1.0 + _COMPOUND_VEL[eighth] * amount)))))
+            placed.append(NoteEvent(e.pitch, max(0.0, start), e.duration, vel, e.channel))
+        parts_events[part] = placed
 
 
 def style_velocity_variation(style: dict) -> int:

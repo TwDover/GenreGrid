@@ -140,6 +140,15 @@ function invalidate(id: string): void {
   materializedKits.delete(id)
 }
 
+// Electron IPC (structured clone) can't serialize a Vue reactive Proxy — passing one
+// throws "An object could not be cloned". Any instrument read back out of the reactive
+// `instruments` ref is a Proxy, so strip it to plain data before saving. The payload is
+// pure JSON (note→file strings, numbers) — the same shape persisted to index.json — so a
+// JSON round-trip is a safe, complete deep clone.
+function toPlain<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
 function uuid(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
   return `inst-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -221,8 +230,9 @@ async function updateKitSlot(id: string, pitch: number, paths: string[]): Promis
   const api = storageApi()
   if (!inst || inst.kind !== 'drums' || !api) return
   const next: CustomInstrument = { ...inst, kit: setKitSlot(inst.kit ?? {}, pitch, paths) }
-  // No new bytes — the files are already stored; only the map changed.
-  await api.save(next, [])
+  // No new bytes — the files are already stored; only the map changed. `inst` came out of
+  // the reactive store (a Proxy), so send a plain clone or IPC clone-throws (see toPlain).
+  await api.save(toPlain(next), [])
   instruments.value = instruments.value.map(i => (i.id === id ? next : i))
   invalidate(id)
 }

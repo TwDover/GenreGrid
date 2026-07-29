@@ -1,9 +1,23 @@
 # Design: User-uploaded custom instruments
 
-**Status (2026-07-23): T1–T3 + drum kits + per-style assignment SHIPPED (needs desktop
-runtime testing).** Design for letting users add their own samples, map them to
+**Status (2026-07-29): T1–T3 + drum kits + per-style assignment SHIPPED and
+desktop-runtime-verified.** Design for letting users add their own samples, map them to
 notes/velocities, and pick which instrument plays each part. Fleshes out the Phase 2
 roadmap item "Custom soundfont / SF2 upload + per-part instrument picker."
+
+**Desktop runtime pass (2026-07-29):** driven end-to-end in the real Electron shell over
+CDP — import (T1 one-shot / T2 note-named / drum kit with an unmatched file), IPC disk
+persistence round-trip, blob-URL materialization, **non-silent audio decode/render of both
+a melodic sample and a kit piece** (the Linux Web-Audio silence risk this design worried
+about — clear), the real `LayeredSampler` constructing from a blob manifest, kit-slot
+editing, global + per-style assignment (incl. the `''`="built-in here" case), the panel +
+kit editor rendering, and delete-with-assignment-cleanup. All 13 checks pass.
+**Bug found & fixed:** `updateKitSlot` re-saved an instrument read back out of the reactive
+store, so it (and its nested manifests) were Vue reactive Proxies; Electron's
+structured-clone IPC rejects those with *"An object could not be cloned,"* which silently
+broke **all kit editing** in the packaged app. Fixed by stripping to plain JSON before the
+`save` IPC (`toPlain` in `useCustomInstruments.ts`); regression-guarded by
+`useCustomInstruments.test.ts` (asserts the IPC payload carries no reactive proxy).
 
 **Shipped:** pure mapping core (`customInstruments.ts`, unit-tested), library store
 (`useCustomInstruments.ts`), Electron storage IPC + preload (list/save/remove/read
@@ -24,9 +38,10 @@ transport-bar button.
   supported by the store and resolver — only the UI never passed a `styleId`.
 
 **Not yet done:** SF2/SFZ import (T4), auto pitch-detection, a mapping preview for
-chromatic instruments (mini keyboard), web/OPFS storage. **Untested at runtime**
-(automation can't launch Electron or play audio) — needs a desktop pass: import a
-melodic instrument and a kit, assign both, play, audition + edit a kit piece, delete.
+chromatic instruments (mini keyboard), web/OPFS storage. **Runtime-verified 2026-07-29**
+(see the desktop pass above) — the earlier "automation can't launch Electron or play audio"
+caveat was worked around by driving the real shell over the DevTools Protocol and asserting
+non-silent offline renders of the user samples.
 
 ## Drum kits
 
