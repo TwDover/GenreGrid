@@ -50,6 +50,24 @@ def list_styles() -> list[dict]:
         from app.core.instruments import instrumentation_for
         return {part: inst["playback_voice"] for part, inst in instrumentation_for(data).items()}
 
+    def _progressions(data: dict) -> list[list[str]]:
+        """The style's shipped progression templates, de-duplicated and capped,
+        so the frontend can offer them as one-click picks in the progression
+        control. Order-preserving dedupe keeps the style's own priority."""
+        seen_p: set[tuple[str, ...]] = set()
+        out: list[list[str]] = []
+        for tmpl in data.get("progression_templates", []):
+            if not isinstance(tmpl, list):
+                continue
+            key = tuple(tmpl)
+            if key in seen_p:
+                continue
+            seen_p.add(key)
+            out.append(list(tmpl))
+            if len(out) >= 24:
+                break
+        return out
+
     styles = []
     seen: set[str] = set()
     # Custom styles override built-ins with the same id
@@ -58,7 +76,7 @@ def list_styles() -> list[dict]:
             with open(path) as f:
                 data = json.load(f)
             seen.add(data["id"])
-            styles.append({"id": data["id"], "name": data["name"], "bpm_range": data.get("bpm_range", [40, 240]), "default_scale": data.get("default_scale", "minor"), "custom": True, "has_prior": _has_prior(data), "instruments": _instruments(data), "voices": _voices(data)})
+            styles.append({"id": data["id"], "name": data["name"], "bpm_range": data.get("bpm_range", [40, 240]), "default_scale": data.get("default_scale", "minor"), "custom": True, "has_prior": _has_prior(data), "instruments": _instruments(data), "voices": _voices(data), "progression_templates": _progressions(data)})
         except Exception as exc:
             _logger.warning("Skipping malformed custom style %s: %s", path, exc)
     for path in sorted(STYLES_DIR.glob("*.json")):
@@ -67,7 +85,7 @@ def list_styles() -> list[dict]:
                 data = json.load(f)
             if data["id"] in seen:
                 continue
-            styles.append({"id": data["id"], "name": data["name"], "bpm_range": data.get("bpm_range", [40, 240]), "default_scale": data.get("default_scale", "minor"), "has_prior": _has_prior(data), "instruments": _instruments(data), "voices": _voices(data)})
+            styles.append({"id": data["id"], "name": data["name"], "bpm_range": data.get("bpm_range", [40, 240]), "default_scale": data.get("default_scale", "minor"), "has_prior": _has_prior(data), "instruments": _instruments(data), "voices": _voices(data), "progression_templates": _progressions(data)})
         except Exception as exc:
             _logger.warning("Skipping malformed style %s: %s", path, exc)
     return sorted(styles, key=lambda s: s["name"])

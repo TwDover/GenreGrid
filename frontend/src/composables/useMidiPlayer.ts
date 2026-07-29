@@ -148,13 +148,18 @@ function cleanup() {
 }
 
 export function useMidiPlayer() {
-  async function toggle(url: string, styleId?: string, label?: string) {
+  async function toggle(url: string, styleId?: string, label?: string, loop?: boolean) {
     if (currentlyPlaying.value === url) {
       cleanup()
       return
     }
 
     cleanup()
+    // A loop-mode clip should repeat when you press play; a full song/arrangement
+    // should play through. Callers that know which they're starting pass `loop`;
+    // undefined leaves the transport's manual loop toggle untouched. The play
+    // path below reads `looping.value` to set the transport loop points.
+    if (loop !== undefined) looping.value = loop
     const token = ++_playToken
     isLoading.value = true
     nowPlayingLabel.value = label ?? url.split('/').pop() ?? url

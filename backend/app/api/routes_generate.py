@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from app.models.schemas import GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, GenerateSummary, QualityScore, BatchGenerateRequest
 from app.services.style_loader import load_style
 from app.services.midi_writer import NoteEvent, write_midi, write_combined_midi, rebuild_combined_from_parts, concatenate_midi_files, read_note_starts
+from app.core.meter import parse_meter
 from app.generators.chords import generate_chords, resolve_progression
 from app.generators.bass import generate_bass
 from app.generators.melody import generate_melody
@@ -73,6 +74,10 @@ def generate(req: GenerateRequest):
     tritone_sub = style.get("tritone_substitution", False)
     is_loop = (req.mode == "loop")
     groove_push = style.get("groove_push", 0.0)
+    # The generators already place events in this meter (see services.generation);
+    # thread it to the writer too so the .mid's time_signature meta matches instead
+    # of always claiming 4/4. 4/4 → DEFAULT_METER, byte-identical.
+    meter = parse_meter(getattr(req, "time_signature", None))
 
     style = _blend_styles(style, req.blend_style_id, req.blend_amount)
 
@@ -171,14 +176,14 @@ def generate(req: GenerateRequest):
         out_path = output_dir / filename
         write_midi(events, out_path, bpm=bpm, program=programs.get(part),
                    cc_events=cc_parts.get(part), pb_events=pb_parts.get(part),
-                   track_name=track_names.get(part))
+                   track_name=track_names.get(part), meter=meter)
         files.append(FileInfo(part=part, filename=filename, url=f"/exports/{gen_id}/{filename}"))
 
     if len(all_events) > 1:
         combined_path = output_dir / "combined.mid"
         clean_events = {p: _drop_quiet(_scale_velocity(e, p, _sid)) for p, e in all_events.items()}
         write_combined_midi(clean_events, combined_path, bpm=bpm, programs=programs,
-                           cc_parts=cc_parts, pb_parts=pb_parts, track_names=track_names)
+                           cc_parts=cc_parts, pb_parts=pb_parts, track_names=track_names, meter=meter)
         files.append(FileInfo(part="combined", filename="combined.mid", url=f"/exports/{gen_id}/combined.mid"))
 
     # In arrangement mode, also write per-section MIDI files
@@ -253,6 +258,7 @@ def generate_stream(req: GenerateRequest):
         tritone_sub = style.get("tritone_substitution", False)
         is_loop = (req.mode == "loop")
         groove_push = style.get("groove_push", 0.0)
+        meter = parse_meter(getattr(req, "time_signature", None))
         style = {**style, "_humanize_scale": req.humanize}
         if req.custom_progression:
             style = {**style, "progression_templates": [req.custom_progression]}
@@ -306,7 +312,7 @@ def generate_stream(req: GenerateRequest):
                        program=programs.get(part),
                        cc_events=(best_cc or {}).get(part),
                        pb_events=(best_pb or {}).get(part),
-                       track_name=track_names.get(part))
+                       track_name=track_names.get(part), meter=meter)
             files.append(FileInfo(part=part, filename=filename, url=f"/exports/{gen_id}/{filename}"))
 
         if best_events and len(best_events) > 1:
@@ -314,7 +320,7 @@ def generate_stream(req: GenerateRequest):
             clean = {p: _drop_quiet(_scale_velocity(e, p, _sid)) for p, e in best_events.items()}
             write_combined_midi(clean, combined_path, bpm=bpm, programs=programs,
                                cc_parts=best_cc or {}, pb_parts=best_pb or {},
-                               track_names=track_names)
+                               track_names=track_names, meter=meter)
             files.append(FileInfo(part="combined", filename="combined.mid",
                                   url=f"/exports/{gen_id}/combined.mid"))
 

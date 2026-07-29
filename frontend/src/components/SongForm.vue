@@ -190,9 +190,12 @@
             <label>Blend amount <span class="value">{{ form.blend_amount.toFixed(2) }}</span></label>
             <input type="range" v-model.number="form.blend_amount" min="0" max="1" step="0.05" />
           </div>
-          <label class="prior-toggle" v-if="selectedStyle?.has_prior">
-            <input type="checkbox" v-model="form.use_priors" />
-            <span>Use my local MIDI corpus <span class="hint">overlays patterns mined from a corpus you provide; you're responsible for its license</span></span>
+          <label class="prior-toggle" :class="{ disabled: !selectedStyle?.has_prior }">
+            <input type="checkbox" v-model="form.use_priors" :disabled="!selectedStyle?.has_prior" />
+            <span>Use my local MIDI corpus
+              <span class="hint" v-if="selectedStyle?.has_prior">overlays patterns mined from a corpus you provide; you're responsible for its license</span>
+              <span class="hint" v-else>mine a MIDI corpus for this style to enable — see backend/app/priors</span>
+            </span>
           </label>
         </section>
 
@@ -459,6 +462,8 @@ async function generate() {
   cursor: pointer; font-size: var(--t-meta); color: var(--ink-dim);
 }
 .prior-toggle input { width: auto; margin: 3px 0 0; accent-color: var(--accent); }
+.prior-toggle.disabled { cursor: default; opacity: 0.55; }
+.prior-toggle.disabled input { cursor: default; }
 
 /* Build button — sticks to the bottom of the drawer so it stays reachable. */
 .sb-actions {

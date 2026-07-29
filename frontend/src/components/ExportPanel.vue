@@ -162,6 +162,7 @@
               :hasUndo="!!undoFiles[`${response.generation_id}:${file.part}`]"
               :keyRoot="response.summary.key_root"
               :scale="response.summary.scale"
+              :loop="response.summary.mode === 'loop'"
               @regen="handleRegen(response, file.part)"
               @toggle-lock="toggleLock(response.generation_id, file.part)"
               @undo="handleUndo(response, file.part)"

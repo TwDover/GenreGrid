@@ -17,6 +17,7 @@ export interface StyleInfo {
   has_prior?: boolean
   instruments?: Record<string, string>   // part role → instrument display name ("melody": "Alto Sax")
   voices?: Record<string, string>        // part role → playback voice id ("melody": "melody_lead")
+  progression_templates?: string[][]     // the style's roman-numeral progressions, for the picker
 }
 
 /**

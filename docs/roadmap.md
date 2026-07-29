@@ -235,8 +235,15 @@ moves deferred (`_do_build_song`, the `toggle` shell). **Now starting Phase 4 �
 
 ## Phase 4 — Features
 
-- [ ] **Expose the data-driven priors toggle in the UI** — wired end-to-end already, no
-  frontend control yet. Low effort.
+- [x] **Expose the data-driven priors toggle in the UI** — a "Use my local MIDI corpus"
+  checkbox is on both the loop (`GenerateForm`) and song (`SongForm`) forms, bound to
+  `form.use_priors` and threaded through `handleGenerate` → `generate()` → the request body
+  → the backend's `use_priors`. It was already wired; the earlier "no control yet" note was
+  stale (priors are gitignored, so on a fresh clone no style reports `has_prior` and the
+  toggle self-hid). Now the toggle **always renders**: enabled for styles that have a mined
+  prior, and shown **disabled with a "mine a MIDI corpus for this style to enable" hint**
+  otherwise, so the feature is discoverable before you've mined anything.
+  → `frontend/src/components/GenerateForm.vue`, `SongForm.vue`
 - [~] **Non-4/4 time signatures** (6/8, 3/4, 7/8) — **Milestone 1 (foundation) shipped.**
   A `Meter` model (`core/meter.py`) centralizes the math: `bar_beats` (bar length in
   quarter-beats — 4/4→4.0, 3/4→3.0, 6/8→3.0, 7/8→3.5), compound/odd detection, and pulse
