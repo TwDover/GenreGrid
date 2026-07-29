@@ -144,6 +144,7 @@ def generate_drums(
     snare_beats        = drum_cfg.get("snare_standard_beats", [2, 4])
     if half_time:
         snare_beats = [3]
+    meter_is_44        = meter == Meter(4, 4)
     swing_amount       = drum_cfg.get("swing", 0.0)
     use_ride           = drum_cfg.get("use_ride", False)
     use_clap           = drum_cfg.get("use_clap", False)
@@ -195,6 +196,22 @@ def generate_drums(
     # Backbeats are 1-indexed quarter-note beats ([2, 4]); drop any that fall
     # outside a shorter bar (beat 4 overflows 3/4 and 6/8). Never leave it empty.
     snare_beats = [b for b in snare_beats if (b - 1) < beats_per_bar] or [2]
+    # Idiomatic backbeat for non-4/4: land the snare on FELT pulses, not the
+    # clipped 4/4 [2,4] grid. Compound meters (6/8, 9/8, 12/8) put it on the
+    # "off" dotted-quarter pulses (6/8 → pulse 2 only; 12/8 → pulses 2 & 4);
+    # simple/odd meters land it on the central pulse (3/4 → beat 2, 7/8 → the
+    # start of the second group). Values are 1-indexed quarter positions so the
+    # snare loop's `b_f = beat − 1` still applies. 4/4 and half-time skip this
+    # (byte-identical). Ear-tuned defaults — the roadmap flags feel for review.
+    if not meter_is_44 and not half_time:
+        pulses = meter.pulse_positions
+        if meter.is_compound:
+            backbeat = pulses[1::2] or [pulses[-1]]
+        elif len(pulses) > 1:
+            backbeat = [pulses[len(pulses) // 2]]
+        else:
+            backbeat = pulses
+        snare_beats = [p + 1.0 for p in backbeat]
 
     # Decide hat subdivision mode once per 4-bar phrase.
     phrase_hat_modes: dict[int, bool] = {}
@@ -401,7 +418,16 @@ def generate_drums(
 
         # ── Hi-hats / ride ────────────────────────────────────────────────────
         use_triplet = phrase_hat_modes[bar // 4]
-        if use_triplet:
+        # Compound meters (6/8, 9/8, 12/8) FEEL in eighths grouped by three: the
+        # eighth-note IS the natural subdivision, so the hat rides the eighth
+        # grid (0.5-beat spacing) with the dotted-quarter pulse heads accented —
+        # not a 16th grid clipped to the bar (which reads as a busy, un-grouped
+        # 4/4). This overrides the probabilistic triplet mode for compound bars.
+        compound_feel = meter.is_compound and not use_ride
+        if compound_feel:
+            use_triplet = False
+            hat_steps = [bar_start + i * 0.5 for i in range(int(round(beats_per_bar / 0.5)))]
+        elif use_triplet:
             # 12 triplet 8th notes per bar (3 per beat × 4 beats)
             hat_steps = [bar_start + i / 3.0 for i in range(int(round(beats_per_bar * 3)))]
         else:
@@ -467,8 +493,10 @@ def generate_drums(
                 step_idx = round(pos_key / step)
 
                 # Placement: a real drummer's per-step hat probability (mined) on the
-                # straight grid, else the procedural density.
-                if mined_hat_pattern is not None and not use_triplet:
+                # straight grid, else the procedural density. The mined curve is a
+                # 16-step 4/4 pattern, so it's meaningless on a compound eighth grid
+                # — compound bars fall through to the procedural density instead.
+                if mined_hat_pattern is not None and not use_triplet and not compound_feel:
                     place_p = mined_hat_pattern[step_idx % 16] * hat_breath
                 else:
                     place_p = hat_density * hat_breath * (0.70 + complexity * 0.30)
@@ -484,7 +512,17 @@ def generate_drums(
                 is_eighth = beat_frac < 0.01 or abs(beat_frac - 0.5) < 0.01
 
                 # 16-step accent weight — mined velocity curve when available.
-                if not use_triplet:
+                if compound_feel:
+                    # Group of three eighths: strong pulse head, weak middle, a
+                    # slight lift on the third that leans into the next pulse.
+                    within = int(round(pos_key / 0.5)) % 3
+                    if within == 0:
+                        accent = 1.0 if pos_key < 0.01 else 0.86
+                    elif within == 1:
+                        accent = 0.50
+                    else:
+                        accent = 0.62
+                elif not use_triplet:
                     accent = (mined_hat_vel[step_idx % 16] if mined_hat_vel is not None
                               else _HAT_VEL_WEIGHTS[step_idx % 16])
                 else:

@@ -146,6 +146,7 @@
             :rollable="true"
             :locked="locked.has(file.part)"
             :editable="true"
+            :loop="false"
             :gain="partGains[file.part] ?? 1.0"
             @regen="onRegen"
             @roll="onRoll"
@@ -631,7 +632,7 @@ async function loadAndPlay(resumeAt = 0) {
   const blob = await res.blob()
   if (songBlobUrl) URL.revokeObjectURL(songBlobUrl)
   songBlobUrl = URL.createObjectURL(blob)
-  await toggle(songBlobUrl, props.result?.style, props.label)
+  await toggle(songBlobUrl, props.result?.style, props.label, false)
   if (resumeAt > 0) seek(resumeAt)
 }
 

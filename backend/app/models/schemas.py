@@ -84,6 +84,7 @@ class StyleInfo(BaseModel):
     has_prior: bool = False   # a mined corpus prior exists for this style
     instruments: dict[str, str] = {}   # part role → instrument display name ("melody": "Alto Sax")
     voices: dict[str, str] = {}        # part role → playback voice id ("melody": "melody_lead") — drives in-app audio
+    progression_templates: List[List[str]] = []   # the style's roman-numeral progressions, for the picker
 
 
 class FileInfo(BaseModel):

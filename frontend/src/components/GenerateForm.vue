@@ -74,6 +74,60 @@
         <p v-if="scaleMood" class="scale-mood">{{ scaleMood }}</p>
 
         <div class="field">
+          <label>Progression <span class="hint">chords the parts follow</span></label>
+          <select v-model="progressionChoice" @change="onProgressionChoice">
+            <option value="auto">Style default (auto)</option>
+            <optgroup v-if="styleProgressions.length" label="This style's progressions">
+              <option v-for="(p, i) in styleProgressions" :key="`s${i}`" :value="`style:${i}`">
+                {{ romanLabel(p) }} — {{ chordLabel(p) }}
+              </option>
+            </optgroup>
+            <optgroup v-if="savedProgressions.length" label="Saved">
+              <option v-for="sp in savedProgressions" :key="`v${sp.name}`" :value="`saved:${sp.name}`">
+                {{ sp.name }} — {{ romanLabel(sp.tokens) }}
+              </option>
+            </optgroup>
+            <option value="custom">Custom…</option>
+          </select>
+
+          <!-- Resolved chords for a chosen style/saved progression -->
+          <div v-if="progressionChoice.startsWith('style:')" class="prog-resolved">{{ chordLabel(currentTokens) }}</div>
+          <div v-else-if="progressionChoice.startsWith('saved:')" class="prog-resolved prog-saved-row">
+            <span>{{ chordLabel(currentTokens) }}</span>
+            <button type="button" class="btn btn-quiet prog-del" @click="deleteSavedProgression">Delete</button>
+          </div>
+
+          <!-- Custom entry -->
+          <div v-else-if="progressionChoice === 'custom'" class="prog-custom">
+            <input
+              type="text"
+              v-model="customProgressionRaw"
+              placeholder="e.g. i VII III VI"
+              class="progression-input"
+              @input="progressionError = ''"
+              @blur="parseProgression"
+            />
+            <div v-if="progressionError" class="field-error">{{ progressionError }}</div>
+            <div v-else-if="form.custom_progression?.length" class="prog-resolved">{{ chordLabel(form.custom_progression) }}</div>
+            <div class="prog-save-row">
+              <input type="text" v-model="saveProgName" placeholder="name to save…" class="prog-save-name" @keydown.enter.prevent="saveProgression" />
+              <button type="button" class="btn" :disabled="!canSaveProgression" @click="saveProgression">Save</button>
+            </div>
+            <details class="roman-legend">
+              <summary>What's this notation?</summary>
+              <p>
+                Roman numerals name chords by their position in the key, so the
+                progression follows whatever <strong>Key</strong> you pick.
+                Uppercase = major (<code>V</code>), lowercase = minor (<code>ii</code>);
+                add quality like <code>maj7</code>, <code>m7</code>, <code>7</code>,
+                <code>dim</code>, <code>sus4</code>. Leading <code>b</code> flattens
+                the root (<code>bVII</code>).
+              </p>
+            </details>
+          </div>
+        </div>
+
+        <div class="field">
           <label>Time signature</label>
           <select v-model="form.time_signature">
             <option v-for="ts in TIME_SIGNATURES" :key="ts.value" :value="ts.value">{{ ts.label }}</option>
@@ -159,7 +213,7 @@
 
     <!-- ── Advanced ─────────────────────────────────────────────────────── -->
     <details class="advanced">
-      <summary>Advanced — blending, custom harmony, seed, presets</summary>
+      <summary>Advanced — blending, seed, presets</summary>
       <div class="adv-grid">
         <section class="group">
           <div class="field">
@@ -173,38 +227,16 @@
             <label>Blend amount <span class="value">{{ Math.round(form.blend_amount * 100) }}%</span></label>
             <input type="range" v-model.number="form.blend_amount" min="0" max="1" step="0.01" />
           </div>
-          <label class="prior-toggle" v-if="selectedStyle?.has_prior">
-            <input type="checkbox" v-model="form.use_priors" />
-            <span>Use my local MIDI corpus <span class="hint">overlays patterns mined from a corpus you provide; you're responsible for its license</span></span>
+          <label class="prior-toggle" :class="{ disabled: !selectedStyle?.has_prior }">
+            <input type="checkbox" v-model="form.use_priors" :disabled="!selectedStyle?.has_prior" />
+            <span>Use my local MIDI corpus
+              <span class="hint" v-if="selectedStyle?.has_prior">overlays patterns mined from a corpus you provide; you're responsible for its license</span>
+              <span class="hint" v-else>mine a MIDI corpus for this style to enable — see backend/app/priors</span>
+            </span>
           </label>
         </section>
 
         <section class="group">
-          <div class="field">
-            <label>Progression <span class="hint">e.g. i VII III VI</span></label>
-            <input
-              type="text"
-              v-model="customProgressionRaw"
-              placeholder="leave blank for style defaults"
-              class="progression-input"
-              @blur="parseProgression"
-            />
-            <div v-if="progressionError" class="field-error">{{ progressionError }}</div>
-            <details class="roman-legend">
-              <summary>What's this notation?</summary>
-              <p>
-                Roman numerals name chords by their position in the key, so the
-                progression follows whatever <strong>Key</strong> you pick.
-              </p>
-              <ul>
-                <li><code>I II … VII</code> — uppercase = major chord</li>
-                <li><code>i ii … vii</code> — lowercase = minor chord</li>
-                <li><code>b</code> prefix — flatten the root, e.g. <code>bVII</code></li>
-                <li>suffixes — <code>7</code>, <code>maj7</code>, <code>m7</code>, <code>dim</code>, <code>aug</code>, <code>sus2/4</code></li>
-              </ul>
-              <p class="rl-ex">Try: <code>i bVII bVI V</code> · <code>ii7 V7 Imaj7</code> · <code>I V vi IV</code></p>
-            </details>
-          </div>
           <div class="field">
             <label>Seed <span class="hint">blank = random</span></label>
             <input type="number" v-model.number="form.seed" placeholder="e.g. 1234567890" min="0" />
@@ -294,6 +326,7 @@ const SCALE_MOODS: Record<string, string> = {
 import StyleBrowser from './StyleBrowser.vue'
 import StyleEditor from './StyleEditor.vue'
 import type { StyleInfo, GenerateRequest, GenerateResponse } from '../types/midi'
+import { resolveProgression } from '../utils/chordResolver'
 
 const props = defineProps<{
   styles: StyleInfo[]
@@ -381,6 +414,11 @@ watch(() => props.replayData, (data) => {
   form.mode = data.summary.mode
   form.seed = data.seed
   form.section_type = data.summary.section_type
+  // Replay reloads the request params to tweak; the original request's custom
+  // progression isn't carried in the response, so reset to auto rather than
+  // silently keeping whatever was in the form.
+  form.custom_progression = undefined
+  progressionChoice.value = 'auto'
 })
 
 // When section type changes, show a bar-count suggestion if current bars are outside typical range
@@ -465,6 +503,7 @@ function loadPreset() {
   const p = presets.value.find(p => p.name === selectedPreset.value)
   if (!p) return
   Object.assign(form, p.form)
+  syncProgressionChoiceFromForm()
 }
 
 function deletePreset() {
@@ -504,6 +543,104 @@ function parseProgression() {
   progressionError.value = ''
 }
 
+// ── Progression picker ───────────────────────────────────────────────────────
+// One control drives the single `form.custom_progression` value: 'auto' (leave
+// undefined → the generator picks per render), a style template, a saved
+// progression, or free-text 'custom'. Saved progressions are their own library
+// (reusable across any style/key), distinct from the full-form presets below.
+interface SavedProgression { name: string; tokens: string[] }
+const progressionChoice = ref('auto')
+const saveProgName = ref('')
+const savedProgressions = ref<SavedProgression[]>(
+  JSON.parse(localStorage.getItem('genregrid_progressions') ?? '[]'),
+)
+
+const styleProgressions = computed<string[][]>(() => selectedStyle.value?.progression_templates ?? [])
+
+function romanLabel(tokens: string[]): string {
+  return tokens.join(' – ')
+}
+function chordLabel(tokens: string[] | undefined): string {
+  if (!tokens || !tokens.length) return ''
+  return resolveProgression(tokens, form.key, form.scale).join(' – ')
+}
+
+// The tokens the current choice resolves to (for the resolved-chords readout).
+const currentTokens = computed<string[]>(() => {
+  const c = progressionChoice.value
+  if (c.startsWith('style:')) return styleProgressions.value[Number(c.slice(6))] ?? []
+  if (c.startsWith('saved:')) return savedProgressions.value.find(s => s.name === c.slice(6))?.tokens ?? []
+  return form.custom_progression ?? []
+})
+
+function onProgressionChoice() {
+  const c = progressionChoice.value
+  progressionError.value = ''
+  if (c === 'auto') {
+    form.custom_progression = undefined
+  } else if (c.startsWith('style:')) {
+    form.custom_progression = [...(styleProgressions.value[Number(c.slice(6))] ?? [])]
+  } else if (c.startsWith('saved:')) {
+    const found = savedProgressions.value.find(s => s.name === c.slice(6))
+    form.custom_progression = found ? [...found.tokens] : undefined
+  } else if (c === 'custom') {
+    // Seed the text box from whatever was active so switching to Custom is a
+    // starting point to edit, not a wipe.
+    customProgressionRaw.value = (form.custom_progression ?? []).join(' ')
+  }
+}
+
+const canSaveProgression = computed(() =>
+  progressionChoice.value === 'custom'
+  && !!form.custom_progression?.length
+  && saveProgName.value.trim().length > 0
+  && !progressionError.value,
+)
+
+function saveProgression() {
+  parseProgression()   // make sure the latest text is parsed
+  const name = saveProgName.value.trim()
+  if (!name || !form.custom_progression?.length || progressionError.value) return
+  const tokens = [...form.custom_progression]
+  const idx = savedProgressions.value.findIndex(s => s.name === name)
+  if (idx >= 0) savedProgressions.value[idx] = { name, tokens }
+  else savedProgressions.value = [...savedProgressions.value, { name, tokens }]
+  localStorage.setItem('genregrid_progressions', JSON.stringify(savedProgressions.value))
+  saveProgName.value = ''
+  progressionChoice.value = `saved:${name}`
+}
+
+function deleteSavedProgression() {
+  const name = progressionChoice.value.slice(6)
+  savedProgressions.value = savedProgressions.value.filter(s => s.name !== name)
+  localStorage.setItem('genregrid_progressions', JSON.stringify(savedProgressions.value))
+  progressionChoice.value = 'auto'
+  form.custom_progression = undefined
+}
+
+// Sync the picker to whatever `form.custom_progression` currently holds — used
+// after preset load / replay, which set the form value directly.
+function syncProgressionChoiceFromForm() {
+  const cp = form.custom_progression
+  if (!cp?.length) { progressionChoice.value = 'auto'; return }
+  const asKey = cp.join(' ')
+  const styleIdx = styleProgressions.value.findIndex(t => t.join(' ') === asKey)
+  if (styleIdx >= 0) { progressionChoice.value = `style:${styleIdx}`; return }
+  const saved = savedProgressions.value.find(s => s.tokens.join(' ') === asKey)
+  if (saved) { progressionChoice.value = `saved:${saved.name}`; return }
+  progressionChoice.value = 'custom'
+  customProgressionRaw.value = cp.join(' ')
+}
+
+// Changing style invalidates a style-template pick (indices are per-style); fall
+// back to auto. A Custom or Saved pick is the user's explicit choice — keep it.
+watch(() => form.style_id, () => {
+  if (progressionChoice.value.startsWith('style:')) {
+    progressionChoice.value = 'auto'
+    form.custom_progression = undefined
+  }
+})
+
 function randomize() {
   if (props.styles.length === 0) return
   const style = props.styles[Math.floor(Math.random() * props.styles.length)]
@@ -528,6 +665,20 @@ function randomize() {
   color: var(--ink-dim);
 }
 .prior-toggle input { width: auto; margin: 3px 0 0; accent-color: var(--accent); }
+.prior-toggle.disabled { cursor: default; opacity: 0.55; }
+.prior-toggle.disabled input { cursor: default; }
+
+/* Progression picker — resolved-chord readout + custom entry + save row. */
+.prog-resolved {
+  font-family: var(--f-mono); font-size: var(--t-meta);
+  color: var(--ink-dim); margin-top: var(--s1);
+}
+.prog-saved-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
+.prog-del { flex-shrink: 0; }
+.prog-custom { margin-top: var(--s2); display: flex; flex-direction: column; gap: var(--s2); }
+.prog-save-row { display: flex; gap: var(--s2); }
+.prog-save-name { flex: 1; min-width: 0; }
+.prog-save-row .btn { flex-shrink: 0; }
 
 /* Style select + its Browse / Edit buttons on one aligned row — the select
  * flexes, the buttons stay their natural width, all the same height. */

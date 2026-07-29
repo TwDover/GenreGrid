@@ -22,7 +22,7 @@
     <div v-if="expired" class="expired-note" title="This export was cleaned up. Replay from history or regenerate to restore it.">⚠ expired — regenerate to restore</div>
 
     <div v-else class="track-controls">
-      <button class="icon-btn" :disabled="isLoading && !playing" @click="toggle(file.url, styleId, file.part)" :title="playing ? 'Stop' : 'Preview'">
+      <button class="icon-btn" :disabled="isLoading && !playing" @click="toggle(file.url, styleId, file.part, loop)" :title="playing ? 'Stop' : 'Preview'">
         <span v-if="isLoading && !playing">…</span>
         <span v-else>{{ playing ? '■' : '▶' }}</span>
       </button>
@@ -132,6 +132,7 @@ const props = defineProps<{
   rollable?: boolean   // show the "×3" roll-candidates button (song stems only)
   gain?: number   // mixer gain (1.0 = generated balance); undefined hides the slider
   editable?: boolean   // enable piano-roll note editing (song stems only)
+  loop?: boolean   // loop this clip on play (loop-mode generations; full songs play through)
 }>()
 
 const emit = defineEmits<{
