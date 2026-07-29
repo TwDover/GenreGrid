@@ -29,7 +29,9 @@ from app.generators.pads import generate_pads
 from app.generators.counter_melody import generate_counter_melody
 from app.generators.answer import melody_cell
 from app.core.constants import DRUM_MAP
-from app.services.humanize import apply_groove_pocket, apply_feel
+from app.services.humanize import (
+    apply_groove_pocket, apply_feel, apply_compound_swing, COMPOUND_SWING_DEFAULT,
+)
 from app.services.quality import score_generation, extract_rhythm_patterns
 from app.services.priors import load_prior, sample_progression, melody_prior_for, groove_fields_for
 from app.core.arrangement import (
@@ -656,12 +658,17 @@ def _run_attempt(
     # microtiming + velocity contour, bass sits behind the kick. Those parts are
     # then excluded from the generic pocket so the two don't stack. Styles with
     # no feel profile skip this entirely and fall through unchanged.
-    _feel_parts = apply_feel(all_events, style)
+    _feel_parts = apply_feel(all_events, style, meter=meter)
 
     # Shared groove pocket: every remaining part shifts onto the same per-16th-slot
     # micro-offsets (style-seeded, deterministic) so the band plays TOGETHER —
     # independent per-note jitter alone made the composite subtly smear.
-    apply_groove_pocket(all_events, style, skip=_feel_parts)
+    apply_groove_pocket(all_events, style, skip=_feel_parts, meter=meter)
+
+    # Compound meters (6/8, 9/8, 12/8) get their triplet lilt on top: a
+    # per-dotted-quarter velocity contour + a middle-eighth swing. No-op for
+    # every other meter (4/4/simple/odd stay byte-identical).
+    apply_compound_swing(all_events, meter, style.get("compound_swing", COMPOUND_SWING_DEFAULT))
 
     if all_events.get("melody"):
         # Per-section scale pcs (sections can sit in shifted keys — chorus lift)

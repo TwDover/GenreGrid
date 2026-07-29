@@ -6,6 +6,11 @@ they land; add new findings under the right phase so nothing gets lost.
 **Status legend:** `[ ]` todo · `[~]` in progress · `[x]` done · `[-]` won't do / obsolete ·
 `[→]` moved to another phase
 
+_**2026-07-29 — Phases 1–4 complete.** Custom-instruments desktop pass done (+ a kit-editing
+IPC bug fixed), non-4/4 drum feel validated + the feel-layer bar-drift fixed, and compound
+triplet swing landed. What's next lives in **[`backlog.md`](backlog.md)** (post-roadmap
+nice-to-haves, prioritized). History below._
+
 _Last updated: 2026-07-28 — Phases 1, 2 & 3 complete (Phase 2 bar the manual
 custom-instruments desktop pass). Phase 3 delivered: "parallelize generation" retired as a
 phantom (generation is ~0.5s; the real wait — the WAV export render — is now parallelised +
@@ -104,8 +109,8 @@ moves deferred (`_do_build_song`, the `toggle` shell). **Now starting Phase 4 �
   multisample found (VCSL's organs are pipe organs; the CC0 guitar libraries are all electric).
   `synth_bass_1` stays synthesized by choice. Rejected: **jRhodes3** is CC BY-**NC**, so the
   Rhodes voice uses a Hohner Pianet T instead. → `docs/LICENSE_AUDIT.md` §6, `DATA_LICENSES.md`
-- [~] **User-uploaded custom instruments** (SF2/samples) + per-part instrument picker
-  _(promoted from Phase 4; MVP built, needs desktop runtime testing)_ — users add their own
+- [x] **User-uploaded custom instruments** (SF2/samples) + per-part instrument picker
+  _(promoted from Phase 4; MVP built and desktop-runtime-verified 2026-07-29)_ — users add their own
   samples, mapped to notes/velocities, and pick which instrument plays **each** part; also
   sidesteps the licensing gap above (user audio is theirs). Design + status in
   **[`custom-instruments-design.md`](custom-instruments-design.md)**. **Shipped (T1 one-shot +
@@ -128,9 +133,17 @@ moves deferred (`_do_build_song`, the `toggle` shell). **Now starting Phase 4 �
   The kit editor has a **per-slot audition** (`soundfonts/audition.ts`): ▶ plays the mapped
   sample, or the synth fallback when a slot is empty, so a mis-mapped file is caught where
   it's edited rather than on playback.
-  **TODO:** runtime-test on desktop (import/assign/play/audition/edit-kit/delete), then
-  multi-file kit slots, chromatic-instrument preview, SF2/SFZ import (T4), auto
-  pitch-detection, web/OPFS storage.
+  **Desktop runtime pass (2026-07-29) — DONE.** Driven end-to-end in the real Electron shell
+  over CDP (import T1/T2/kit · IPC disk persistence · blob-URL materialize · **non-silent
+  offline render of a melodic sample and a kit piece** — the Linux Web-Audio silence risk,
+  clear · `LayeredSampler` builds from a blob manifest · kit-slot edit · global + per-style
+  assign · panel/kit-editor render · delete-with-cleanup; 13/13 checks). **Found & fixed a
+  real bug:** `updateKitSlot` passed a Vue reactive proxy through Electron's structured-clone
+  IPC → *"An object could not be cloned,"* which silently broke all kit editing in the
+  packaged app; fixed (`toPlain` before `save`) + regression test (`useCustomInstruments.test.ts`).
+  **This was the last open Phase 2 task — Phase 2 is now fully complete.**
+  **Follow-ups (optional):** multi-file kit slots, chromatic-instrument preview, SF2/SFZ
+  import (T4), auto pitch-detection, web/OPFS storage.
   → `soundfonts/customInstruments.ts`, `soundfonts/customDrumKit.ts`, `soundfonts/audition.ts`, `composables/useCustomInstruments.ts`, `components/InstrumentsPanel.vue`, `electron/main.ts`
 
 ## Phase 3 — Performance & refactor ✅ COMPLETE (2026-07-28)
@@ -269,10 +282,30 @@ moves deferred (`_do_build_song`, the `toggle` shell). **Now starting Phase 4 �
   81 placement tests cover 4/4·3/4·2/4·6/8·9/8·12/8·7/8·5/8 (onsets stay in-bar, walking-bass
   note-count = pulse-count, song length + `time_signature` meta), and **4/4 stays
   byte-identical** (216 backend tests green; explicit `Meter(4,4)` == default per generator).
-  _Remaining (best ear-validated with the app running):_ idiomatic compound (6/8 triplet) /
-  odd (7/8 2+2+3) drum *feel* — the current non-4/4 drums are correct and non-overflowing but
-  still swing/accent like a clipped 4/4 groove rather than in the meter's own grouping. →
-  `backend/app/core/meter.py`
+  **Idiomatic feel — landed (`8eb0f2c`) and validated 2026-07-29.** The snare **backbeat now
+  lands on the meter's felt pulses** (`pulse_positions`) — 6/8→1.5, 12/8→1.5 & 4.5, 7/8→1.0,
+  5/8→1.0, 3/4→2 — and **compound meters (6/8, 9/8, 12/8) use an eighth-note (grouped-by-three)
+  hat grid** instead of a clipped 16th grid (`compound_feel` in `generators/drums.py`).
+  Validated by generating drum loops in every meter across boom_bap / house / afrobeats and
+  measuring onsets + accents against `pulse_positions` (backbeats on-pulse everywhere,
+  compound hats at ~0.5-beat spacing, **zero bar overflow**). **Bug found & fixed en route:**
+  the shared **feel/swing micro-timing** (`humanize.apply_feel` / `apply_groove_pocket`) indexed
+  every note by a fixed 4/4 16-slot grid (`start/0.25 % 16`), so in any non-16-sixteenth bar the
+  groove's micro-timing *drifted across bar lines* rather than repeating per bar — the residual
+  "swings like a clipped 4/4." Now anchored to the bar (`_bar_slot`, threaded `meter`); **4/4
+  stays byte-identical** (224 backend tests green; new regression `test_groove_pocket.py`).
+  **Compound triplet swing — landed 2026-07-29.** Compound meters (6/8, 9/8, 12/8) now get a
+  dedicated lilt pass (`humanize.apply_compound_swing`): a middle-eighth **timing swing** (the
+  "DUM-da-dum" roll — verified in HTTP output, 6/8 & 12/8 middle-eighth hats move 0.5→~0.58)
+  plus a per-dotted-quarter **velocity contour** (head strong, middle ducked, pickup light).
+  Purely positional so every part lilts together; tunable per style via a `compound_swing`
+  field (0 = straight march, 1 = hard shuffle; default 0.5). **Gated** — 4/4/simple/odd are a
+  no-op (235 backend tests green; `test_compound_swing.py` covers the lilt + the no-op). The
+  generators still emit straight, on-grid eighths (`test_compound_hats_ride_eighth_grid` still
+  passes); the swing is a separate feel-layer pass, keeping placement and feel cleanly split.
+  _Optional next (ear-gated):_ tune `compound_swing` per style with ears (some 6/8 ballads want
+  more lilt, orchestral 6/8 marches want 0), and consider odd-meter (7/8) accent shaping. →
+  `backend/app/services/humanize.py`, `backend/app/services/generation.py`, `backend/app/core/meter.py`
 - [→] **Custom soundfont / SF2 upload** — _promoted to Phase 2 (Sound polish)._
 - [x] **Surface WAV/offline-audio export more prominently** — the OfflineAudioContext
   render + queue existed but the WAV/Stems buttons were lost in a single long action row
@@ -366,8 +399,9 @@ moves deferred (`_do_build_song`, the `toggle` shell). **Now starting Phase 4 �
     self-checking list of the voices that synthesize on purpose.
   - Tests: frontend 29→71, backend 133(+1 red)→135 green. Sample tree 3.4 MB → 20 MB.
 
-**Phase 1 complete. Phase 2 complete** apart from desktop runtime testing of the
-custom-instruments MVP (below) — limiter, per-style FX, loudness normalization, the
-velocity-layer engine, the license compliance pass, and the sample re-sourcing pass have
-all landed. **The one open Phase 2 task** is the manual desktop pass on custom instruments
-(import / assign / play / delete), which automation can't perform.
+**Phase 1 complete. Phase 2 complete** — limiter, per-style FX, loudness normalization, the
+velocity-layer engine, the license compliance pass, the sample re-sourcing pass, and the
+custom-instruments MVP have all landed. The custom-instruments **desktop runtime pass ran
+2026-07-29** (driven over CDP in the real Electron shell; 13/13 checks, non-silent user-sample
+audio verified) and **found + fixed a kit-editing IPC bug** — see the custom-instruments item
+above. No open Phase 2 tasks remain.

@@ -55,7 +55,9 @@ htmlcov/
 # =========================
 # Claude Code
 # =========================
-.claude/
+.claude/*
+# …but do track shared project skills (e.g. the run-genregrid runtime driver).
+!.claude/skills/
 
 # =========================
 # IDE / Editor

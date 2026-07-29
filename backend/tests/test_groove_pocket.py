@@ -17,6 +17,7 @@ import random
 from app.services.humanize import groove_pocket_table, apply_groove_pocket, apply_feel
 from app.services.midi_writer import NoteEvent
 from app.core.constants import DRUM_MAP
+from app.core.meter import Meter
 
 
 def test_pocket_table_is_deterministic_and_style_specific():
@@ -56,6 +57,41 @@ def test_pocket_never_produces_negative_starts():
     for part in events:
         for e in events[part]:
             assert e.start >= 0.0
+
+
+def test_feel_repeats_per_bar_in_non_44_and_stays_identical_in_44():
+    """The feel/pocket tables are one 4/4 bar (16 slots). Indexed by absolute
+    ``start/0.25 % 16`` they only repeat per bar when a bar IS 16 sixteenths, so
+    non-4/4 grooves drifted across bar lines (reading as a clipped 4/4). The
+    per-bar anchor fixes that while leaving 4/4 byte-identical."""
+    def pocket_offset(start, meter):
+        style = {"id": "rnb"}
+        ev = {"melody": [NoteEvent(72, start, 0.5, 80, 2)]}
+        apply_groove_pocket(ev, style, meter=meter)
+        return round(ev["melody"][0].start - start, 9)
+
+    # 4/4: passing the meter changes nothing vs the default (byte-identical).
+    for s in (0.5, 1.0, 2.25, 4.5, 6.75):
+        assert pocket_offset(s, Meter(4, 4)) == pocket_offset(s, Meter())
+
+    # Non-4/4: the SAME bar-relative position in successive bars gets the SAME
+    # offset now (it did not before the anchor — the bug this guards).
+    for meter in (Meter(3, 4), Meter(6, 8), Meter(7, 8), Meter(5, 8), Meter(9, 8), Meter(12, 8)):
+        bb = meter.bar_beats
+        for rel in (0.5, 1.0, 1.5):
+            if rel >= bb:
+                continue
+            assert pocket_offset(rel, meter) == pocket_offset(bb + rel, meter), \
+                f"{meter} feel offset drifts between bars at +{rel}"
+
+    # apply_feel (drums) is anchored the same way: a kick at bar-relative 0 in
+    # bar 0 and bar 1 of a 7/8 groove gets the identical micro-timing offset.
+    def kick_offset(start, meter):
+        ev = {"drums": [NoteEvent(DRUM_MAP["kick"], start, 0.1, 110, 9)]}
+        apply_feel(ev, {"id": "lofi"}, meter=meter)
+        return round(ev["drums"][0].start - start, 9)
+    m78 = Meter(7, 8)
+    assert kick_offset(0.0, m78) == kick_offset(m78.bar_beats, m78)
 
 
 def test_feel_profile_drags_backbeat_and_lags_bass():
