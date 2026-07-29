@@ -19,7 +19,7 @@ import random
 import mido
 import pytest
 
-from app.core.meter import Meter, parse_meter, DEFAULT_METER
+from app.core.meter import Meter, parse_meter
 from app.generators.bass import generate_bass
 from app.generators.drums import generate_drums
 from app.generators.chords import generate_chords
