@@ -287,6 +287,23 @@ export function bundleUrl(gen_id: string): string {
   return `${BASE_URL}/exports/${gen_id}/bundle.zip`
 }
 
+// Portable `.ggproj` project files: export a whole song session as a zip, and
+// import one back into a fresh song folder (see routes_song.py).
+export function exportProjectUrl(gen_id: string): string {
+  return `${BASE_URL}/export-project/${gen_id}`
+}
+
+export async function importProject(file: File): Promise<BuildSongResponse> {
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await fetch(`${BASE_URL}/import-project`, { method: 'POST', body: fd })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Project import failed')
+  }
+  return res.json()
+}
+
 export function sectionsUrl(gen_id: string): string {
   return `${BASE_URL}/exports/${gen_id}/sections.zip`
 }

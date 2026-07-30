@@ -120,6 +120,10 @@
     <section class="sheet sheet-right" :class="{ open: drawer === 'library' }" role="dialog" aria-modal="true" :aria-label="mode === 'song' ? 'Songs' : 'Library'">
       <div class="sheet-head">
         <span class="sheet-title">{{ mode === 'song' ? 'Songs' : 'Library' }}</span>
+        <label v-if="mode === 'song'" class="btn btn-quiet" title="Import a portable .ggproj project file">
+          {{ importingProject ? 'Importing…' : 'Import' }}
+          <input type="file" accept=".ggproj,.zip" style="display:none" :disabled="importingProject" @change="onImportProject" />
+        </label>
         <button v-if="mode === 'song' && songHistory.length" class="btn btn-quiet clear-btn" @click="clearSongs" title="Clear recent songs">Clear</button>
         <div class="spacer"></div>
         <button class="btn btn-quiet btn-icon" @click="closeDrawer" title="Close">✕</button>
@@ -218,7 +222,8 @@ import InstrumentsPanel from '../components/InstrumentsPanel.vue'
 import { useErrorLog } from '../composables/useErrorLog'
 import { setStyleCatalog } from '../composables/useStyleCatalog'
 import { useRenderQueue } from '../composables/useRenderQueue'
-import { fetchStyles, generate, batchGenerate, listSongs } from '../services/api'
+import { fetchStyles, generate, batchGenerate, listSongs, importProject } from '../services/api'
+import { useToasts } from '../composables/useToasts'
 import type { StyleInfo, GenerateRequest, GenerateResponse, FileInfo, LibraryEntry, BuildSongResponse } from '../types/midi'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 import { useTheme } from '../composables/useTheme'
@@ -226,6 +231,7 @@ import { useTheme } from '../composables/useTheme'
 const { prefetchSamplers, playPause } = useMidiPlayer()
 const { theme, cycleTheme, THEME_META } = useTheme()
 const { entries: errorEntries, open: openErrorLog } = useErrorLog()
+const { toast } = useToasts()
 const { jobs: renderJobs, open: openRenderQueue } = useRenderQueue()
 const activeRenderCount = computed(() => renderJobs.value.filter(j => j.status === 'rendering').length)
 
@@ -380,6 +386,24 @@ function onSongBuilt(result: BuildSongResponse, label: string) {
 function loadSong(item: SongHistoryItem) {
   songResult.value = item.result
   songLabel.value = item.label
+}
+
+const importingProject = ref(false)
+async function onImportProject(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''   // allow re-importing the same file
+  if (!file || importingProject.value) return
+  importingProject.value = true
+  try {
+    const result = await importProject(file)
+    onSongBuilt(result, `${result.template.replace('_', '–')} · ${result.style}`)
+    toast('Project imported')
+  } catch (err) {
+    toast(errorMessage(err) || 'Project import failed', 'error')
+  } finally {
+    importingProject.value = false
+  }
 }
 
 function deleteSong(genId: string) {
