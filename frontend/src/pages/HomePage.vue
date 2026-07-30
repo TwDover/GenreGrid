@@ -166,6 +166,7 @@
           <span class="shortcuts-title">Keyboard Shortcuts</span>
           <button class="btn btn-quiet btn-icon" @click="showShortcuts = false">✕</button>
         </div>
+        <div class="shortcuts-body">
         <table class="shortcuts-table">
           <tbody>
             <tr><td class="shortcut-key">Space</td><td class="shortcut-desc">Play / pause playback (■ button stops)</td></tr>
@@ -191,6 +192,7 @@
             <tr><td class="shortcut-key">Ctrl/Cmd+W / Q</td><td class="shortcut-desc">Quit</td></tr>
           </tbody>
         </table>
+        </div>
       </div>
     </div>
 
@@ -822,8 +824,16 @@ function handlePartRegenned(genId: string, newFile: FileInfo) {
   box-shadow: var(--shadow-lift);
   padding: var(--s4) var(--s5);
   min-width: 300px;
+  /* Cap the height so the full list is reachable on short windows — the header
+   * stays put and the rows scroll, rather than the bottom shortcuts clipping
+   * off-screen (the overlay centres the modal, so overflow was hidden both ways). */
+  display: flex;
+  flex-direction: column;
+  max-height: 85vh;
 }
-.shortcuts-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s3); }
+/* The scrollable region — keeps the title/✕ fixed while the table scrolls. */
+.shortcuts-body { overflow-y: auto; min-height: 0; margin: 0 calc(-1 * var(--s2)); padding: 0 var(--s2); }
+.shortcuts-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s3); flex-shrink: 0; }
 .shortcuts-title { font-size: var(--t-title); font-weight: 620; letter-spacing: -.01em; }
 .shortcuts-table { border-collapse: collapse; width: 100%; }
 .shortcut-key {

@@ -50,6 +50,26 @@
       <span class="tb-time">{{ fmt(durationSeconds) }}</span>
     </div>
 
+    <!-- Live playback tempo — non-destructive: sets transport speed only, never
+         regenerates or re-exports. Only shown once a track is loaded. -->
+    <div
+      v-if="!isRecording && generatedBpm > 0"
+      class="tb-tempo"
+      :class="{ nudged: isTempoNudged }"
+      :title="tempoTitle"
+      @wheel.prevent="onTempoWheel"
+    >
+      <button class="tb-tempo-step" @click="nudgeBpm(-1)" title="Slower">−</button>
+      <span class="tb-tempo-val">{{ Math.round(playbackBpm) }}<small>BPM</small></span>
+      <button class="tb-tempo-step" @click="nudgeBpm(1)" title="Faster">+</button>
+      <button
+        v-if="isTempoNudged"
+        class="tb-tempo-reset"
+        @click="resetPlaybackBpm"
+        :title="`Reset to generated ${Math.round(generatedBpm)} BPM`"
+      >↺</button>
+    </div>
+
     <!-- Per-part mute / solo -->
     <div v-if="!isRecording" class="tb-parts">
       <button
@@ -118,6 +138,7 @@ const {
   stop, looping, setLooping, channelMuted, toggleMute, soloPart,
   positionSeconds, durationSeconds, seek, isPaused, playPause,
   volume, setVolume, sampleMode, setSampleMode, cuedLabel,
+  generatedBpm, playbackBpm, isTempoNudged, setPlaybackBpm, resetPlaybackBpm,
 } = useMidiPlayer()
 
 const { panelOpen: instrumentsPanelOpen, supported: instrumentsSupported } = useCustomInstruments()
@@ -154,6 +175,19 @@ function fmt(s: number): string {
 function onSeek(e: Event) {
   seek(+(e.target as HTMLInputElement).value)
 }
+
+function nudgeBpm(delta: number) {
+  setPlaybackBpm(playbackBpm.value + delta)
+}
+function onTempoWheel(e: WheelEvent) {
+  nudgeBpm(e.deltaY < 0 ? 1 : -1)
+}
+
+const tempoTitle = computed(() =>
+  isTempoNudged.value
+    ? `Playback tempo — generated ${Math.round(generatedBpm.value)} → ${Math.round(playbackBpm.value)} BPM (playback only, export unchanged)`
+    : 'Playback tempo — nudge to feel it faster or slower without re-rolling',
+)
 </script>
 
 <style scoped>
@@ -276,6 +310,38 @@ function onSeek(e: Event) {
   color: var(--text-faint);
   text-decoration: line-through;
 }
+
+/* Live playback-tempo control */
+.tb-tempo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 0.15rem;
+  background: var(--surface);
+}
+.tb-tempo.nudged { border-color: var(--accent); background: var(--accent-surface-strong); }
+.tb-tempo-step {
+  width: 20px; height: 22px; line-height: 1;
+  background: none; border: none; cursor: pointer;
+  color: var(--text-faint); font-size: 0.9rem;
+}
+.tb-tempo-step:hover { color: var(--accent); }
+.tb-tempo-val {
+  min-width: 46px; text-align: center;
+  font-size: 0.72rem; font-family: monospace; font-variant-numeric: tabular-nums;
+  color: var(--text); cursor: ns-resize; user-select: none;
+}
+.tb-tempo.nudged .tb-tempo-val { color: var(--accent-bright); }
+.tb-tempo-val small { font-size: 0.55em; margin-left: 1px; opacity: 0.6; }
+.tb-tempo-reset {
+  width: 18px; height: 22px; line-height: 1;
+  background: none; border: none; cursor: pointer;
+  color: var(--accent); font-size: 0.75rem;
+}
+.tb-tempo-reset:hover { filter: brightness(1.2); }
 
 .tb-volume { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
 .tb-vol-icon { font-size: 0.75rem; }

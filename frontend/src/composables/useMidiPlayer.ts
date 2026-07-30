@@ -8,7 +8,7 @@
  * version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
  * <https://www.gnu.org/licenses/> for details.
  */
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import * as Tone from 'tone'
 import { Midi } from '@tonejs/midi'
 import { downloadUrl } from '../services/api'
@@ -93,11 +93,31 @@ const positionSeconds = ref(0)
 const isPaused = ref(false)
 let _positionTimer: ReturnType<typeof setInterval> | null = null
 
+// ── Live playback tempo ──────────────────────────────────────────────────────
+// A non-destructive tempo nudge: the transport runs at `playbackBpm`, but the
+// generated note data is never touched — this is playback speed only, so exports
+// and re-rolls stay byte-identical. `generatedBpm` is the track's native tempo
+// (0 = nothing loaded). Because Tone schedules the parts in ticks at the native
+// tempo, the transport's real elapsed seconds scale by generatedBpm/playbackBpm;
+// `tempoRatio` converts those back to native-time seconds so the seek bar, time
+// readout, and editor playhead all stay aligned with the notes.
+const MIN_PLAYBACK_BPM = 40
+const MAX_PLAYBACK_BPM = 300
+const generatedBpm = ref(0)
+const playbackBpm = ref(0)
+// native-time = transport-time × tempoRatio. 1 when un-nudged (byte-identical path).
+const tempoRatio = computed(() =>
+  generatedBpm.value > 0 && playbackBpm.value > 0 ? playbackBpm.value / generatedBpm.value : 1,
+)
+const isTempoNudged = computed(() =>
+  generatedBpm.value > 0 && Math.round(playbackBpm.value) !== Math.round(generatedBpm.value),
+)
+
 function startPositionPolling() {
   stopPositionPolling()
   positionSeconds.value = 0
   _positionTimer = setInterval(() => {
-    positionSeconds.value = Tone.getTransport().seconds
+    positionSeconds.value = Tone.getTransport().seconds * tempoRatio.value
   }, 150)
 }
 
@@ -312,7 +332,12 @@ export function useMidiPlayer() {
       }
       midiStore.value[url] = { notes: allNotes, duration: midi.duration }
 
-      Tone.getTransport().bpm.value = midi.header.tempos[0]?.bpm ?? 120
+      // A new track loads at its native tempo, clearing any prior live nudge —
+      // the previous track's override doesn't carry to a different song.
+      const nativeBpm = midi.header.tempos[0]?.bpm ?? 120
+      generatedBpm.value = nativeBpm
+      playbackBpm.value = nativeBpm
+      Tone.getTransport().bpm.value = nativeBpm
 
       // Resolve piano fallback if still needed (never in 'synth' mode — useSamples gates it)
       const piano = (useSamples && !isSynth && !isPad && !isLofi && !isMelodicSynth && !_chordsSampled)
@@ -668,9 +693,26 @@ export function useMidiPlayer() {
 
   function seek(seconds: number) {
     // Jump the transport while a track is playing (timeline section clicks).
+    // `seconds` is native-time (what the seek bar shows); the transport runs in
+    // real-time, so divide by the ratio to land on the right musical position.
     if (currentlyPlaying.value === null) return
-    Tone.getTransport().seconds = Math.max(0, seconds)
-    positionSeconds.value = Math.max(0, seconds)   // snap the playhead immediately
+    const native = Math.max(0, seconds)
+    Tone.getTransport().seconds = native / tempoRatio.value
+    positionSeconds.value = native   // snap the playhead immediately
+  }
+
+  /** Non-destructive live tempo — sets the transport speed only; note data,
+   *  exports, and re-rolls are untouched. No-op until a track is loaded. */
+  function setPlaybackBpm(bpm: number) {
+    if (generatedBpm.value <= 0) return
+    const b = Math.round(Math.max(MIN_PLAYBACK_BPM, Math.min(MAX_PLAYBACK_BPM, bpm)))
+    playbackBpm.value = b
+    Tone.getTransport().bpm.value = b
+  }
+
+  /** Return the transport to the track's generated tempo. */
+  function resetPlaybackBpm() {
+    if (generatedBpm.value > 0) setPlaybackBpm(generatedBpm.value)
   }
 
   function togglePause() {
@@ -735,5 +777,5 @@ export function useMidiPlayer() {
     ]).catch(() => { /* best-effort, ignore network errors */ })
   }
 
-  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, sampleMode, setSampleMode, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause, cue, playCued, playPause, cuedLabel, prepareAudition, audition }
+  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, sampleMode, setSampleMode, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause, cue, playCued, playPause, cuedLabel, prepareAudition, audition, generatedBpm, playbackBpm, tempoRatio, isTempoNudged, setPlaybackBpm, resetPlaybackBpm }
 }

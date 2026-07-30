@@ -28,6 +28,19 @@
           {{ playing ? '■' : '▶' }}
         </button>
         <button v-if="loopStartBeat !== null" class="pre-btn pre-loopclear" @click="clearLoop" title="Clear the loop region">Loop ✕</button>
+        <!-- Live playback tempo — playback speed only; note data and export unchanged. -->
+        <div
+          v-if="playing"
+          class="pre-tempo"
+          :class="{ nudged: isTempoNudged }"
+          title="Playback tempo — nudge to feel it faster or slower (playback only)"
+          @wheel.prevent="nudgeBpm($event.deltaY < 0 ? 1 : -1)"
+        >
+          <button class="pre-btn pre-tempo-step" @click="nudgeBpm(-1)" title="Slower">−</button>
+          <span class="pre-tempo-val">{{ Math.round(playbackBpm) }}<small>BPM</small></span>
+          <button class="pre-btn pre-tempo-step" @click="nudgeBpm(1)" title="Faster">+</button>
+          <button v-if="isTempoNudged" class="pre-btn pre-tempo-reset" @click="resetPlaybackBpm" title="Reset to generated tempo">↺</button>
+        </div>
         <div class="pre-group" title="Tool — Draw adds notes, Select marquees a group" v-if="!isDrumPart">
           <button class="pre-btn pre-tool" :class="{ active: tool === 'draw' }" @click="tool = 'draw'" title="Draw notes (drag empty grid to add)">✏ Draw</button>
           <button class="pre-btn pre-tool" :class="{ active: tool === 'select' }" @click="tool = 'select'" title="Select (drag empty grid to marquee-select a group)">▭ Select</button>
@@ -137,6 +150,8 @@ const scrollY = ref(0)
 
 // Playback + audition (hear what you're editing).
 const player = useMidiPlayer()
+// Live playback-tempo bits, shared with the docked transport (same module state).
+const { playbackBpm, isTempoNudged, setPlaybackBpm, resetPlaybackBpm } = player
 const partChannel = computed(() => {
   for (const [ch, p] of Object.entries(CHANNEL_PART)) if (p === props.partName) return Number(ch)
   return 0
@@ -869,6 +884,10 @@ async function togglePlay() {
   startPlayhead()
 }
 
+function nudgeBpm(delta: number) {
+  setPlaybackBpm(playbackBpm.value + delta)
+}
+
 function stopPlayback() {
   player.stop()
   playing.value = false
@@ -880,7 +899,9 @@ function stopPlayback() {
 function startPlayhead() {
   stopPlayhead()
   const tick = () => {
-    playheadSec.value = Tone.getTransport().seconds
+    // Native-time seconds: the transport runs at the live tempo, but notes are
+    // drawn at the generated tempo, so scale by the ratio to keep them aligned.
+    playheadSec.value = Tone.getTransport().seconds * player.tempoRatio.value
     // The player stops itself at the end of a non-looping part; reflect that here.
     if (blobUrl && !player.isPlayingUrl(blobUrl)) { playing.value = false; stopPlayhead(); redraw(); return }
     redraw()
@@ -1041,6 +1062,16 @@ onUnmounted(() => {
 .pre-play { font-size: 0.9rem; color: var(--accent); border-color: var(--accent-edge); }
 .pre-play:hover:not(:disabled) { background: var(--accent-wash); }
 .pre-loopclear { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, var(--line)); }
+.pre-tempo { display: inline-flex; align-items: center; gap: 0.15rem; }
+.pre-tempo .pre-tempo-step { padding: 0 0.3rem; min-width: 24px; }
+.pre-tempo-val {
+  min-width: 46px; text-align: center;
+  font-size: var(--t-meta); font-variant-numeric: tabular-nums; color: var(--ink-dim);
+  cursor: ns-resize; user-select: none;
+}
+.pre-tempo.nudged .pre-tempo-val { color: var(--accent); }
+.pre-tempo-val small { font-size: 0.6em; margin-left: 1px; opacity: 0.6; }
+.pre-tempo-reset { color: var(--accent); border-color: var(--accent-edge); }
 .pre-snap { font-size: var(--t-meta); color: var(--text-dim); display: flex; align-items: center; gap: 0.35rem; }
 .pre-snap select { height: 28px; }
 .pre-selcount {
