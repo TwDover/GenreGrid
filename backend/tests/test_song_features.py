@@ -140,6 +140,74 @@ def test_version_history_snapshot_and_restore():
     assert len(list_song_versions(r.generation_id)) == 2
 
 
+# ── Portable project files (.ggproj) ──────────────────────────────────────────
+
+def _collect_streaming(resp):
+    """Drain a StreamingResponse body into bytes (sync test helper)."""
+    async def run():
+        chunks = []
+        async for c in resp.body_iterator:
+            chunks.append(c if isinstance(c, (bytes, bytearray)) else c.encode())
+        return b"".join(chunks)
+    return asyncio.run(run())
+
+
+def test_project_export_import_round_trip():
+    """A .ggproj exported from one song imports into a fresh folder that restores
+    the stems byte-for-byte and rehydrates the same song response (roadmap 5.5)."""
+    import zipfile
+    from fastapi import UploadFile
+    from app.api.routes_song import export_project, import_project
+
+    r = _song(seed=71)
+    d = EXPORTS_DIR / r.generation_id
+    song_bytes = (d / "song.mid").read_bytes()
+
+    data = _collect_streaming(export_project(r.generation_id))
+    names = set(zipfile.ZipFile(io.BytesIO(data)).namelist())
+    assert {"song_meta.json", "song_structure.json", "project.json"} <= names
+    assert any(n.endswith(".mid") for n in names)
+
+    imported = asyncio.run(import_project(UploadFile(filename="p.ggproj", file=io.BytesIO(data))))
+    assert imported.generation_id != r.generation_id       # fresh id, no collision
+    nd = EXPORTS_DIR / imported.generation_id
+    assert (nd / "song.mid").read_bytes() == song_bytes     # faithful restore
+    assert (nd / "song_meta.json").exists()
+    assert imported.style == r.style and imported.total_bars == r.total_bars
+
+
+def test_import_project_rejects_bad_and_incomplete_archives():
+    import zipfile
+    import pytest
+    from fastapi import UploadFile, HTTPException
+    from app.api.routes_song import import_project
+
+    def imp(raw):
+        return asyncio.run(import_project(UploadFile(filename="x.ggproj", file=io.BytesIO(raw))))
+
+    with pytest.raises(HTTPException):     # not a zip at all
+        imp(b"definitely not a zip")
+
+    buf = io.BytesIO()                     # a zip with a stem but no meta/structure
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("bass.mid", b"MThd-ish")
+    with pytest.raises(HTTPException):
+        imp(buf.getvalue())
+
+
+def test_is_safe_project_member_guards_traversal():
+    """The import whitelist rejects zip-slip / traversal / stray members."""
+    from app.api.routes_song import _is_safe_project_member
+    assert _is_safe_project_member("song_meta.json")
+    assert _is_safe_project_member("bass.mid")
+    assert _is_safe_project_member("sections/verse.mid")
+    assert not _is_safe_project_member("../evil.mid")        # traversal
+    assert not _is_safe_project_member("/etc/passwd")        # absolute
+    assert not _is_safe_project_member("sub/dir/x.mid")      # nested top-level
+    assert not _is_safe_project_member("sections/deep/x.mid")  # too deep
+    assert not _is_safe_project_member("notes.txt")          # not an allowed type
+
+
 # ── Per-section style ─────────────────────────────────────────────────────────
 
 def test_custom_template_per_section_style():

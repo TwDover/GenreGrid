@@ -773,6 +773,35 @@ def edit_part(req: EditPartRequest):
                     url=f"/exports/{req.generation_id}/{req.part}.mid")
 
 
+def _song_response_from_dir(d) -> BuildSongResponse | None:
+    """Rehydrate a BuildSongResponse from a song export folder, or None if the
+    folder isn't a complete song (missing meta/structure/stems)."""
+    meta_path = d / "song_meta.json"
+    structure_path = d / "song_structure.json"
+    if not (d.is_dir() and meta_path.exists() and structure_path.exists()):
+        return None
+    meta = _json_module.loads(meta_path.read_text())
+    sections = _json_module.loads(structure_path.read_text())
+    files = [FileInfo(part=f.stem, filename=f.name, url=f"/exports/{d.name}/{f.name}")
+             for f in sorted(d.glob("*.mid"))]
+    if not files:
+        return None
+    total_bars = sum(s.get("bars", 0) for s in sections)
+    return BuildSongResponse(
+        generation_id=d.name,
+        style=meta.get("style_id", ""),
+        files=files,
+        seed=meta.get("base_seed", 0),
+        template=meta.get("template", "verse_chorus"),
+        total_bars=total_bars,
+        sections=[SongSectionResult(**s) for s in sections],
+        bpm=meta.get("bpm", 120),
+        key=f"{meta.get('key', 'C')} {meta.get('scale', 'minor')}",
+        progression=meta.get("song_progression"),
+        mixer=meta.get("mixer") or {},
+    )
+
+
 @router.get("/songs", response_model=list[BuildSongResponse])
 def list_songs(limit: int = 20):
     """Previously built songs, newest first, rehydrated from disk.
@@ -785,38 +814,120 @@ def list_songs(limit: int = 20):
     if not EXPORTS_DIR.exists():
         return []
     for d in EXPORTS_DIR.iterdir():
-        meta_path = d / "song_meta.json"
-        structure_path = d / "song_structure.json"
-        if not (d.is_dir() and meta_path.exists() and structure_path.exists()):
-            continue
         try:
-            meta = _json_module.loads(meta_path.read_text())
-            sections = _json_module.loads(structure_path.read_text())
-            files = [FileInfo(part=f.stem, filename=f.name, url=f"/exports/{d.name}/{f.name}")
-                     for f in sorted(d.glob("*.mid"))]
-            if not files:
+            resp = _song_response_from_dir(d)
+            if resp is None:
                 continue
-            total_bars = sum(s.get("bars", 0) for s in sections)
-            entries.append((meta_path.stat().st_mtime, BuildSongResponse(
-                generation_id=d.name,
-                style=meta.get("style_id", ""),
-                files=files,
-                seed=meta.get("base_seed", 0),
-                template=meta.get("template", "verse_chorus"),
-                total_bars=total_bars,
-                sections=[SongSectionResult(**s) for s in sections],
-                bpm=meta.get("bpm", 120),
-                key=f"{meta.get('key', 'C')} {meta.get('scale', 'minor')}",
-                progression=meta.get("song_progression"),
-                mixer=meta.get("mixer") or {},
-            )))
+            entries.append(((d / "song_meta.json").stat().st_mtime, resp))
         except Exception:
             continue   # a half-written or legacy folder never breaks the list
     entries.sort(key=lambda e: e[0], reverse=True)
     return [r for _, r in entries[:limit]]
 
 
-_MAX_SONG_VERSIONS = 5
+# ── Portable project files (.ggproj) ─────────────────────────────────────────
+# A .ggproj is a plain zip capturing a whole song session — every part stem plus
+# song_meta.json + song_structure.json (+ any section stems) — so a session can
+# be archived or handed to another machine and re-opened faithfully. Version
+# snapshots (versions/) are intentionally left out to keep the archive lean; an
+# imported project starts a fresh undo history.
+_MAX_PROJECT_BYTES = 200 * 1024 * 1024   # uncompressed cap (zip-bomb guard)
+_MAX_PROJECT_ENTRIES = 2000
+
+
+@router.get("/export-project/{generation_id}")
+def export_project(generation_id: str):
+    """Download a portable `.ggproj` (zip) for a whole song session."""
+    import io
+    import zipfile
+    from fastapi.responses import StreamingResponse
+    if not _SAFE_PATH.match(generation_id):
+        raise HTTPException(status_code=400, detail="Invalid generation id")
+    output_dir = EXPORTS_DIR / generation_id
+    if _song_response_from_dir(output_dir) is None:
+        raise HTTPException(status_code=404, detail="Song not found")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("project.json", _json_module.dumps({
+            "format": "ggproj", "format_version": 1, "generation_id": generation_id,
+        }))
+        for name in ("song_meta.json", "song_structure.json"):
+            f = output_dir / name
+            if f.exists():
+                zf.write(f, name)
+        for f in sorted(output_dir.glob("*.mid")):
+            zf.write(f, f.name)
+        sec_dir = output_dir / "sections"
+        if sec_dir.is_dir():
+            for f in sorted(sec_dir.iterdir()):
+                if f.is_file() and f.suffix in (".mid", ".json"):
+                    zf.write(f, f"sections/{f.name}")
+    buf.seek(0)
+    return StreamingResponse(
+        buf, media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="genregrid_{generation_id}.ggproj"'},
+    )
+
+
+def _is_safe_project_member(name: str) -> bool:
+    """Accept only known, non-escaping members from an imported .ggproj."""
+    if name.startswith("/") or "\\" in name or ".." in name.split("/"):
+        return False   # absolute path, windows separator, or `..` traversal
+    if name in ("song_meta.json", "song_structure.json", "project.json"):
+        return True
+    if name.endswith(".mid") and "/" not in name:
+        return True
+    if name.startswith("sections/") and name.count("/") == 1 and name.rsplit(".", 1)[-1] in ("mid", "json"):
+        return True
+    return False
+
+
+@router.post("/import-project", response_model=BuildSongResponse)
+async def import_project(file: UploadFile = FastAPIFile(...)):
+    """Restore a `.ggproj` into a brand-new song folder (fresh generation id) and
+    return it rehydrated, ready to open."""
+    import io
+    import zipfile
+    data = await file.read()
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Not a valid .ggproj file")
+
+    infos = [zi for zi in zf.infolist() if not zi.is_dir()]
+    if len(infos) > _MAX_PROJECT_ENTRIES:
+        raise HTTPException(status_code=400, detail="Project archive has too many files")
+    if sum(zi.file_size for zi in infos) > _MAX_PROJECT_BYTES:
+        raise HTTPException(status_code=400, detail="Project archive is too large")
+
+    safe = {zi.filename: zi for zi in infos if _is_safe_project_member(zi.filename)}
+    if "song_meta.json" not in safe or "song_structure.json" not in safe:
+        raise HTTPException(status_code=400, detail="Project is missing song_meta.json or song_structure.json")
+    if not any(n.endswith(".mid") and "/" not in n for n in safe):
+        raise HTTPException(status_code=400, detail="Project has no part stems")
+
+    gen_id = uuid.uuid4().hex
+    output_dir = EXPORTS_DIR / gen_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        for name, zi in safe.items():
+            if name == "project.json":
+                continue   # manifest is metadata, not part of the restored session
+            dest = output_dir / name
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(zi) as src, open(dest, "wb") as out:
+                shutil.copyfileobj(src, out)
+        resp = _song_response_from_dir(output_dir)
+    except Exception:
+        shutil.rmtree(output_dir, ignore_errors=True)
+        raise HTTPException(status_code=400, detail="Project could not be restored")
+    if resp is None:
+        shutil.rmtree(output_dir, ignore_errors=True)
+        raise HTTPException(status_code=400, detail="Project could not be restored")
+    return resp
+
+
+_MAX_SONG_VERSIONS = 50   # deep, per-song undo within a session (was 5)
 _VERSION_ID = re.compile(r"^\d{10,16}$")
 
 

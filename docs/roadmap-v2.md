@@ -117,17 +117,29 @@ output **editable** and **portable** — the highest-leverage work on the whole 
 - **Done when:** ✅ a song generates from an uploaded progression and from an uploaded groove,
   each round-tripping through replay.
 
-### 5.5 Deeper undo + portable project files
-- **Why:** History caps at 5 states ([`README.md`](../README.md)); and there's no portable
-  *project* — songs live as loose stems reconciled from disk, so you can't hand a whole session
-  to another machine or archive it cleanly.
-- **Approach:** raise/soften the History cap (or make it per-song unbounded within a session);
-  add **`.ggproj` export/import** — a zip of `song_meta.json` + stems — that restores a full
-  session.
-- **Entry:** History logic in `routes_song.py` + the frontend song store; a new project
-  import/export surface.
-- **Effort:** M.
-- **Done when:** undo goes deep, and a project exports and re-imports faithfully.
+### 5.5 Deeper undo + portable project files  ✅ shipped 2026-07-30
+- **Why:** History capped at 5 states ([`README.md`](../README.md)); and there was no portable
+  *project* — songs lived as loose stems reconciled from disk, so you couldn't hand a whole
+  session to another machine or archive it cleanly.
+- **Shipped — deeper undo:** `_MAX_SONG_VERSIONS` raised 5 → **50**
+  ([`routes_song.py`](../backend/app/api/routes_song.py) `_snapshot_song`), so undo goes deep
+  within a session; every re-roll/add/edit still snapshots first and a restore stays restorable.
+- **Shipped — `.ggproj` portable projects:** a `.ggproj` is a zip capturing a whole session
+  (every part stem + `song_meta.json` + `song_structure.json` + any `sections/`, plus a
+  `project.json` manifest; version snapshots are intentionally omitted to keep it lean).
+  `GET /export-project/{id}` streams it; `POST /import-project` restores it into a **fresh
+  generation id** and returns the rehydrated `BuildSongResponse` (shared `_song_response_from_dir`
+  helper, also now used by `/songs`). Import is guarded by a **whitelist + zip-slip check**
+  (`_is_safe_project_member` rejects absolute paths, `..` traversal, and stray members) and
+  entry-count / uncompressed-size caps. Frontend: a **↓ .ggproj** button on `SongResult.vue`
+  and an **Import** control in the Songs rail (`HomePage.vue` `onImportProject` → opens the
+  restored song). API in [`api.ts`](../frontend/src/services/api.ts) (`exportProjectUrl`,
+  `importProject`).
+- **Tests:** backend `test_song_features.py` — export→import round-trip (stems restore
+  byte-for-byte, fresh id, same response), bad/incomplete-archive rejection, and the
+  `_is_safe_project_member` traversal guard; frontend `projectApi.test.ts` (export URL + import
+  multipart POST + error propagation).
+- **Done when:** ✅ undo goes deep, and a project exports and re-imports faithfully.
 
 ---
 
@@ -168,6 +180,90 @@ Clavinet, drawbar organ, accordion, nylon guitar — if a CC0/CC-BY multisample 
   control. A couple of tasteful per-part options (bright/warm tilt, light saturation) and a
   simple 3-band master EQ would let users finish a mix without a DAW.
 - **Effort:** M.  **Risk:** scope creep toward a full mixer — keep it to presets, not a console.
+
+### 6.6 (new) Synthesizer / sound-design patch designer  ★ new instrument source
+- **Why:** today a part's timbre is either a **sampled** voice (identity sampler / custom
+  multisample) or one of a handful of **hard-coded** Tone synth factories
+  ([`synthVoices.ts`](../frontend/src/soundfonts/synthVoices.ts): melody lead, synth chords, arp
+  pluck, pad, strings, synth bass, lo-fi). Those are chef's-choice patches — the user can pick
+  *which* one via voice routing but can't **shape the sound itself**. There's no way to design a
+  voice from first principles: choose the oscillator waves, dial pitch/detune, sculpt the ADSR,
+  sweep a resonant filter, add an LFO, and print your own reverb/delay/drive. This turns
+  GenreGrid from "pick a preset" into a real **subtractive synth** — a third instrument source
+  alongside *sampled* and *custom*, and the natural home for the frequency-level sound design the
+  hard-coded factories only hint at.
+- **Approach (a data-driven patch, not more hard-coded factories):**
+  1. Define a **`SynthPatch`** data shape (pure, serializable — the same discipline as
+     `CustomInstrument`/`LayeredSamplerManifest`) with sections:
+     - **Oscillators** (1–3): wave (`sine`/`triangle`/`sawtooth`/`square`/`pulse`, plus Tone's
+       `fat*`), coarse semitone + fine-cent detune, unison `count`/`spread`, level, pulse-width;
+       an optional sub-oscillator.
+     - **Pitch:** global transpose, glide/`portamento`, optional pitch-envelope depth.
+     - **Amp envelope:** ADSR (attack/decay/sustain/release) + level.
+     - **Filter:** type (`lowpass`/`highpass`/`bandpass`), cutoff frequency, resonance `Q`,
+       rolloff, and a **filter envelope** (its own ADSR + `baseFrequency`/`octaves`) — the piece
+       that makes a saw *move*.
+     - **Modulation:** one or two LFOs routable to pitch (vibrato), amp (tremolo), or filter
+       cutoff — rate, depth, wave, tempo-sync option.
+     - **FX chain:** reverb (size/decay/wet), delay (time/sync/feedback/wet), chorus, drive/
+       distortion, bitcrusher — the nodes already used ad-hoc in `synthVoices.ts`, now
+       parameterized and ordered.
+     - **Output:** level + pan.
+  2. A **`buildSynthFromPatch(patch, disposables, output)`** factory that assembles a
+     `Tone.PolySynth`/`MonoSynth` + filter + LFOs + FX from the patch and registers every node in
+     `disposables` — i.e. the existing `synthVoices.ts` pattern, but generated from data instead
+     of a bespoke function per voice. The current seven factories become **preset patches**
+     expressed in this format (proves the shape is expressive enough, and is the migration path).
+  3. Wire it into routing as a new **`MelodicVoiceKind` / voice source** ('synth-patch') in
+     [`voiceRouting.ts`](../frontend/src/composables/voiceRouting.ts), resolved *above* the
+     style-default synth branch when a part has an assigned patch — mirroring how `hasCustom`/
+     `hasSampler` win today. It must render identically in **live playback** (`useMidiPlayer`)
+     **and offline export** ([`useOfflineRender.ts`](../frontend/src/composables/useOfflineRender.ts)),
+     so both paths build from the same patch → same node graph.
+  4. A **sound-design UI** — a `SynthDesigner.vue` panel (sibling to `InstrumentsPanel.vue`):
+     oscillator/filter/env/LFO/FX controls, a keyboard to audition (reuse `audition.ts`), a
+     preset picker seeded with the migrated factory patches, and a live meter. Save/load a patch;
+     assign it to a part like a custom instrument (`InstrumentAssignments`).
+- **Determinism & gating:** a patch is pure data rendered by a pure factory, so a saved patch
+  reproduces byte-identically across live/export/replay — the seeded-determinism invariant holds
+  by construction. Ship it **additively**: no part gets a patch by default, so every existing
+  song renders byte-identically until a user opts in (the 4/4-invariant template). Migrating the
+  seven built-ins to preset patches is the one change that touches current output — gate it with
+  a golden-render diff (a patch-built voice must match its old factory sample-for-sample, or the
+  presets stay cosmetic and the factories keep rendering until parity is proven).
+- **Entry:** new `soundfonts/synthPatch.ts` (the shape + `buildSynthFromPatch`) and
+  `components/SynthDesigner.vue`; `synthVoices.ts` (migrate factories → presets),
+  `voiceRouting.ts` (new voice source), `useMidiPlayer.ts` + `useOfflineRender.ts` (build from a
+  patch), `useCustomInstruments.ts` / `InstrumentAssignments` (assign a patch to a part),
+  `audition.ts` (keyboard preview).
+- **Effort:** L (the patch shape + factory + dual-path wiring is M; the designer UI with every
+  control is the bulk — ship it incrementally: **osc + amp env** first, then **filter +
+  filter-env**, then **LFO/mod**, then **FX** — each a usable increment, mirroring 5.1's
+  insert→resize→velocity→multi cadence).
+- **Risk:** UI surface area (many controls) and CPU with unison × polyphony (cap voices, warn on
+  heavy patches). Relates to 6.3/6.4 (custom-instrument + synth-voice work) and, for sharing
+  patches, to 8.5's `.ggstyle` file pattern — a `.ggsynth` export could reuse it.
+- **Engine roadmap (design v1 to grow, don't box it in):** ship **subtractive** first — it
+  covers the vast majority of "sound design from frequencies" and reuses Tone's `Synth`/`MonoSynth`
+  primitives directly. But make the `SynthPatch` shape **engine-aware from day one**: a top-level
+  `engine: 'subtractive'` discriminator (the same tagged-union discipline as `CustomInstrument.kind`)
+  so later engines slot in as new variants instead of a schema break. Planned follow-ons, each a
+  later increment behind that tag:
+  - **FM** — Tone ships `Tone.FMSynth`/`Tone.PolySynth(FMSynth)`, so a `engine: 'fm'` patch
+    (carrier/modulator ratio, modulation index, per-operator envelopes) is a near-term add, not a
+    rewrite.
+  - **Wavetable** — a custom oscillator via `Tone.setPeriodicWave` / a wavetable position
+    parameter with morph; more work (wavetable storage + a morph UI) but the patch tag makes it
+    additive.
+  - **Additive / granular** — higher-ceiling, spike-gated; keep them as reserved `engine` values
+    so the format anticipates them without v1 carrying the cost.
+  Keeping v1 *subtractive-only in behavior* but *multi-engine in shape* is the point: users get a
+  real synth now, and FM/wavetable land as new patch variants + designer tabs rather than a
+  second synth system.
+- **Done when:** a user can design a voice from oscillators/filter/env/LFO/FX, audition it on a
+  keyboard, save it, assign it to a part, and have it render identically in playback and export;
+  the seven built-in voices exist as editable preset patches; the patch→node factory is
+  unit-tested and untouched songs stay byte-identical.
 
 ---
 
@@ -337,12 +433,15 @@ to prove feasibility + demand before committing. Ordered by feasibility × payof
 2. ✅ **5.3 + 5.4** (multitrack export, seed-from-progression/groove) — shipped; workflow rounded out.
 3. ✅ **5.2** (MP3/OGG export) — shipped: app-wide WAV/MP3/OGG toggle, lazy-loaded self-contained
    WASM encoder covering both compressed formats.
-4. **5.5** (deeper undo + `.ggproj` portable project files) — **the current pick.** The last
-   open Phase-5 workflow item; closes out Phase 5.
+4. ✅ **5.5** (deeper undo + `.ggproj` portable project files) — shipped: History cap 5 → 50,
+   and `.ggproj` export/import round-tripping a full session. **Closes out Phase 5.**
 5. **7.2** (code signing) — real distribution gap but **gated on procuring paid certs**; until
    then it's a prepared spec, not a merge. _(7.1 — vitest in CI — is already done.)_
 6. **Phase 6** opportunistically, ear-gated, interleaved with the above (6.1 is cheap and
-   finishes this session's thread).
+   finishes this session's thread). **6.6** (the synth / sound-design patch designer) is the
+   biggest new bet here — a whole new instrument source — so spike its patch shape + factory
+   (migrate one built-in voice to a data patch and prove byte-identical parity) before committing
+   to the full designer UI.
 7. **Phase 8** — now planned in detail below; spike the one with the strongest signal after
    the workflow wins land.
 

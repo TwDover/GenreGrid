@@ -32,6 +32,7 @@
             <span v-if="renderingWav">{{ Math.round(wavProgress * 100) }}%</span>
             <span v-else>↓ .{{ audioFormat }}</span>
           </button>
+          <button class="sr-dl-btn" @click="exportProject" title="Save this whole session as a portable .ggproj file — stems + structure — to archive or open on another machine">↓ .ggproj</button>
           <div class="sr-history">
             <button class="sr-dl-btn" @click="toggleHistory" title="Restore an earlier version of this song">⟲ History</button>
             <div v-if="historyOpen" class="sr-history-menu">
@@ -193,7 +194,7 @@
 import { ref, reactive, computed, watch, onUnmounted } from 'vue'
 import type { BuildSongResponse, FileInfo } from '../types/midi'
 import { errorMessage } from '../utils/errors'
-import { downloadUrl, regenerateSongPart, regenerateSongSection, undoSongPart, listSongVersions, restoreSongVersion, setPartGain, rollSongPartCandidates, keepSongPartCandidate, rebuildSongProgression, type SongVersion, type SongPartCandidate } from '../services/api'
+import { downloadUrl, exportProjectUrl, regenerateSongPart, regenerateSongSection, undoSongPart, listSongVersions, restoreSongVersion, setPartGain, rollSongPartCandidates, keepSongPartCandidate, rebuildSongProgression, type SongVersion, type SongPartCandidate } from '../services/api'
 import { resolveProgression } from '../utils/chordResolver'
 import { FORMAT_EXT } from '../utils/audioEncoder'
 import { useExportFormat } from '../composables/useExportFormat'
@@ -656,6 +657,14 @@ async function download() {
   const a = document.createElement('a')
   a.href = downloadUrl(songFile.value.url)
   a.download = `${name}.mid`
+  a.click()
+}
+
+function exportProject() {
+  if (!props.result) return
+  const a = document.createElement('a')
+  a.href = exportProjectUrl(props.result.generation_id)
+  a.download = `${props.result.style}_song_${props.result.generation_id.slice(0, 8)}.ggproj`
   a.click()
 }
 
