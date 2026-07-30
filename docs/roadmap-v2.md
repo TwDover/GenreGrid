@@ -42,10 +42,18 @@ output **editable** and **portable** — the highest-leverage work on the whole 
      in `PianoRoll.test.ts` (+3 component tests: edge-drag lengthens 1.0→2.625, body-press
      selects, cursor only over the edge). Live-driven via `scenarios/resize-note.mjs`
      (note visibly grew ~0.26→0.58 of the roll). Same `notes-changed`→`saveEdits` path.
-  3. **Velocity** — drag note height, or a slim velocity lane under the roll.
-  4. **Multi-select** — marquee + move/transpose a group; shift-click to extend.
-  Persist through the existing path: `EditPartRequest` (note list, `max_length=5000`) → stem
-  rewrite → `rebuild_combined_from_parts` → History snapshot (all already built).
+  3. ✅ **Velocity** (shipped) — a slim velocity lane under the grid; drag a note's bar to set
+     its velocity, or drag a whole multi-selection at once. Pure `velocityFromLaneY`.
+  4. ✅ **Multi-select** (shipped) — a Draw/Select tool toggle: marquee a group, Shift-click to
+     extend, drag to move, arrows to transpose, ⌫ to delete. Pure `rectsOverlap`/`snapDelta`.
+  Beyond the original four, a dedicated **zoomable editor** shipped
+  ([`PianoRollEditor.vue`](../frontend/src/components/PianoRollEditor.vue), opened from a stem's
+  **✎**): a piano-keyboard gutter with note names, a bar/beat ruler, a snap grid (1/4–1/32),
+  zoom (buttons + ⌘/Ctrl-scroll) + scroll, **playback of the live-edited buffer** on the part's
+  real instrument with a moving playhead, **click-to-audition** keys/notes, and a
+  **loop region with draggable start/end flags** (drag the ruler to set it, grab a flag to move
+  one edge). Persists through the existing path: `EditPartRequest` (note list, `max_length=5000`)
+  → stem rewrite → `rebuild_combined_from_parts` → History snapshot.
 - **Entry:** `PianoRoll.vue`, `PartCard.vue`; backend `edit-part` route + `EditedNote` schema
   already exist ([`routes_song.py`](../backend/app/api/routes_song.py), `schemas.py:220`).
 - **Effort:** L (canvas interaction is the bulk; one component).

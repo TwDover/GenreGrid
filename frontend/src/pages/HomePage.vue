@@ -164,10 +164,17 @@
         </div>
         <table class="shortcuts-table">
           <tbody>
-            <tr><td class="shortcut-key">Space</td><td class="shortcut-desc">Stop playback</td></tr>
+            <tr><td class="shortcut-key">Space</td><td class="shortcut-desc">Play / pause playback (■ button stops)</td></tr>
             <tr><td class="shortcut-key">Ctrl+S</td><td class="shortcut-desc">Save session</td></tr>
             <tr><td class="shortcut-key">Esc</td><td class="shortcut-desc">Close drawer / dialog</td></tr>
             <tr><td class="shortcut-key">?</td><td class="shortcut-desc">How GenreGrid works</td></tr>
+            <tr><td colspan="2" class="shortcut-section">Piano-roll editor (open a song stem's ✎)</td></tr>
+            <tr><td class="shortcut-key">▶ / drag ruler</td><td class="shortcut-desc">Play the part · drag the ruler for a loop region, drag a flag to move an edge</td></tr>
+            <tr><td class="shortcut-key">↑ / ↓</td><td class="shortcut-desc">Nudge pitch (Shift = octave)</td></tr>
+            <tr><td class="shortcut-key">← / →</td><td class="shortcut-desc">Nudge time (Shift = bar)</td></tr>
+            <tr><td class="shortcut-key">⌫ / Delete</td><td class="shortcut-desc">Delete selected note(s)</td></tr>
+            <tr><td class="shortcut-key">Ctrl/Cmd+A</td><td class="shortcut-desc">Select all notes</td></tr>
+            <tr><td class="shortcut-key">Ctrl/Cmd + scroll</td><td class="shortcut-desc">Zoom (in the editor)</td></tr>
             <tr><td colspan="2" class="shortcut-section">Developer / Debug</td></tr>
             <tr><td class="shortcut-key">Ctrl/Cmd+Shift+D</td><td class="shortcut-desc">Toggle on-screen debug HUD (mirrors console)</td></tr>
             <tr><td class="shortcut-key">F12 / Ctrl+Shift+I</td><td class="shortcut-desc">Toggle DevTools</td></tr>
@@ -216,7 +223,7 @@ import type { StyleInfo, GenerateRequest, GenerateResponse, FileInfo, LibraryEnt
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 import { useTheme } from '../composables/useTheme'
 
-const { prefetchSamplers, stop, currentlyPlaying } = useMidiPlayer()
+const { prefetchSamplers, playPause } = useMidiPlayer()
 const { theme, cycleTheme, THEME_META } = useTheme()
 const { entries: errorEntries, open: openErrorLog } = useErrorLog()
 const { jobs: renderJobs, open: openRenderQueue } = useRenderQueue()
@@ -451,9 +458,11 @@ function onKeyDown(e: KeyboardEvent) {
   }
   const tag = (e.target as HTMLElement).tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-  if (e.key === ' ' && currentlyPlaying.value) {
+  if (e.key === ' ') {
+    // Play/pause the master transport (start the cued track when idle, else pause/resume) —
+    // mirrors the transport ▶/⏸ button. Full stop stays on the ■ button.
     e.preventDefault()
-    stop()
+    playPause()
   }
   if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault()

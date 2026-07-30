@@ -32,15 +32,14 @@
           <button class="pre-btn pre-tool" :class="{ active: tool === 'draw' }" @click="tool = 'draw'" title="Draw notes (drag empty grid to add)">✏ Draw</button>
           <button class="pre-btn pre-tool" :class="{ active: tool === 'select' }" @click="tool = 'select'" title="Select (drag empty grid to marquee-select a group)">▭ Select</button>
         </div>
-        <div class="pre-group" title="Horizontal zoom">
-          <span class="pre-glabel">Time</span>
-          <button class="pre-btn" @click="zoomH(1 / 1.4)" :disabled="pxPerBeat <= MIN_PXB">−</button>
-          <button class="pre-btn" @click="zoomH(1.4)" :disabled="pxPerBeat >= MAX_PXB">+</button>
-        </div>
-        <div class="pre-group" title="Vertical zoom">
-          <span class="pre-glabel">Pitch</span>
-          <button class="pre-btn" @click="zoomV(1 / 1.3)" :disabled="pxPerSemitone <= MIN_PXS">−</button>
-          <button class="pre-btn" @click="zoomV(1.3)" :disabled="pxPerSemitone >= MAX_PXS">+</button>
+        <div class="pre-group">
+          <span class="pre-glabel">Zoom</span>
+          <span class="pre-axis" title="Zoom time (horizontal)">↔</span>
+          <button class="pre-btn" @click="zoomH(1 / 1.4)" :disabled="pxPerBeat <= MIN_PXB" title="Zoom out — time (show more bars)">−</button>
+          <button class="pre-btn" @click="zoomH(1.4)" :disabled="pxPerBeat >= MAX_PXB" title="Zoom in — time (fewer bars, wider)">+</button>
+          <span class="pre-axis" title="Zoom pitch (vertical)">↕</span>
+          <button class="pre-btn" @click="zoomV(1 / 1.3)" :disabled="pxPerSemitone <= MIN_PXS" title="Zoom out — pitch (shorter rows)">−</button>
+          <button class="pre-btn" @click="zoomV(1.3)" :disabled="pxPerSemitone >= MAX_PXS" title="Zoom in — pitch (taller rows)">+</button>
         </div>
         <button class="pre-btn pre-fit" @click="fit" title="Fit the whole part in view">Fit</button>
         <label class="pre-snap" title="Snap notes to this grid">
@@ -75,8 +74,8 @@
       </div>
 
       <div class="pre-hint">
-        <template v-if="isDrumPart">▶ plays this part · drag the ruler to set a loop region · click a hit to select · arrows to nudge · ⌫ to delete · drag the velocity lane to shape dynamics · ⌘/Ctrl-scroll to zoom</template>
-        <template v-else>▶ plays what you hear · click a key (left) or place a note to preview its sound · drag the ruler to loop a span · Draw: drag empty grid to add, drag a note's right edge to resize · Select: marquee a group, Shift-click to extend, drag to move · arrows to nudge (Shift = octave / bar) · ⌫ to delete · drag the velocity lane · ⌘/Ctrl-scroll to zoom</template>
+        <template v-if="isDrumPart">▶ plays this part · drag the ruler to set a loop region, drag a flag to move one edge · click a hit to select · arrows to nudge · ⌫ to delete · drag the velocity lane to shape dynamics · ⌘/Ctrl-scroll to zoom</template>
+        <template v-else>▶ plays what you hear · click a key (left) or place a note to preview its sound · drag the ruler to loop a span, drag a ⟑ flag to move one edge · Draw: drag empty grid to add, drag a note's right edge to resize · Select: marquee a group, Shift-click to extend, drag to move · arrows to nudge (Shift = octave / bar) · ⌫ to delete · drag the velocity lane · ⌘/Ctrl-scroll to zoom</template>
       </div>
     </div>
   </div>
@@ -93,7 +92,7 @@ import { scaleNotes } from '../utils/chordResolver'
 import {
   buildInsertedNote, nearRightEdge, resizedDuration, midiToNoteName, isBlackKey,
   noteRectZoom, beatToX, timeToX, xToTime, yToPitch, velocityFromLaneY, snapDelta, rectsOverlap,
-  type RollViewport,
+  nearLoopFlag, sanitizeNotesForPlayback, type RollViewport,
 } from '../utils/pianoRollEdit'
 
 const props = withDefaults(defineProps<{
@@ -347,12 +346,21 @@ function draw() {
   ctx.fillRect(0, 0, w, RULER_H)
   ctx.save()
   ctx.beginPath(); ctx.rect(GUTTER_W, 0, gw, RULER_H); ctx.clip()
-  // Loop span highlighted in the ruler (where you drag it out)
+  // Loop span + draggable start/end flags in the ruler.
   if (loopStartBeat.value !== null && loopEndBeat.value !== null) {
     const lx0 = beatToX(Math.min(loopStartBeat.value, loopEndBeat.value), vp)
     const lx1 = beatToX(Math.max(loopStartBeat.value, loopEndBeat.value), vp)
     ctx.fillStyle = _rgba('--good', 0.55, '#4ade80')
     ctx.fillRect(lx0, RULER_H - 4, Math.max(2, lx1 - lx0), 4)
+    // Flag handles: a small triangular tab at each boundary (grab to move one edge).
+    const flag = (x: number, dir: 1 | -1) => {
+      ctx.fillStyle = _rgba('--good', 1, '#4ade80')
+      ctx.beginPath()
+      ctx.moveTo(x, 2); ctx.lineTo(x, RULER_H - 2)
+      ctx.lineTo(x + dir * 7, RULER_H / 2 - 1); ctx.closePath(); ctx.fill()
+    }
+    flag(lx0, 1)     // start flag points right, into the region
+    flag(lx1, -1)    // end flag points left
   }
   ctx.font = '10px system-ui, sans-serif'
   ctx.textBaseline = 'middle'
@@ -491,8 +499,10 @@ let moved = false
 let collapseOnClick: ParsedNote | null = null
 // Velocity paint
 let veloTargets: ParsedNote[] | null = null   // when a multi-selection is dragged together
-// Loop-region drag
+// Loop-region drag. `loopEdge` = which boundary flag is being dragged (null = a fresh
+// span drag); `loopAnchorBeat` is the fixed edge/anchor the moving edge is measured against.
 let loopAnchorBeat = 0
+let loopEdge: 'start' | 'end' | null = null
 
 function beatAtX(px: number): number { return xToTime(px, viewport()) / secPerBeat.value }
 function snapBeat(beat: number): number { return Math.max(0, Math.round(beat / division.value) * division.value) }
@@ -539,13 +549,24 @@ function onPointerDown(e: MouseEvent) {
     return
   }
 
-  // Ruler → drag out a loop region (in beats, grid-snapped).
+  // Ruler → grab an existing loop flag to move one edge, else drag out a new region.
   if (pt.py < RULER_H && pt.px >= GUTTER_W && pt.px <= w - SB) {
     e.preventDefault()
-    const beat = snapBeat(beatAtX(pt.px))
-    loopStartBeat.value = beat
-    loopEndBeat.value = beat
-    loopAnchorBeat = beat
+    const vp = viewport()
+    // Grab a start/end flag if the press is on one (edges drag independently).
+    if (loopStartBeat.value !== null && loopEndBeat.value !== null) {
+      const sx = beatToX(loopStartBeat.value, vp)
+      const ex = beatToX(loopEndBeat.value, vp)
+      if (nearLoopFlag(pt.px, ex)) { loopEdge = 'end'; loopAnchorBeat = loopStartBeat.value }
+      else if (nearLoopFlag(pt.px, sx)) { loopEdge = 'start'; loopAnchorBeat = loopEndBeat.value }
+    }
+    if (loopEdge === null) {
+      // Fresh region: anchor here and drag out.
+      const beat = snapBeat(beatAtX(pt.px))
+      loopStartBeat.value = beat
+      loopEndBeat.value = beat
+      loopAnchorBeat = beat
+    }
     window.addEventListener('mousemove', onLoopMove); window.addEventListener('mouseup', onLoopUp)
     redraw(); return
   }
@@ -638,11 +659,13 @@ function onLoopMove(e: MouseEvent) {
 }
 function onLoopUp() {
   window.removeEventListener('mousemove', onLoopMove); window.removeEventListener('mouseup', onLoopUp)
-  // A click with no drag (zero-width span) clears the loop instead of setting one.
-  if (loopStartBeat.value !== null && loopEndBeat.value !== null
+  // A fresh click with no drag (zero-width span) clears the loop instead of setting one.
+  // Grabbing a flag (loopEdge set) never collapses to zero here, so it's left intact.
+  if (loopEdge === null && loopStartBeat.value !== null && loopEndBeat.value !== null
       && Math.abs(loopEndBeat.value - loopStartBeat.value) < 1e-6) {
     clearLoop()
   }
+  loopEdge = null
   syncLoopToTransport()
   redraw()
 }
@@ -820,7 +843,10 @@ function buildPartMidi(): string {
   midi.header.setTempo(60 / secPerBeat.value)
   const track = midi.addTrack()
   track.channel = partChannel.value
-  for (const n of localNotes.value) {
+  // Bass (channel 1) is monophonic; every other part is polyphonic. Sanitizing avoids
+  // Tone's "start time must be strictly greater" error when edits stack notes.
+  const safe = sanitizeNotesForPlayback(localNotes.value, partChannel.value === 1)
+  for (const n of safe) {
     track.addNote({ midi: Math.round(n.midi), time: n.time, duration: Math.max(0.02, n.duration), velocity: n.velocity })
   }
   if (blobUrl) URL.revokeObjectURL(blobUrl)
@@ -1001,6 +1027,7 @@ onUnmounted(() => {
   font-size: var(--t-micro); text-transform: uppercase; letter-spacing: 0.06em;
   color: var(--text-faint); margin-right: 0.15rem;
 }
+.pre-axis { font-size: 0.85rem; color: var(--text-dim); margin: 0 0.05rem 0 0.2rem; }
 .pre-btn {
   height: 28px; min-width: 28px;
   background: transparent; border: 1px solid var(--line); border-radius: var(--r-sm);

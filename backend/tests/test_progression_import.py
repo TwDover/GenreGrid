@@ -11,7 +11,6 @@ keys/qualities, and the round-trip guarantee that a parsed token resolves back t
 the absolute chord the user typed (roadmap-2 5.4)."""
 import pytest
 
-from app.core.constants import NOTE_NAMES
 from app.services.progression_import import (chord_name_to_roman, parse_progression,
                                              ROMAN_TOKEN_RE)
 from app.theory.chords import roman_to_chord

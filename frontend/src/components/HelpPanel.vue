@@ -58,11 +58,26 @@
         <section class="help-sec">
           <span class="eyebrow">4 · Audition &amp; export</span>
           <p>
-            Results land in the workspace. Play them from the transport bar, regenerate
-            a single part you don't like, then <strong>drag any stem straight into your
-            DAW</strong> — or export MIDI, a WAV, or stems. The <strong>Quality</strong>
-            readout scores each result across musical dimensions and flags likely
-            issues; hover any bar or flag for what it means.
+            Results land in the workspace. Play them from the transport bar
+            (<kbd>Space</kbd> plays / pauses), regenerate a single part you don't like,
+            then <strong>drag any stem straight into your DAW</strong> — or export MIDI
+            (a single labeled multitrack or a ZIP of parts), a WAV, or stems. The
+            <strong>Quality</strong> readout scores each result and flags likely issues;
+            hover any bar or flag for what it means.
+          </p>
+        </section>
+
+        <section class="help-sec">
+          <span class="eyebrow">5 · Edit the notes</span>
+          <p>
+            On a full song, open a part's <strong>✎ editor</strong> for a proper
+            piano roll — a keyboard down the side, a bar grid, and <strong>zoom</strong>
+            (the <em>Zoom ↔/↕</em> buttons or ⌘/Ctrl-scroll). <strong>Draw</strong> to add
+            notes (drag to size, drag the right edge to resize), shape dynamics in the
+            <strong>velocity lane</strong>, or switch to <strong>Select</strong> to
+            marquee a group and move / transpose it. Press <strong>▶</strong> to hear
+            your edits on the real instrument, drag the ruler to set a <strong>loop</strong>
+            (drag a flag to move one edge), and click a key or note to preview its sound.
           </p>
         </section>
 
