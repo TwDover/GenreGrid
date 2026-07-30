@@ -27,9 +27,10 @@
         </div>
         <div class="sr-actions">
           <button class="sr-dl-btn" @click="download" title="One labeled multitrack MIDI — a track per part with correct instruments, section markers, and key/tempo; drops straight onto a DAW timeline">↓ .mid</button>
-          <button class="sr-dl-btn" :disabled="renderingWav" @click="exportSongWav" :title="wavError || 'Render and download the full song as WAV — see the ⬇ header button for progress from anywhere'">
+          <AudioFormatToggle />
+          <button class="sr-dl-btn" :disabled="renderingWav" @click="exportSongWav" :title="wavError || `Render and download the full song as ${audioFormat.toUpperCase()} — see the ⬇ header button for progress from anywhere`">
             <span v-if="renderingWav">{{ Math.round(wavProgress * 100) }}%</span>
-            <span v-else>↓ .wav</span>
+            <span v-else>↓ .{{ audioFormat }}</span>
           </button>
           <div class="sr-history">
             <button class="sr-dl-btn" @click="toggleHistory" title="Restore an earlier version of this song">⟲ History</button>
@@ -194,6 +195,9 @@ import type { BuildSongResponse, FileInfo } from '../types/midi'
 import { errorMessage } from '../utils/errors'
 import { downloadUrl, regenerateSongPart, regenerateSongSection, undoSongPart, listSongVersions, restoreSongVersion, setPartGain, rollSongPartCandidates, keepSongPartCandidate, rebuildSongProgression, type SongVersion, type SongPartCandidate } from '../services/api'
 import { resolveProgression } from '../utils/chordResolver'
+import { FORMAT_EXT } from '../utils/audioEncoder'
+import { useExportFormat } from '../composables/useExportFormat'
+import AudioFormatToggle from './AudioFormatToggle.vue'
 import CandidatePicker from './CandidatePicker.vue'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 import { useToasts } from '../composables/useToasts'
@@ -212,6 +216,7 @@ const emit = defineEmits<{
 const { toggle, stop: stopPlayer, currentlyPlaying, seek, positionSeconds, offlineRender, cue } = useMidiPlayer()
 const { toast } = useToasts()
 const { promptFilename } = useDownloadPrompt()
+const { audioFormat } = useExportFormat()
 const { startJob, updateProgress, completeJob, failJob } = useRenderQueue()
 let songBlobUrl: string | null = null
 const renderingWav = ref(false)
@@ -656,8 +661,11 @@ async function download() {
 
 async function exportSongWav() {
   if (!songFile.value || !props.result || renderingWav.value) return
+  const format = audioFormat.value
+  const ext = FORMAT_EXT[format]
+  const upper = format.toUpperCase()
   const defaultName = `${props.result.style}_song_${props.result.generation_id.slice(0, 8)}`
-  const name = await promptFilename(defaultName, 'wav', 'Export song as WAV')
+  const name = await promptFilename(defaultName, ext, `Export song as ${upper}`)
   if (name === null) return   // cancelled
   renderingWav.value = true
   wavProgress.value = 0
@@ -665,7 +673,7 @@ async function exportSongWav() {
   // Tracked in the shared render queue too — switching to another mode tab
   // unmounts this whole component, but the render keeps going regardless, and
   // the queue is what stays visible to show it finished (or failed).
-  const jobId = startJob(`Song — ${defaultName}`, `${name}.wav`)
+  const jobId = startJob(`Song — ${defaultName}`, `${name}.${ext}`)
   try {
     // Nominal bar duration, padded: the chorus tempo push and closing
     // ritardando make the real playback slightly longer than a flat bpm
@@ -674,11 +682,11 @@ async function exportSongWav() {
     const blob = await offlineRender(songFile.value.url, props.result.style, duration, 'all', v => {
       wavProgress.value = v
       updateProgress(jobId, v)
-    })
+    }, format)
     completeJob(jobId, blob)
-    toast('Song exported as WAV')
+    toast(`Song exported as ${upper}`)
   } catch (e) {
-    wavError.value = errorMessage(e) ?? 'WAV export failed'
+    wavError.value = errorMessage(e) ?? `${format.toUpperCase()} export failed`
     failJob(jobId, wavError.value)
     logError('Song WAV export', e)
     toast(wavError.value, 'error')

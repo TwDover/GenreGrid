@@ -70,10 +70,10 @@
         class="save-btn"
         :disabled="renderingWav"
         @click="exportWav"
-        :title="wavError || 'Render and download as WAV — see the ⬇ header button for progress from anywhere'"
+        :title="wavError || `Render and download as ${audioFormat.toUpperCase()} — see the ⬇ header button for progress from anywhere`"
       >
         <span v-if="renderingWav">{{ Math.round(wavProgress * 100) }}%</span>
-        <span v-else>↓ .wav</span>
+        <span v-else>↓ .{{ audioFormat }}</span>
       </button>
       <button
         v-if="editable && editDirty"
@@ -129,6 +129,8 @@ import { errorMessage } from '../utils/errors'
 import { downloadUrl, editPart } from '../services/api'
 import { useMidiPlayer, type ParsedNote, type PlayerPart } from '../composables/useMidiPlayer'
 import { useDownloadPrompt } from '../composables/useDownloadPrompt'
+import { useExportFormat } from '../composables/useExportFormat'
+import { FORMAT_EXT } from '../utils/audioEncoder'
 import { useToasts } from '../composables/useToasts'
 import { useRenderQueue } from '../composables/useRenderQueue'
 import { logError } from '../composables/useErrorLog'
@@ -173,6 +175,7 @@ const hasPicker = typeof window !== 'undefined' && 'showSaveFilePicker' in windo
 
 const { toggle, currentlyPlaying, isLoading, getMidiData, prefetchMidi, offlineRender } = useMidiPlayer()
 const { promptFilename } = useDownloadPrompt()
+const { audioFormat } = useExportFormat()
 const { toast } = useToasts()
 const { startJob, updateProgress, completeJob, failJob } = useRenderQueue()
 // Instrument identity: label the part by what plays it ("Alto Sax"), falling
@@ -351,7 +354,10 @@ const wavError = ref('')
 
 async function exportWav() {
   if (renderingWav.value) return
-  const name = await promptFilename(baseName(props.file.filename), 'wav', `Export ${props.file.part} as WAV`)
+  const format = audioFormat.value
+  const ext = FORMAT_EXT[format]
+  const upper = format.toUpperCase()
+  const name = await promptFilename(baseName(props.file.filename), ext, `Export ${props.file.part} as ${upper}`)
   if (name === null) return   // cancelled
   renderingWav.value = true
   wavProgress.value = 0
@@ -359,7 +365,7 @@ async function exportWav() {
   // Tracked in the shared render queue too, so progress/completion stay visible
   // even if this card is unmounted (e.g. switching mode tabs) before it finishes —
   // the render itself keeps running either way, only the local UI would vanish.
-  const jobId = startJob(`${props.file.part} — ${baseName(props.file.filename)}`, `${name}.wav`)
+  const jobId = startJob(`${props.file.part} — ${baseName(props.file.filename)}`, `${name}.${ext}`)
   try {
     const duration = midiData.value?.duration ?? 4
     // 'combined'/'song' stems render the full mix; any real part renders just itself.
@@ -368,11 +374,11 @@ async function exportWav() {
     const blob = await offlineRender(props.file.url, props.styleId, duration, channel, v => {
       wavProgress.value = v
       updateProgress(jobId, v)
-    })
+    }, format)
     completeJob(jobId, blob)
-    toast(`${props.file.part.replace('_', ' ')} exported as WAV`)
+    toast(`${props.file.part.replace('_', ' ')} exported as ${upper}`)
   } catch (e) {
-    wavError.value = errorMessage(e) ?? 'WAV export failed'
+    wavError.value = errorMessage(e) ?? `${format.toUpperCase()} export failed`
     failJob(jobId, wavError.value)
     logError('WAV export', e)
     toast(wavError.value, 'error')

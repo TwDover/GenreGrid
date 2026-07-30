@@ -16,13 +16,15 @@ const promptFilename = vi.fn().mockResolvedValue('mysong')
 vi.mock('../composables/useDownloadPrompt', () => ({
   useDownloadPrompt: () => ({ promptFilename }),
 }))
+const offlineRender = vi.fn().mockResolvedValue(new Blob(['x']))
 vi.mock('../composables/useMidiPlayer', () => ({
-  useMidiPlayer: () => ({ isRecording: ref(false), offlineRender: vi.fn() }),
+  useMidiPlayer: () => ({ isRecording: ref(false), offlineRender }),
 }))
 const completeJob = vi.fn()
+const startJob = vi.fn(() => 'job1')
 vi.mock('../composables/useRenderQueue', () => ({
   useRenderQueue: () => ({
-    startJob: vi.fn(() => 'job1'), updateProgress: vi.fn(), completeJob, failJob: vi.fn(),
+    startJob, updateProgress: vi.fn(), completeJob, failJob: vi.fn(),
   }),
 }))
 vi.mock('../services/api', () => ({
@@ -33,6 +35,7 @@ vi.mock('../services/api', () => ({
 }))
 
 import ExportPanel from './ExportPanel.vue'
+import { useExportFormat } from '../composables/useExportFormat'
 import type { GenerateResponse } from '../types/midi'
 
 const response = (files: { part: string }[]): GenerateResponse => ({
@@ -45,6 +48,9 @@ const response = (files: { part: string }[]): GenerateResponse => ({
 beforeEach(() => {
   promptFilename.mockClear().mockResolvedValue('mysong')
   completeJob.mockClear()
+  startJob.mockClear()
+  offlineRender.mockClear().mockResolvedValue(new Blob(['x']))
+  useExportFormat().audioFormat.value = 'wav'   // reset the shared singleton
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, blob: async () => new Blob(['MThd']) }))
 })
 
@@ -74,5 +80,35 @@ describe('ExportPanel — multitrack MIDI download (5.3)', () => {
     await flushPromises()
     expect(fetch).toHaveBeenCalledWith('http://api/exports/abcd1234/combined.mid')
     expect(completeJob).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('ExportPanel — audio format toggle (5.2)', () => {
+  it('threads the shared format into offlineRender and the download filename', async () => {
+    useExportFormat().audioFormat.value = 'mp3'
+    const wrapper = shallowMount(ExportPanel, {
+      props: { history: [response([{ part: 'chords' }, { part: 'combined' }])] },
+    })
+    const mix = wrapper.findAll('button').find(b => b.text().includes('Mix'))!
+    await mix.trigger('click')
+    await flushPromises()
+    // 6th arg is the format; the render-queue filename carries the .mp3 extension.
+    expect(offlineRender.mock.calls[0][5]).toBe('mp3')
+    expect(startJob).toHaveBeenCalledWith(expect.any(String), 'mysong.mp3')
+    expect(promptFilename).toHaveBeenCalledWith('lofi_abcd1234', 'mp3', 'Export mix as MP3')
+  })
+
+  it('defaults to WAV and names stems per-part with the chosen extension', async () => {
+    useExportFormat().audioFormat.value = 'ogg'
+    const wrapper = shallowMount(ExportPanel, {
+      props: { history: [response([{ part: 'chords' }, { part: 'drums' }, { part: 'combined' }])] },
+    })
+    const stems = wrapper.findAll('button').find(b => b.text().includes('Stems'))!
+    await stems.trigger('click')
+    await flushPromises()
+    // One render per real part (not combined), each in the chosen format.
+    expect(offlineRender.mock.calls.every(c => c[5] === 'ogg')).toBe(true)
+    expect(startJob).toHaveBeenCalledWith(expect.any(String), 'mysong_chords.ogg')
+    expect(startJob).toHaveBeenCalledWith(expect.any(String), 'mysong_drums.ogg')
   })
 })

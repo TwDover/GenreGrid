@@ -30,7 +30,8 @@
     "@tonejs/midi": "^2.0.28",
     "electron-updater": "^6.8.9",
     "tone": "^15.1.22",
-    "vue": "^3.5.40"
+    "vue": "^3.5.40",
+    "wasm-media-encoders": "^0.7.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

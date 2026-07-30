@@ -25,6 +25,7 @@ import { useCustomInstruments } from './useCustomInstruments'
 import { voiceFor, setActiveStyle } from './useStyleCatalog'
 import { SYNTH_STYLES, MELODIC_SYNTH_STYLES, PAD_STYLES, LOFI_STYLES, PLAYER_PARTS, type PlayerPart, CHANNEL_PART } from './playerConstants'
 import { isRendering, offlineRenderRaw } from './useOfflineRender'
+import type { AudioFormat } from '../utils/audioEncoder'
 import { makeMelodyLead, makeSynthChords, makeArpPluck, makePad, makeStrings, makeSynthBass, makeLofiSynth } from '../soundfonts/synthVoices'
 import { resolveMelodicVoiceKind, panFromCC10 } from './voiceRouting'
 import { drumTriggerCallback, voiceTriggerCallback } from './scheduler'
@@ -590,12 +591,13 @@ export function useMidiPlayer() {
     durationSeconds: number,
     channelFilter: 'all' | 'melodic' | PlayerPart = 'all',
     onProgress?: (v: number) => void,
+    format: AudioFormat = 'wav',
   ): Promise<Blob> {
     if (currentlyPlaying.value !== null && !isPaused.value) {
       Tone.getTransport().pause()
       isPaused.value = true
     }
-    return offlineRenderRaw(url, styleId, durationSeconds, channelFilter, onProgress)
+    return offlineRenderRaw(url, styleId, durationSeconds, channelFilter, onProgress, format)
   }
 
   function stop() {

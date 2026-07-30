@@ -21,7 +21,7 @@ import { makeMasterLimiter, softClipCurve } from '../soundfonts/loader'
 import { drumCharacterForStyle } from '../soundfonts/drums'
 import { makeSynthKit } from '../soundfonts/synthDrums'
 import { voiceFor } from './useStyleCatalog'
-import { encodeWav } from '../utils/wavEncoder'
+import { encodeAudio, type AudioFormat } from '../utils/audioEncoder'
 import { PLAYER_PARTS, type PlayerPart, CHANNEL_PART, SYNTH_STYLES, PAD_STYLES, LOFI_STYLES } from './playerConstants'
 
 // True while any WAV export is rendering (drives the export progress UI).
@@ -120,6 +120,7 @@ export async function offlineRenderRaw(
   durationSeconds: number,
   channelFilter: 'all' | 'melodic' | PlayerPart = 'all',
   onProgress?: (v: number) => void,
+  format: AudioFormat = 'wav',
 ): Promise<Blob> {
   isRendering.value = true
   onProgress?.(0.02)
@@ -163,7 +164,7 @@ export async function offlineRenderRaw(
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null
     const timeout = new Promise<never>((_, reject) => {
       timeoutHandle = setTimeout(
-        () => reject(new Error('WAV render timed out — try again, or export a shorter section')),
+        () => reject(new Error('Audio render timed out — try again, or export a shorter section')),
         timeoutMs,
       )
     })
@@ -483,7 +484,8 @@ export async function offlineRenderRaw(
     }
 
     onProgress?.(0.92)
-    const blob = encodeWav(finalBuffer)
+    // WAV is instant; MP3/OGG lazy-load the WASM encoder here (only on demand).
+    const blob = await encodeAudio(finalBuffer, format)
     onProgress?.(1)
     return blob
   } finally {
