@@ -166,6 +166,19 @@ export class LayeredSampler {
     return this
   }
 
+  /** Release a held note (paired with triggerAttack for sustained note-on/off, e.g.
+   *  live MIDI-in audition). Round-robin means we don't track which inner sampler took
+   *  the attack, so release the note across all of them; with no note, release everything. */
+  triggerRelease(note?: Tone.Unit.Frequency, time?: Tone.Unit.Time): this {
+    for (const layer of this.layers) {
+      for (const s of layer.samplers) {
+        if (note === undefined) s.releaseAll(time)
+        else s.triggerRelease(note, time)
+      }
+    }
+    return this
+  }
+
   /** Route every inner sampler to the destination (they sum there). */
   connect(destination: Tone.InputNode): this {
     for (const layer of this.layers) for (const s of layer.samplers) s.connect(destination)

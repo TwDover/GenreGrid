@@ -398,15 +398,28 @@ dialog for name **and** location.
 Higher-risk, higher-ceiling. Each starts with a **spike** (a timeboxed prototype behind a flag)
 to prove feasibility + demand before committing. Ordered by feasibility × payoff.
 
-### 8.1 Live MIDI input (Web MIDI API)  — most natural fit
+### 8.1 Live MIDI input (Web MIDI API)  — most natural fit  · audition ✅ shipped 2026-07-30
 - **Why:** GenreGrid asks you to *upload* a melody; a musician wants to *play* one. Live MIDI
   input lets you capture a hook on a controller, seed the "build around my melody" path from a
   performance, and audition voices/custom instruments by playing them.
-- **Approach:** `navigator.requestMIDIAccess()` in the renderer (Electron + Chromium support it;
-  no native deps). Two surfaces: **(a) audition** — route note-on/off straight into the current
-  voice/`LayeredSampler` for instant play (uses the audio engine as-is); **(b) capture** — record
-  a short performance to a note list, quantize to the meter grid, and hand it to the existing
-  melody-seed pipeline (which already does key-detect + progression derivation).
+- **Shipped — (a) audition:** a **MIDI In** toggle on the transport
+  ([`TransportBar.vue`](../frontend/src/components/TransportBar.vue)) enables Web MIDI, lists
+  input devices (an "All inputs" default + a per-device picker), and plays a connected controller
+  through the **current voice** — pick which part the controller drives (melody/chords/bass/pads/
+  arpeggio/counter-melody/drums). New [`useMidiInput.ts`](../frontend/src/composables/useMidiInput.ts)
+  (pure `parseMidiMessage` + Web MIDI access, hot-plug via `onstatechange`, device filter) routes
+  note-on/off into new `auditionOn`/`auditionOff` on `useMidiPlayer` (sustained via
+  `triggerAttack`/`triggerRelease`, reusing the proven `_buildAudition` voice resolution;
+  `LayeredSampler` gained a `triggerRelease` for true note-off, mono bass releases by time). With
+  no style loaded the audition uses a **sustaining lead** (not the decaying piano) so held notes
+  ring. **Low latency for live play:** audition triggers at `Tone.immediate()` (drops the ~100ms
+  scheduler look-ahead) and the global `AudioContext` `latencyHint` was lowered `0.3 → 'interactive'`
+  (~171ms → ~11ms output buffer) — a global tradeoff (the big buffer had guarded against
+  heavy-graph underrun glitches; raise it back toward 0.1 if crackle reappears on weak hardware).
+  Tests: `useMidiInput.test.ts` (7 — message parsing + routing to audition with scaled velocity,
+  device filter, enable/disable). Real-shell verified in packaged Electron against a real APC mini mk2.
+- **Still to do — (b) capture:** record a short performance to a note list, quantize to the meter
+  grid, and hand it to the existing melody-seed pipeline (key-detect + progression derivation).
 - **Entry:** a new `useMidiInput.ts` composable; `TransportBar.vue` (an input toggle + device
   picker); the melody-upload path in `routes_song.py` (capture feeds the same seam).
 - **Effort:** M (audition is S; capture+quantize is the bulk).  **Risk:** device permission UX;
@@ -472,6 +485,74 @@ to prove feasibility + demand before committing. Ordered by feasibility × payof
 
 ---
 
+## Phase 9 — From generator to a MIDI DAW: capture · perform · arrange
+
+_Added 2026-07-30, after the 8.1 audition spike made playback an instrument (low-latency Web MIDI
+in). The next chapter turns GenreGrid into a place you **perform into** and **arrange freely** —
+recording, looping, and editing your own MIDI alongside the generated parts. This is an
+**extension of existing seams** (`/edit-part` note-list persist, section rebuild, the roll
+editor's transport + loop region, History, `.ggproj`), **not a rewrite** — provided we lock the
+9.0 model decisions up front. It stays entirely web-audio-native (Tone.js) — **plugin / VST
+hosting is explicitly out of scope** (it would require a native audio engine, a different product;
+decided against 2026-07-30)._
+
+**Guardrail — determinism scope.** The seeded / byte-identical invariant governs **generation**.
+Recorded/performed MIDI is **captured user data** (like an imported melody) — versioned in History
++ `.ggproj`, never regenerated. Keep that line bright so recording never fights the invariant.
+
+### 9.0 Model decisions to make FIRST (cheap now, expensive later)
+- **One note model** shared by generate + edit + record. Notes already flow through `EditedNote`
+  → `/edit-part` → stem rewrite → `rebuild_combined_from_parts`. A recorded take is just a note
+  list on that same path — **extend it, don't add a parallel record buffer.**
+- **Record against musical time (`Tone.Transport` ticks), not wall-clock**, so live tempo (7.6)
+  and loop-wrap are handled musically; quantize to the meter grid at save.
+- **Renderer captures, backend persists** — same ownership split as edits today.
+- **Record modes:** overdub (add) vs. replace (punch). Ship overdub first.
+
+### 9.1 MIDI recording — record what you play  ★ next, builds directly on 8.1
+- **Why:** you can *play* a controller (8.1 audition); the missing half is *capturing* it. This is
+  the 8.1 "capture" surface, now the anchor of the DAW direction.
+- **Approach:** a **record-arm** on a part + the transport captures live MIDI-in to a note list
+  keyed by transport ticks; on stop, quantize to the snap grid and persist via `/edit-part` (loop)
+  or the section-rebuild path (song), snapshotting History first. **Metronome + count-in (7.4) is a
+  prerequisite — pull it forward.**
+- **Loop-record / overdub in the roll editor:** [`PianoRollEditor.vue`](../frontend/src/components/PianoRollEditor.vue)
+  already has a loop region, transport, and playhead — add record-arm so each loop pass **overdubs**
+  into the region. This is the "modify the loop/arrangement by playing it" ask.
+- **Record in song mode into a specific instrument/section:** arm a song part, loop a section (or
+  play through), record into it, persist via section rebuild + History.
+- **Effort:** M (audition + transport + edit-part all exist; the new work is capture→ticks→quantize
+  and the record-arm UX). **Risk:** timing accuracy + overdub/loop semantics — keep the note model
+  unified (9.0) and quantize on save.
+
+### 9.2 Free arrangement / clip timeline
+- Beyond generated sections: a **track × time** canvas where MIDI clips (generated, recorded,
+  edited) are placed, moved, looped, split, duplicated. Supersets 8.4 (post-gen arrangement
+  editing) — the DAW timeline proper. **Effort:** L.
+
+### 9.3 Automation lanes
+- Draw volume / pan / send / **synth-patch params** over time (the mixer, FX chain, and
+  `SynthPatch` already exist; this adds time-varying control + a lane UI). **Effort:** M–L.
+
+### 9.4 Audio recording + audio clips
+- Mic/line-in via `getUserMedia`; record audio clips alongside MIDI (waveform UI, an audio-clip
+  model, monitoring). A real step up in scope. **Effort:** L.
+
+### 9.5 (optional) MIDI-OUT to external gear / a DAW
+- Web MIDI **output** streams GenreGrid's parts + live performance to an external DAW or hardware
+  in real time — clean interop, and it's how someone would route into their own instruments
+  elsewhere. Small, self-contained, and fits the current stack (no plugin hosting involved).
+  **Effort:** S. Opportunistic, not on the critical path.
+
+_Plugin / VST hosting is intentionally **not** on this roadmap — it needs a native audio engine
+(a second product) and doesn't fit the web-audio core. Removed 2026-07-30._
+
+**Sequencing:** 7.4 (metronome/count-in) → 9.1 (recording: loop-record then song-mode) → 9.2 (clip
+timeline) → 9.3 (automation) → 9.4 (audio) by demand; 9.5 (MIDI-OUT) opportunistically. 9.1 is the
+next concrete build and reuses everything already in place.
+
+---
+
 ## Suggested sequence
 
 1. ✅ **Phase 5.1** (full piano-roll editing) — shipped: insert/resize/velocity/multi-select,
@@ -492,7 +573,13 @@ to prove feasibility + demand before committing. Ordered by feasibility × payof
    (migrate one built-in voice to a data patch and prove byte-identical parity) before committing
    to the full designer UI.
 8. **Phase 8** — now planned in detail below; spike the one with the strongest signal after
-   the workflow wins land.
+   the workflow wins land. **8.1 audition SHIPPED** (low-latency Web MIDI in); its capture half is
+   now the anchor of Phase 9.
+9. **Phase 9 (DAW direction)** — the current thrust: **7.4 metronome → 9.1 MIDI recording**
+   (loop-record in the editor, then song-mode into a specific instrument) → clip timeline →
+   automation. Lock the **9.0 model decisions** first (one note model, record against transport
+   ticks, renderer-captures/backend-persists). Stays web-audio-native — **plugin/VST hosting is out
+   of scope** (removed 2026-07-30); MIDI-OUT (9.5) is an optional interop nicety.
 
 ## Measurement
 

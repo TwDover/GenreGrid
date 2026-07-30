@@ -16,12 +16,14 @@ import { installGlobalErrorHandlers, logError } from './composables/useErrorLog'
 import * as Tone from 'tone'
 import { getMasterCompressor, getMelodicBus, getDrumBus, getBassBus } from './soundfonts/loader'
 
-// Use a larger audio buffer than Tone's low-latency default. The heavy synth graph
-// underruns the small default buffer → brief audible glitches (on every platform); a bigger
-// buffer trades a little latency (fine for a music player) for a stable, glitch-free render.
-// latencyHint takes seconds here (the Web Audio API accepts a number; Tone's typing only
-// lists the string presets, so we build the raw AudioContext and hand it to Tone).
-Tone.setContext(new Tone.Context(new AudioContext({ latencyHint: 0.3 })))
+// Audio output buffer size. This is a global tradeoff: a bigger buffer is more glitch-
+// resistant under a heavy synth graph, but adds output latency that's very audible when
+// PLAYING a MIDI controller live (8.1). We use 'interactive' (the browser's low-latency
+// preset, ~10–20ms here) so live input feels immediate; scheduled playback tolerates the
+// small buffer because Tone still schedules events ahead via its lookAhead. Earlier this
+// was `0.3` (~170ms) to avoid underrun glitches on the heavy graph — if those crackles
+// reappear on weaker hardware, raise this back toward 0.1–0.3 (latency-for-stability).
+Tone.setContext(new Tone.Context(new AudioContext({ latencyHint: 'interactive' })))
 
 // TEMP audio debug hook — probe the live graph from DevTools via window.__gg
 ;(window as unknown as { __gg: unknown }).__gg = {

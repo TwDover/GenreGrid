@@ -72,10 +72,26 @@ const channelMuted = ref<Record<PlayerPart, boolean>>(_allUnmuted())
 // Cached single-note preview instruments for the piano-roll editor, keyed by
 // "<styleId>:<part>". Built lazily from the same voice resolution as playback (minus
 // custom instruments / panning) and kept for the session so key clicks are instant.
+// A minimal structural voice surface — Tone.PolySynth / Tone.Sampler / MonoSynth /
+// LayeredSampler all satisfy it. triggerAttack/triggerRelease drive live MIDI-in
+// note-on/off (sustained), triggerAttackRelease drives the fixed-length click preview.
+type AuditionVoice = {
+  triggerAttackRelease: (n: string, d: number, t: number, v: number) => void
+  triggerAttack: (n: string, t?: number, v?: number) => void
+  // Note required so Tone.PolySynth/Sampler (whose `notes` arg is required) satisfy
+  // it; the monophonic bass, which releases by time not note, is cast at the call site.
+  triggerRelease: (n: string, t?: number) => void
+}
 type AuditionEntry =
-  | { kind: 'voice'; inst: { triggerAttackRelease: (n: string, d: number, t: number, v: number) => void } }
+  | { kind: 'voice'; inst: AuditionVoice; mono?: boolean }
   | { kind: 'drums'; kit: { trigger: (p: number, v: number, t: number) => void } }
 const _auditionCache = new Map<string, AuditionEntry>()
+// A `sustaining` preview only differs from the normal one when there's no style
+// (live MIDI-in with nothing loaded → a held-note-friendly lead instead of the
+// decaying piano), so it only forks the cache key in that case.
+function _auditionKey(styleId: string | undefined, part: PlayerPart, sustaining: boolean): string {
+  return `${styleId ?? ''}:${part}${sustaining && !styleId ? ':sus' : ''}`
+}
 // part → MIDI channel (inverse of CHANNEL_PART; drives voice choice for audition).
 const _PART_CHANNEL: Record<PlayerPart, number> = {
   chords: 0, bass: 1, melody: 2, arpeggio: 3, pads: 4, counter_melody: 5, drums: 9,
@@ -508,10 +524,15 @@ export function useMidiPlayer() {
   // resolution playback uses. Custom instruments and per-part panning are skipped —
   // a single-note preview doesn't need them — so this can differ slightly from the
   // mixed playback voice, which is an acceptable trade for instant feedback.
-  async function _buildAudition(styleId: string | undefined, part: PlayerPart): Promise<AuditionEntry> {
-    const key = `${styleId ?? ''}:${part}`
+  async function _buildAudition(styleId: string | undefined, part: PlayerPart,
+                                sustaining = false): Promise<AuditionEntry> {
+    const key = _auditionKey(styleId, part, sustaining)
     const cached = _auditionCache.get(key)
     if (cached) return cached
+    // With no style loaded, prefer a sustaining lead over the decaying piano so a
+    // held MIDI key rings out — but only in that no-context case; a loaded style
+    // still auditions its real voice (which may legitimately decay).
+    const susFallback = sustaining && !styleId
 
     const isSynth = styleId ? SYNTH_STYLES.has(styleId) : false
     const isMelodicSynth = styleId ? MELODIC_SYNTH_STYLES.has(styleId) : false
@@ -528,14 +549,16 @@ export function useMidiPlayer() {
       const bassVoice = voiceFor(styleId, 'bass')
       const sampler = (useSamples && !isSynth && bassVoice && SAMPLED_BASS_VOICES.has(bassVoice))
         ? await getBassSampler(bassVoice) : null
-      entry = { kind: 'voice', inst: sampler ?? makeSynthBass(nodes) }
+      // The synth bass is a monophonic MonoSynth (releases the single voice, not by
+      // note); the sampled bass releases per-note like the melodic voices.
+      entry = { kind: 'voice', inst: sampler ?? makeSynthBass(nodes), mono: !sampler }
     } else {
       const channel = _PART_CHANNEL[part] ?? 0
       const voiceId = voiceFor(styleId, part)
       const sampler = (useSamples && voiceId && SAMPLED_VOICES.has(voiceId))
         ? await getMelodicSamplerById(voiceId) : null
       const piano = (useSamples && !isSynth && !isPad && !isLofi && !isMelodicSynth && !sampler
-        && (part === 'chords' || part === 'melody')) ? await getPianoSampler() : null
+        && !susFallback && (part === 'chords' || part === 'melody')) ? await getPianoSampler() : null
       const kind = resolveMelodicVoiceKind({
         channel, hasPatch: false, hasCustom: false, hasSampler: !!sampler, voiceId,
         isLofi, isSynth, isMelodicSynth, isPad, hasPiano: !!piano,
@@ -560,9 +583,10 @@ export function useMidiPlayer() {
     return entry
   }
 
-  /** Warm the preview instrument so the first key click sounds instantly. */
-  function prepareAudition(styleId: string | undefined, part: PlayerPart) {
-    _buildAudition(styleId, part).catch(e => console.warn('[audition] prepare failed', e))
+  /** Warm the preview instrument so the first key click sounds instantly. Pass
+   *  `sustaining` to warm the live-play (held-note) voice used by MIDI-in. */
+  function prepareAudition(styleId: string | undefined, part: PlayerPart, sustaining = false) {
+    _buildAudition(styleId, part, sustaining).catch(e => console.warn('[audition] prepare failed', e))
   }
 
   /** Play a single pitch on the part's instrument (editor key / note preview). */
@@ -577,6 +601,39 @@ export function useMidiPlayer() {
       else entry.inst.triggerAttackRelease(Tone.Frequency(midi, 'midi').toNote(), durationSec, t, velocity)
     } catch (e) {
       console.warn('[audition] failed', e)
+    }
+  }
+
+  /** Note-on for a sustained audition (a live MIDI controller): the note rings until
+   *  auditionOff. Drums are one-shot, so a note-on triggers the hit and note-off no-ops. */
+  async function auditionOn(styleId: string | undefined, part: PlayerPart, midi: number, velocity = 0.9) {
+    try {
+      await Tone.start()
+      applyVolume(volume.value)
+      // `sustaining` so a held note rings when no style is loaded (see _buildAudition).
+      const entry = await _buildAudition(styleId, part, true)
+      // Live input wants the note NOW — trigger at the raw context time (immediate),
+      // not Tone.now() which adds the ~100ms scheduler look-ahead meant for playback.
+      const t = Tone.immediate()
+      if (entry.kind === 'drums') entry.kit.trigger(midi, velocity, t)
+      else entry.inst.triggerAttack(Tone.Frequency(midi, 'midi').toNote(), t, velocity)
+    } catch (e) {
+      console.warn('[audition] note-on failed', e)
+    }
+  }
+
+  /** Note-off for a sustained audition. Uses the already-built (cached) voice; a
+   *  mono voice releases its single note, a poly voice releases the matching pitch. */
+  function auditionOff(styleId: string | undefined, part: PlayerPart, midi: number) {
+    const entry = _auditionCache.get(_auditionKey(styleId, part, true))
+    if (!entry || entry.kind === 'drums') return
+    try {
+      const t = Tone.immediate()   // release now, without the playback look-ahead
+      // Mono voice (MonoSynth): triggerRelease takes a time, not a note.
+      if (entry.mono) (entry.inst as unknown as { triggerRelease: (time?: number) => void }).triggerRelease(t)
+      else entry.inst.triggerRelease(Tone.Frequency(midi, 'midi').toNote(), t)
+    } catch (e) {
+      console.warn('[audition] note-off failed', e)
     }
   }
 
@@ -777,5 +834,5 @@ export function useMidiPlayer() {
     ]).catch(() => { /* best-effort, ignore network errors */ })
   }
 
-  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, sampleMode, setSampleMode, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause, cue, playCued, playPause, cuedLabel, prepareAudition, audition, generatedBpm, playbackBpm, tempoRatio, isTempoNudged, setPlaybackBpm, resetPlaybackBpm }
+  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, sampleMode, setSampleMode, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause, cue, playCued, playPause, cuedLabel, prepareAudition, audition, auditionOn, auditionOff, generatedBpm, playbackBpm, tempoRatio, isTempoNudged, setPlaybackBpm, resetPlaybackBpm }
 }

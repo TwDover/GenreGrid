@@ -111,6 +111,35 @@
       @click="openDesigner"
     >🎛</button>
 
+    <!-- Live MIDI input: play a connected controller through the current voice. -->
+    <div v-if="midiSupported" class="tb-midi" :class="{ active: midiEnabled }">
+      <button
+        class="tb-instr-btn tb-midi-btn"
+        :class="{ 'is-on': midiEnabled }"
+        :disabled="midiRequesting"
+        :title="midiEnabled ? `MIDI input on — playing the ${midiPart.replace('_', ' ')} voice` : 'Play a connected MIDI controller through the current voice'"
+        @click="toggleMidi"
+      >
+        <span v-if="midiEnabled && midiActiveNotes > 0" class="tb-midi-dot"></span>MIDI In
+      </button>
+      <template v-if="midiEnabled">
+        <select class="tb-midi-sel" :value="midiPart" @change="onMidiPart" title="Which voice the controller plays">
+          <option v-for="p in MIDI_PARTS" :key="p" :value="p">{{ p.replace('_', ' ') }}</option>
+        </select>
+        <select
+          v-if="midiDevices.length > 1"
+          class="tb-midi-sel"
+          :value="midiSelectedId ?? ''"
+          @change="onMidiDevice"
+          title="MIDI input device"
+        >
+          <option value="">All inputs</option>
+          <option v-for="d in midiDevices" :key="d.id" :value="d.id">{{ d.name }}</option>
+        </select>
+        <span v-else-if="midiDevices.length === 0" class="tb-midi-hint" title="Connect a MIDI controller">no device</span>
+      </template>
+    </div>
+
     <!-- Volume -->
     <div class="tb-volume">
       <span class="tb-vol-icon">{{ volume === 0 ? '🔇' : volume < 40 ? '🔈' : '🔊' }}</span>
@@ -132,6 +161,7 @@ import { computed } from 'vue'
 import { useMidiPlayer, PLAYER_PARTS, type PlayerPart } from '../composables/useMidiPlayer'
 import { useCustomInstruments } from '../composables/useCustomInstruments'
 import { useSynthDesigner } from '../composables/useSynthDesigner'
+import { useMidiInput } from '../composables/useMidiInput'
 
 const {
   currentlyPlaying, nowPlayingLabel, isLoading, isRecording,
@@ -143,6 +173,15 @@ const {
 
 const { panelOpen: instrumentsPanelOpen, supported: instrumentsSupported } = useCustomInstruments()
 const { openDesigner } = useSynthDesigner()
+
+const {
+  supported: midiSupported, enabled: midiEnabled, requesting: midiRequesting,
+  devices: midiDevices, selectedId: midiSelectedId, part: midiPart,
+  activeNotes: midiActiveNotes, toggle: toggleMidi, setPart: setMidiPart,
+} = useMidiInput()
+const MIDI_PARTS = ['melody', 'chords', 'bass', 'pads', 'arpeggio', 'counter_melody', 'drums'] as const
+function onMidiPart(e: Event) { setMidiPart((e.target as HTMLSelectElement).value as PlayerPart) }
+function onMidiDevice(e: Event) { midiSelectedId.value = (e.target as HTMLSelectElement).value || null }
 
 const isIdle = computed(() => !currentlyPlaying.value && !isLoading.value)
 
@@ -362,10 +401,27 @@ const tempoTitle = computed(() =>
   background: var(--surface); color: var(--text-faint);
 }
 .tb-instr-btn:hover { color: var(--text); }
+.tb-instr-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* Live MIDI input control */
+.tb-midi { display: inline-flex; align-items: center; gap: 0.25rem; flex-shrink: 0; }
+.tb-midi-btn { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.68rem; }
+.tb-midi-btn.is-on { border-color: var(--accent); background: var(--accent-surface-strong); color: var(--accent-bright); }
+.tb-midi-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 6px var(--accent); animation: tb-midi-pulse 0.6s ease-out infinite;
+}
+@keyframes tb-midi-pulse { 0% { transform: scale(0.7); opacity: 0.6; } 100% { transform: scale(1.3); opacity: 1; } }
+.tb-midi-sel {
+  font: inherit; font-size: 0.66rem; height: 26px; max-width: 96px;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0 0.2rem; text-transform: capitalize;
+}
+.tb-midi-hint { font-size: 0.62rem; color: var(--text-faint); font-style: italic; }
 
 @media (max-width: 900px) {
   .tb-label { display: none; }
   .tb-vol-slider { width: 60px; }
-  .tb-mode { display: none; }   /* keep the narrow bar uncluttered */
+  .tb-mode, .tb-midi { display: none; }   /* keep the narrow bar uncluttered */
 }
 </style>
