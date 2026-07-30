@@ -234,8 +234,10 @@ a voice per part per style:
   `MELODIC_SYNTH_STYLES`, `PAD_STYLES`, `LOFI_STYLES`
 
 Pads and counter-melody always play through dedicated voices regardless of style.
-The same graph is used for live preview **and** offline WAV export, so exports
-match what you hear.
+The same graph is used for live preview **and** offline audio export, so exports
+match what you hear. The rendered buffer is written as WAV, or encoded to MP3/OGG
+via a lazy-loaded self-contained WASM encoder (`utils/audioEncoder.ts`); the
+chosen format is the app-wide `useExportFormat` singleton.
 
 ---
 

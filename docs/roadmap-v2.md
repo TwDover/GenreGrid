@@ -63,39 +63,59 @@ output **editable** and **portable** — the highest-leverage work on the whole 
 - **Done when:** you can build a bar from scratch in the roll, edits round-trip through
   save + History, and the mutation logic has tests.
 
-### 5.2 MP3 / OGG audio export
-- **Why:** only WAV ships ([`ExportPanel.vue`](../frontend/src/components/ExportPanel.vue));
-  WAVs are large and awkward to share. This is the most-common "send someone the track" need.
-- **Approach:** encode the offline-rendered buffer. Two options — **(a) renderer-side WASM**
-  (`lamejs`/`@breezystack/lamejs`) keeps the offline path self-contained and offline; **(b)**
-  POST PCM to the backend and use `lameenc` (already a pip dep of the sample pipeline).
-  Recommend (a) for the browser build's sake. Add a format toggle to the Export row.
-- **Entry:** `useOfflineRender.ts`, `ExportPanel.vue`, `wavEncoder.ts` (sibling encoder).
-- **Effort:** S–M.   **Risk:** WASM encoder bundle size; keep it lazy-loaded.
-- **Done when:** MP3/OGG buttons produce valid files that match the WAV mix bit-for-mix.
+### 5.2 MP3 / OGG audio export  ✅ shipped 2026-07-29
+- **Why:** only WAV shipped; WAVs are large and awkward to share. This is the most-common
+  "send someone the track" need.
+- **Shipped:** a **WAV / MP3 / OGG** segmented toggle ([`AudioFormatToggle.vue`](../frontend/src/components/AudioFormatToggle.vue),
+  backed by the app-wide [`useExportFormat`](../frontend/src/composables/useExportFormat.ts)
+  singleton) sits on every audio-export surface — the loop workspace's Export row
+  ([`ExportPanel.vue`](../frontend/src/components/ExportPanel.vue) Mix + Stems), the song
+  result ([`SongResult.vue`](../frontend/src/components/SongResult.vue)), and per-part stems
+  ([`PartCard.vue`](../frontend/src/components/PartCard.vue), which inherit the choice). The
+  offline-rendered buffer is encoded by [`encodeAudio`](../frontend/src/utils/audioEncoder.ts):
+  WAV stays the synchronous dependency-free `wavEncoder`; MP3/OGG go through `wasm-media-encoders`,
+  whose convenience encoders **inline the LAME / Vorbis WASM as a base64 data URI** — so encoding
+  is fully self-contained (no CDN/network), satisfying both the offline Electron shell and the
+  strict-CSP browser build. The ~0.6 MB WASM is **dynamically imported**, so it code-splits into
+  its own lazy chunk and only loads when a compressed export is first requested.
+- **Approach chosen:** option (a) renderer-side WASM (kept the offline path self-contained),
+  but via `wasm-media-encoders` rather than `lamejs` — one MIT dep covers **both** MP3 (LAME)
+  and OGG (Vorbis), where lamejs is MP3-only.
+- **Entry:** `useOfflineRender.ts` (threads a `format` arg → `encodeAudio`), `audioEncoder.ts`,
+  `AudioFormatToggle.vue`, `useExportFormat.ts`.
+- **Tests:** `audioEncoder.test.ts` (real WASM encode → valid MP3 frame-sync + OGG "OggS"
+  magic, mono + stereo); `ExportPanel.test.ts` "5.2" block (toggle threads format into
+  `offlineRender` + filename ext). Real-shell proof:
+  `scenarios/export-mp3-ogg.mjs` generated a loop and exported valid `audio/mpeg` (383 KB,
+  `FF FB…`) and `audio/ogg` (254 KB, `OggS`) in packaged Electron.
+- **Done when:** ✅ MP3/OGG exports produce valid files from the same rendered mix as WAV.
 
-### 5.3 Multitrack MIDI / cleaner DAW handoff
+### 5.3 Multitrack MIDI / cleaner DAW handoff  ✅ shipped 2026-07-29
 - **Why:** drag-to-DAW and per-part stems exist, but importing N separate `.mid` files is
   fiddly. One labeled multitrack `.mid` (a track per part, correct GM programs, section
   markers, key/tempo) drops straight onto a DAW timeline.
-- **Approach:** extend the combined-MIDI writer to optionally emit one track per part (it
-  already writes a combined file + per-part files). Reuse the registry's GM programs +
-  existing markers.
-- **Entry:** `services/midi_writer.py` (`write_combined_midi`), `ExportPanel.vue`.
-- **Effort:** S.
-- **Done when:** a single exported `.mid` opens in a DAW as labeled, correctly-voiced tracks.
+- **Shipped:** the combined MIDI is written as a **type-1 multitrack** — a track per part with
+  the registry's GM `program_change`, display track names (e.g. "Alto Sax (melody)"), plus the
+  shared tempo/key/section-marker track ([`write_combined_midi`](../backend/app/services/midi_writer.py)).
+  A **"Multitrack (.mid)"** export button downloads that single labeled file
+  ([`ExportPanel.vue`](../frontend/src/components/ExportPanel.vue) `handleMultitrackDownload`).
+- **Done when:** ✅ a single exported `.mid` opens in a DAW as labeled, correctly-voiced tracks.
 
-### 5.4 Seed from a progression or a groove (not just a melody)
+### 5.4 Seed from a progression or a groove (not just a melody)  ✅ shipped 2026-07-29
 - **Why:** the "build around my melody" path (Krumhansl key-detect + Viterbi progression) is a
   standout. The same machinery can start from an **uploaded chord progression** or a **drum
   groove** — two very common creative starting points.
-- **Approach:** new SongForm inputs; backend accepts a progression (roman/chords) that bypasses
-  pool selection (the `progression_override`/`custom_progression` seam already exists) or a
-  groove `.mid` whose feel + kick/snare map is mined and drives the drums. Reuse `mining/`.
-- **Entry:** `SongForm.vue`, `routes_song.py` melody-upload path, `mining/`.
-- **Effort:** M.
-- **Done when:** a song can be generated from an uploaded progression and from an uploaded
-  groove, each round-tripping through replay.
+- **Shipped — progression:** a **"Seed from a progression"** text input on `SongForm.vue`
+  accepts roman numerals ("i VI III VII") *or* absolute chords ("Am F C G");
+  [`progression_import.py`](../backend/app/services/progression_import.py) normalizes it to a
+  roman list that plugs into the existing `progression_override` seam, bypassing the style's
+  pool (tests: `test_progression_import.py`, `test_progression_mode.py`).
+- **Shipped — groove:** a **"Seed from a groove"** drum-`.mid` upload
+  (`buildSongFromGroove` → `/build-song-from-groove`) mines the feel + kick/snare map and
+  overlays derived drum fields onto the style via the generator's `_overlay_groove` step
+  (tests: `test_grooves.py`, `test_groove_pocket.py`, `SongForm.test.ts` "5.4" block).
+- **Done when:** ✅ a song generates from an uploaded progression and from an uploaded groove,
+  each round-tripping through replay.
 
 ### 5.5 Deeper undo + portable project files
 - **Why:** History caps at 5 states ([`README.md`](../README.md)); and there's no portable
@@ -312,15 +332,18 @@ to prove feasibility + demand before committing. Ordered by feasibility × payof
 
 ## Suggested sequence
 
-1. **7.2** (code signing) — the current pick. macOS first (Gatekeeper *blocks*; unblocks
-   auto-update too), Windows second (SmartScreen only *warns*). Gated on procuring the certs;
-   until then it's a prepared spec, not a merge. _(7.1 — vitest in CI — is already done.)_
-2. **Phase 5.1 → 5.2** (piano-roll editing, then MP3/OGG) — the biggest user-visible leap:
-   shape output, then share it. 5.1 ships in four incremental PRs.
-3. **5.3 + 5.4** (multitrack export, seed-from-progression/groove) — round out the workflow.
-4. **Phase 6** opportunistically, ear-gated, interleaved with the above (6.1 is cheap and
+1. ✅ **Phase 5.1** (full piano-roll editing) — shipped: insert/resize/velocity/multi-select,
+   the dedicated zoomable `PianoRollEditor.vue`, and its loop flags + transport.
+2. ✅ **5.3 + 5.4** (multitrack export, seed-from-progression/groove) — shipped; workflow rounded out.
+3. ✅ **5.2** (MP3/OGG export) — shipped: app-wide WAV/MP3/OGG toggle, lazy-loaded self-contained
+   WASM encoder covering both compressed formats.
+4. **5.5** (deeper undo + `.ggproj` portable project files) — **the current pick.** The last
+   open Phase-5 workflow item; closes out Phase 5.
+5. **7.2** (code signing) — real distribution gap but **gated on procuring paid certs**; until
+   then it's a prepared spec, not a merge. _(7.1 — vitest in CI — is already done.)_
+6. **Phase 6** opportunistically, ear-gated, interleaved with the above (6.1 is cheap and
    finishes this session's thread).
-5. **Phase 8** — now planned in detail below; spike the one with the strongest signal after
+7. **Phase 8** — now planned in detail below; spike the one with the strongest signal after
    the workflow wins land.
 
 ## Measurement

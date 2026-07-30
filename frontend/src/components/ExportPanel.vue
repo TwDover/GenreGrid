@@ -104,18 +104,19 @@
                 {{ exportStem ? `${exportStem} ` : '' }}{{ Math.round(exportProgress * 100) }}%
               </div>
               <template v-else>
+                <AudioFormatToggle />
                 <button
                   class="btn btn-sm btn-audio"
                   :disabled="isRecording"
                   @click.stop="handleOfflineExport(response, 'wav')"
-                  title="Render the full mix to a WAV file (offline, fast). Progress also shows in the ⬇ header button."
-                >⏬ WAV</button>
+                  :title="`Render the full mix to a ${audioFormat.toUpperCase()} file (offline, fast). Progress also shows in the ⬇ header button.`"
+                >⏬ Mix</button>
                 <button
                   class="btn btn-sm btn-audio"
                   :disabled="isRecording"
                   @click.stop="handleOfflineExport(response, 'stems')"
-                  title="Render drums / bass / melodic as separate WAV files (offline, fast). Progress also shows in the ⬇ header button."
-                >⏬ Stems (WAV)</button>
+                  :title="`Render each part as a separate ${audioFormat.toUpperCase()} file (offline, fast). Progress also shows in the ⬇ header button.`"
+                >⏬ Stems</button>
               </template>
             </template>
             <span class="export-kind export-kind-midi">MIDI</span>
@@ -213,6 +214,9 @@ import { useDownloadPrompt } from '../composables/useDownloadPrompt'
 import { useRenderQueue } from '../composables/useRenderQueue'
 import { logError } from '../composables/useErrorLog'
 import { resolveProgression } from '../utils/chordResolver'
+import { FORMAT_EXT } from '../utils/audioEncoder'
+import { useExportFormat } from '../composables/useExportFormat'
+import AudioFormatToggle from './AudioFormatToggle.vue'
 
 const props = defineProps<{ history: GenerateResponse[]; loading?: boolean; starredIds?: Set<string> }>()
 const emit = defineEmits<{
@@ -397,13 +401,19 @@ function handleUndo(response: GenerateResponse, part: string) {
 }
 
 const exportStem = ref<string | null>(null)
+// Chosen audio delivery format for the Mix / Stems exports — shared app-wide
+// (WAV lossless, or MP3 / OGG lazy-encoded via the WASM encoder).
+const { audioFormat } = useExportFormat()
 
 async function handleOfflineExport(response: GenerateResponse, mode: 'wav' | 'stems') {
   const combinedFile = response.files.find(f => f.part === 'combined')
   if (!combinedFile) return
+  const format = audioFormat.value
+  const ext = FORMAT_EXT[format]
+  const upper = format.toUpperCase()
   const defaultName = `${response.style}_${response.generation_id.slice(0, 8)}`
   const name = await promptFilename(
-    defaultName, 'wav', mode === 'wav' ? 'Export as WAV' : 'Export stems as WAV',
+    defaultName, ext, mode === 'wav' ? `Export mix as ${upper}` : `Export stems as ${upper}`,
   )
   if (name === null) return   // cancelled
 
@@ -418,19 +428,19 @@ async function handleOfflineExport(response: GenerateResponse, mode: 'wav' | 'st
   // whole component unmounts before the render finishes.
   try {
     if (mode === 'wav') {
-      const jobId = startJob(`${label} — ${name}`, `${name}.wav`)
+      const jobId = startJob(`${label} — ${name}`, `${name}.${ext}`)
       try {
         const blob = await offlineRender(combinedFile.url, response.style, durationSeconds, 'all', v => {
           exportProgress.value = v
           updateProgress(jobId, v)
-        })
+        }, format)
         completeJob(jobId, blob)
       } catch (e) {
-        failJob(jobId, e instanceof Error ? e.message : 'WAV export failed')
+        failJob(jobId, e instanceof Error ? e.message : `${upper} export failed`)
         throw e
       }
     } else {
-      // One WAV per part actually present in this generation (true per-part
+      // One file per part actually present in this generation (true per-part
       // stems, not the old drums/bass/melodic buckets). The chosen name becomes
       // a shared prefix — individual stem names still distinguish the files.
       const stems = response.files
@@ -440,15 +450,15 @@ async function handleOfflineExport(response: GenerateResponse, mode: 'wav' | 'st
         const stem = stems[i]
         exportStem.value = stem
         exportProgress.value = 0
-        const jobId = startJob(`${stem} — ${name}`, `${name}_${stem}.wav`)
+        const jobId = startJob(`${stem} — ${name}`, `${name}_${stem}.${ext}`)
         try {
           const blob = await offlineRender(combinedFile.url, response.style, durationSeconds, stem, v => {
             exportProgress.value = (i + v) / stems.length
             updateProgress(jobId, v)
-          })
+          }, format)
           completeJob(jobId, blob)
         } catch (e) {
-          failJob(jobId, e instanceof Error ? e.message : 'WAV export failed')
+          failJob(jobId, e instanceof Error ? e.message : `${upper} export failed`)
           throw e
         }
       }
