@@ -42,6 +42,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkForUpdates: (): Promise<{ status: string; version: string; latest?: string; message?: string }> =>
     ipcRenderer.invoke('check-for-updates'),
 
+  // Subscribe to background update-lifecycle events pushed from main: download
+  // progress, ready-to-restart, or a failure. Returns an unsubscribe function.
+  // The raw IpcRendererEvent is dropped so the renderer only sees the payload.
+  onUpdateStatus: (
+    cb: (status: { phase: 'progress'; percent: number } | { phase: 'ready'; version: string } | { phase: 'error'; message: string }) => void,
+  ): (() => void) => {
+    const listener = (_e: unknown, status: Parameters<typeof cb>[0]) => cb(status)
+    ipcRenderer.on('update-status', listener)
+    return () => ipcRenderer.off('update-status', listener)
+  },
+
   // Append one renderer-side error to logs/renderer-errors.log (next to
   // backend.log) so it survives even if the app closes before anyone opens
   // the in-app error log panel.
