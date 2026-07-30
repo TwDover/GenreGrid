@@ -19,7 +19,7 @@
         @click="onPlayPause"
         :title="playTitle"
       >{{ isLoading ? '⟳' : (isIdle || isPaused) ? '▶' : '⏸' }}</button>
-      <button class="tb-btn" :disabled="isRecording || isIdle" @click="stop" title="Stop playback (Space)">■</button>
+      <button class="tb-btn" :disabled="isRecording || isIdle" @click="stop" title="Stop playback">■</button>
       <button
         class="tb-btn"
         :class="{ active: looping }"
@@ -110,8 +110,8 @@ import { useCustomInstruments } from '../composables/useCustomInstruments'
 const {
   currentlyPlaying, nowPlayingLabel, isLoading, isRecording,
   stop, looping, setLooping, channelMuted, toggleMute, soloPart,
-  positionSeconds, durationSeconds, seek, isPaused, togglePause,
-  volume, setVolume, sampleMode, setSampleMode, playCued, cuedLabel,
+  positionSeconds, durationSeconds, seek, isPaused, playPause,
+  volume, setVolume, sampleMode, setSampleMode, cuedLabel,
 } = useMidiPlayer()
 
 const { panelOpen: instrumentsPanelOpen, supported: instrumentsSupported } = useCustomInstruments()
@@ -132,8 +132,7 @@ const playTitle = computed(() => {
 })
 
 function onPlayPause() {
-  if (isIdle.value) playCued()
-  else togglePause()
+  playPause()   // shared with the Space key (HomePage)
 }
 
 const chipLabel = (ch: PlayerPart) => (

@@ -574,7 +574,8 @@ def _mine_uploaded_groove(data: bytes) -> dict | None:
     """Mine a finalized groove (derived drum fields + feel + fills) from an
     uploaded drum-MIDI file, reusing the corpus miner (app.mining.drums). Returns
     None if the file has no usable channel-10 drum groove."""
-    import tempfile, os
+    import os
+    import tempfile
     from app.mining.midi_io import read_song
     from app.mining.drums import (empty_groove, analyze_drum_song,
                                    analyze_fill_song, finalize_groove)

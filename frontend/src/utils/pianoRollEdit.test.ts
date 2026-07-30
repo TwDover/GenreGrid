@@ -10,7 +10,8 @@ import { describe, it, expect } from 'vitest'
 import {
   snapTime, timeAtX, pitchAtY, buildInsertedNote, gridSeconds, nearRightEdge, resizedDuration,
   beatToX, xToBeat, timeToX, xToTime, pitchToY, yToPitch, noteRectZoom,
-  midiToNoteName, isBlackKey, velocityFromLaneY, snapDelta, rectsOverlap, type RollViewport,
+  midiToNoteName, isBlackKey, velocityFromLaneY, snapDelta, rectsOverlap, nearLoopFlag,
+  sanitizeNotesForPlayback, type RollViewport,
 } from './pianoRollEdit'
 
 describe('snapTime', () => {
@@ -198,5 +199,42 @@ describe('rectsOverlap', () => {
     expect(rectsOverlap(0, 0, 10, 10, 5, 5, 10, 10)).toBe(true)
     expect(rectsOverlap(0, 0, 10, 10, 20, 20, 5, 5)).toBe(false)
     expect(rectsOverlap(0, 0, 10, 10, 10, 0, 5, 10)).toBe(false)   // touching edges don't overlap
+  })
+})
+
+describe('nearLoopFlag', () => {
+  it('grabs within the zone on either side of the flag', () => {
+    expect(nearLoopFlag(100, 100)).toBe(true)
+    expect(nearLoopFlag(105, 100)).toBe(true)    // 5px < default zone 6
+    expect(nearLoopFlag(94, 100)).toBe(true)
+    expect(nearLoopFlag(110, 100)).toBe(false)   // outside the zone
+    expect(nearLoopFlag(120, 100, 25)).toBe(true) // wider zone
+  })
+})
+
+describe('sanitizeNotesForPlayback', () => {
+  const n = (midi: number, time: number, duration = 0.5) =>
+    ({ midi, time, duration, velocity: 0.7, isPercussion: false })
+
+  it('nudges same-pitch coincident starts to be strictly increasing (Tone-safe)', () => {
+    const out = sanitizeNotesForPlayback([n(60, 1.0), n(60, 1.0), n(60, 1.0)])
+    const starts = out.map(x => x.time).sort((a, b) => a - b)
+    expect(starts[0]).toBeCloseTo(1.0)
+    expect(starts[1]).toBeGreaterThan(starts[0])
+    expect(starts[2]).toBeGreaterThan(starts[1])
+  })
+  it('leaves a normal chord (different pitches, same time) alone', () => {
+    const out = sanitizeNotesForPlayback([n(60, 1.0), n(64, 1.0), n(67, 1.0)])
+    expect(out.every(x => x.time === 1.0)).toBe(true)
+  })
+  it('mono collapses simultaneous notes to a strictly increasing timeline', () => {
+    const out = sanitizeNotesForPlayback([n(36, 1.0), n(43, 1.0)], true)
+    const starts = out.map(x => x.time).sort((a, b) => a - b)
+    expect(starts[1]).toBeGreaterThan(starts[0])
+  })
+  it('does not mutate the input notes', () => {
+    const input = [n(60, 1.0), n(60, 1.0)]
+    sanitizeNotesForPlayback(input)
+    expect(input[1].time).toBe(1.0)
   })
 })

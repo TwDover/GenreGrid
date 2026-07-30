@@ -294,3 +294,56 @@ describe('PianoRollEditor — audition', () => {
     expect(player.audition).toHaveBeenCalled()
   })
 })
+
+describe('PianoRollEditor — loop flags', () => {
+  // With one note (time 0.5s) Fit gives totalBeats 8 → pxPerBeat = 734/8 = 91.75,
+  // gutter 54, scroll 0, so a beat maps to x = 54 + beat*91.75. Click flags exactly.
+  const bx = (beat: number) => 54 + beat * 91.75
+  const stopVia = async (w: VueWrapper) => { await playBtn(w).trigger('click'); await flushPromises() }
+
+  it('dragging the end flag moves only the end edge', async () => {
+    const wrapper = mountEditor([melodic(60, 0.5)])
+    await clickFit(wrapper)
+    // Region beats 2..5 via the ruler.
+    await wrapper.find('canvas').trigger('mousedown', { clientX: bx(2), clientY: 6 })
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: bx(5), clientY: 6 }))
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: bx(5), clientY: 6 }))
+    await playBtn(wrapper).trigger('click'); await flushPromises()
+    const first = player.toggle.mock.calls[0][4]
+    expect(first.end).toBeGreaterThan(first.start)
+    const startEdge = first.start
+    await stopVia(wrapper)
+    player.toggle.mockClear()
+
+    // Grab the END flag (beat 5) and drag it to beat 6 — start must not move.
+    await wrapper.find('canvas').trigger('mousedown', { clientX: bx(5), clientY: 6 })
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: bx(6), clientY: 6 }))
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: bx(6), clientY: 6 }))
+    await playBtn(wrapper).trigger('click'); await flushPromises()
+    const second = player.toggle.mock.calls[0][4]
+    expect(second.start).toBeCloseTo(startEdge, 5)   // start unchanged
+    expect(second.end).toBeGreaterThan(first.end)     // end extended
+    wrapper.unmount()
+  })
+
+  it('drags the start flag independently of the end', async () => {
+    const wrapper = mountEditor([melodic(60, 0.5)])
+    await clickFit(wrapper)
+    await wrapper.find('canvas').trigger('mousedown', { clientX: bx(2), clientY: 6 })
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: bx(5), clientY: 6 }))
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: bx(5), clientY: 6 }))
+    await playBtn(wrapper).trigger('click'); await flushPromises()
+    const before = player.toggle.mock.calls[0][4]
+    await stopVia(wrapper)
+    player.toggle.mockClear()
+    // Grab the START flag (beat 2) and pull it in to beat 3.
+    await wrapper.find('canvas').trigger('mousedown', { clientX: bx(2), clientY: 6 })
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: bx(3), clientY: 6 }))
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: bx(3), clientY: 6 }))
+    await playBtn(wrapper).trigger('click'); await flushPromises()
+    const after = player.toggle.mock.calls[0][4]
+    expect(after.start).toBeGreaterThan(before.start)   // start moved in
+    expect(after.end).toBeCloseTo(before.end, 5)        // end unchanged
+    wrapper.unmount()
+  })
+})

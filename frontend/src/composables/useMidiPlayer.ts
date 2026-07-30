@@ -680,6 +680,14 @@ export function useMidiPlayer() {
     if (cuedPlay) await cuedPlay()
   }
 
+  /** One master play/pause toggle, shared by the transport ▶/⏸ button and the Space key:
+   *  start the cued track when idle, otherwise pause/resume in place. */
+  async function playPause() {
+    const idle = currentlyPlaying.value === null && !isLoading.value
+    if (idle) await playCued()
+    else togglePause()
+  }
+
   function setVolume(v: number) {
     volume.value = v
     applyVolume(v)
@@ -708,5 +716,5 @@ export function useMidiPlayer() {
     ]).catch(() => { /* best-effort, ignore network errors */ })
   }
 
-  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, sampleMode, setSampleMode, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause, cue, playCued, cuedLabel, prepareAudition, audition }
+  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, sampleMode, setSampleMode, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause, cue, playCued, playPause, cuedLabel, prepareAudition, audition }
 }

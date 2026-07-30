@@ -173,6 +173,43 @@ export function snapDelta(deltaSec: number, secondsPerBeat: number, division = 0
   return Math.round(deltaSec / g) * g
 }
 
+/** True when a pointer x is within `zone` px of a loop-boundary flag at `flagX` — lets
+ *  each loop edge be grabbed and dragged independently in the ruler. */
+export function nearLoopFlag(px: number, flagX: number, zone = 6): boolean {
+  return Math.abs(px - flagX) <= zone
+}
+
+/**
+ * Make an edited note list safe to schedule with Tone.js. Tone requires each successive
+ * trigger of the same audio source to start strictly *after* the previous one, so two
+ * notes that share a start time throw "Start time must be strictly greater than previous
+ * start time". Editing lets you stack notes on the same cell (or move one onto another),
+ * so nudge any colliding start forward by `minGap`. Grouped per pitch for polyphonic parts;
+ * `mono` (bass) collapses the whole part to one strictly-increasing timeline since a mono
+ * synth can only sound one note at a time. Returns copies, sorted within each group; the
+ * saved stem is unaffected (the backend trims overlaps on write).
+ */
+export function sanitizeNotesForPlayback(notes: ParsedNote[], mono = false, minGap = 0.03): ParsedNote[] {
+  const groups = new Map<number, ParsedNote[]>()
+  for (const n of notes) {
+    const key = mono ? 0 : n.midi
+    const g = groups.get(key)
+    if (g) g.push({ ...n })
+    else groups.set(key, [{ ...n }])
+  }
+  const out: ParsedNote[] = []
+  for (const group of groups.values()) {
+    group.sort((a, b) => a.time - b.time)
+    let prev = -Infinity
+    for (const n of group) {
+      if (n.time <= prev) n.time = prev + minGap
+      prev = n.time
+      out.push(n)
+    }
+  }
+  return out
+}
+
 /** Axis-aligned rectangle overlap (used to hit-test notes against a marquee box). */
 export function rectsOverlap(
   ax: number, ay: number, aw: number, ah: number,
