@@ -7,15 +7,24 @@
  * version. Distributed WITHOUT ANY WARRANTY. See <https://www.gnu.org/licenses/>.
  */
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
+import { ref } from 'vue'
 import { mount, type VueWrapper } from '@vue/test-utils'
 
 // Mock the audio engine so playback/audition wiring is assertable without Tone.
+// The live-tempo bits are real refs so the shared control renders in the toolbar.
+const playbackBpm = ref(120)
+const isTempoNudged = ref(false)
 const player = {
   toggle: vi.fn().mockResolvedValue(undefined),
   stop: vi.fn(),
   audition: vi.fn(),
   prepareAudition: vi.fn(),
   isPlayingUrl: vi.fn().mockReturnValue(true),
+  playbackBpm,
+  isTempoNudged,
+  tempoRatio: ref(1),
+  setPlaybackBpm: vi.fn((b: number) => { playbackBpm.value = b }),
+  resetPlaybackBpm: vi.fn(),
 }
 vi.mock('../composables/useMidiPlayer', () => ({ useMidiPlayer: () => player }))
 
@@ -29,7 +38,9 @@ beforeAll(() => {
 beforeEach(() => {
   player.toggle.mockClear(); player.stop.mockClear()
   player.audition.mockClear(); player.prepareAudition.mockClear()
+  player.setPlaybackBpm.mockClear(); player.resetPlaybackBpm.mockClear()
   player.isPlayingUrl.mockReturnValue(true)
+  playbackBpm.value = 120; isTempoNudged.value = false
   // jsdom has no object-URL support; the editor encodes its buffer to one for playback.
   URL.createObjectURL = vi.fn(() => 'blob:mock')
   URL.revokeObjectURL = vi.fn()
@@ -250,6 +261,23 @@ describe('PianoRollEditor — transport', () => {
     // Now shows ■; clicking again stops.
     await playBtn(wrapper).trigger('click')
     expect(player.stop).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('shows the live-tempo control only while playing and nudges it', async () => {
+    const wrapper = mountEditor([melodic(60, 0.5)])
+    await clickFit(wrapper)
+    expect(wrapper.find('.pre-tempo').exists()).toBe(false)   // hidden when idle
+
+    await playBtn(wrapper).trigger('click')
+    await flushPromises()
+    const tempo = wrapper.find('.pre-tempo')
+    expect(tempo.exists()).toBe(true)
+    expect(tempo.find('.pre-tempo-val').text()).toContain('120')
+
+    // − / + drive the shared non-destructive tempo (playback only).
+    await tempo.find('.pre-tempo-step').trigger('click')       // the first step (−)
+    expect(player.setPlaybackBpm).toHaveBeenCalledWith(119)
     wrapper.unmount()
   })
 })

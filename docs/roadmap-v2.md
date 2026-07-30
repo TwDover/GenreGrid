@@ -363,23 +363,33 @@ dialog for name **and** location.
   lightweight changelog/what's-new surface helps discoverability now that the feature set is
   deep. **Effort:** S.
 
-### 7.6 (new) Live playback-tempo control — "dial in the groove"
+### 7.6 (new) Live playback-tempo control — "dial in the groove"  ✅ shipped (2026-07-30)
 - **Why:** BPM is only settable *before* generation (SongForm / GenerateForm), and changing it
   regenerates the whole thing. A user auditioning a loop or shaping a part in the piano-roll
   editor often just wants to *nudge the tempo and feel it* — speed a lofi beat up, drag a 7/8
-  groove slower — without a re-roll. There's now a transport in both the app
-  ([`TransportBar.vue`](../frontend/src/components/TransportBar.vue)) and the roll editor
-  ([`PianoRollEditor.vue`](../frontend/src/components/PianoRollEditor.vue)), so this fits right in.
-- **Approach:** a **non-destructive** playback-tempo control (a small BPM scrubber / ± next to the
-  transport, and one in the editor toolbar) that just sets `Tone.getTransport().bpm` — playback
-  only, no regeneration. Show it relative to the generated BPM (e.g. "105 → 118") with a reset.
-  Keep it distinct from the form's BPM (which *does* regenerate). Optional follow-up: an "apply
-  tempo" that bakes the chosen tempo into the export/stems (WAV render already renders at the
-  transport tempo; MIDI export would rewrite the tempo meta) — but the core win is the live feel.
-- **Entry:** `TransportBar.vue`, `PianoRollEditor.vue` (its `▶` transport already drives
-  `Tone.getTransport()`), `useMidiPlayer` (expose a `setPlaybackBpm`). **Effort:** S.
-  **Risk:** keep the seeded-determinism invariant — a live tempo change must not alter generated
-  note data; it's a transport speed only, and export stays byte-identical unless "apply" is used.
+  groove slower — without a re-roll.
+- **Shipped — non-destructive live tempo:** `useMidiPlayer` now tracks the track's `generatedBpm`
+  (captured on load) and a live `playbackBpm`; `setPlaybackBpm`/`resetPlaybackBpm` set only
+  `Tone.getTransport().bpm` (clamped 40–300). Because Tone schedules the parts in ticks at the
+  native tempo, a `tempoRatio` (playbackBpm/generatedBpm, `1` when un-nudged) rescales the
+  transport's real elapsed seconds back to native-time so the **seek bar, time readout, and editor
+  playhead stay aligned with the notes**; `seek()` divides by the same ratio. The note data,
+  duration, and every export path are untouched — the un-nudged path stays byte-identical by
+  construction (ratio `1`).
+- **UI:** a compact `− 149 BPM + ↺` control on the docked transport
+  ([`TransportBar.vue`](../frontend/src/components/TransportBar.vue), shown once a track is loaded)
+  and in the roll-editor toolbar ([`PianoRollEditor.vue`](../frontend/src/components/PianoRollEditor.vue),
+  shown while playing) — ± buttons + scroll-wheel nudge, an accent "nudged" state, and a reset to
+  the generated tempo. Both surfaces drive the same shared module state, so nudging is consistent.
+- **Tests:** `PianoRollEditor.test.ts` (+1: the control appears only while playing and its ±
+  drives `setPlaybackBpm`). Real-shell proof: `scenarios/live-tempo.mjs` generated a loop, played a
+  part, and four "+" clicks moved the packaged-Electron transport 145 → 149 BPM while the card's
+  generated metadata stayed 145.
+- **Deferred (optional follow-up):** an "apply tempo" that bakes the chosen tempo into
+  export/stems (WAV already renders at the transport tempo; MIDI export would rewrite the tempo
+  meta) — the core live-feel win is done.
+- **Done when:** ✅ the transport tempo can be nudged live in both the app and the editor without a
+  re-roll, and generated note data / exports stay byte-identical.
 
 ---
 
@@ -471,14 +481,17 @@ to prove feasibility + demand before committing. Ordered by feasibility × payof
    WASM encoder covering both compressed formats.
 4. ✅ **5.5** (deeper undo + `.ggproj` portable project files) — shipped: History cap 5 → 50,
    and `.ggproj` export/import round-tripping a full session. **Closes out Phase 5.**
-5. **7.2** (code signing) — real distribution gap but **gated on procuring paid certs**; until
+5. ✅ **7.6** (live playback-tempo control) — shipped: a non-destructive BPM nudge on the docked
+   transport and in the roll editor; sets `Tone.getTransport().bpm` only, note data + exports stay
+   byte-identical.
+6. **7.2** (code signing) — real distribution gap but **gated on procuring paid certs**; until
    then it's a prepared spec, not a merge. _(7.1 — vitest in CI — is already done.)_
-6. **Phase 6** opportunistically, ear-gated, interleaved with the above (6.1 is cheap and
+7. **Phase 6** opportunistically, ear-gated, interleaved with the above (6.1 is cheap and
    finishes this session's thread). **6.6** (the synth / sound-design patch designer) is the
    biggest new bet here — a whole new instrument source — so spike its patch shape + factory
    (migrate one built-in voice to a data patch and prove byte-identical parity) before committing
    to the full designer UI.
-7. **Phase 8** — now planned in detail below; spike the one with the strongest signal after
+8. **Phase 8** — now planned in detail below; spike the one with the strongest signal after
    the workflow wins land.
 
 ## Measurement
