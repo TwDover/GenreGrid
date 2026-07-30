@@ -12,13 +12,16 @@ import { describe, it, expect } from 'vitest'
 import { resolveMelodicVoiceKind, panFromCC10, type VoiceContext } from './voiceRouting'
 
 const base: VoiceContext = {
-  channel: 0, hasCustom: false, hasSampler: false, voiceId: null,
+  channel: 0, hasPatch: false, hasCustom: false, hasSampler: false, voiceId: null,
   isLofi: false, isSynth: false, isMelodicSynth: false, isPad: false, hasPiano: false,
 }
 const ctx = (o: Partial<VoiceContext>) => resolveMelodicVoiceKind({ ...base, ...o })
 
 describe('resolveMelodicVoiceKind — precedence', () => {
-  it('custom instrument wins over everything', () => {
+  it('a designed patch wins over everything, including a custom instrument', () => {
+    expect(ctx({ hasPatch: true, hasCustom: true, hasSampler: true, isSynth: true, channel: 4 })).toBe('synth_patch')
+  })
+  it('custom instrument wins over everything except a patch', () => {
     expect(ctx({ hasCustom: true, hasSampler: true, isSynth: true, channel: 4 })).toBe('custom')
   })
   it('a loaded sampler wins over identity-lead and style family', () => {

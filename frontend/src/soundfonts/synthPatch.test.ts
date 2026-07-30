@@ -19,6 +19,8 @@ import {
   PRESET_STRINGS,
   PRESET_SYNTH_BASS,
   PRESET_LOFI,
+  PRESET_808_SUB,
+  PRESET_808_TRAP,
   type SynthNodeSpec,
 } from './synthPatch'
 
@@ -148,5 +150,115 @@ describe('patchToNodeSpec — chain shape', () => {
 
   it('carries unison count/spread for a fat oscillator', () => {
     expect(patchToNodeSpec(PRESET_SYNTH_CHORDS).synthOptions.oscillator).toEqual({ type: 'fatsawtooth', count: 3, spread: 22 })
+  })
+})
+
+// ── LFO / modulation ──────────────────────────────────────────────────────────
+describe('patchToNodeSpec — LFO routing', () => {
+  it('routes a filter LFO to the filter frequency, sweeping up from the base cutoff', () => {
+    // Chords filter cutoff is 2600 Hz; depth 0.5 opens 2 octaves (0.5 × 4) → ×4.
+    const spec = patchToNodeSpec({
+      ...PRESET_SYNTH_CHORDS,
+      lfo: { destination: 'filter', wave: 'triangle', rateHz: 5, sync: false, syncRate: '8n', depth: 0.5 },
+    })
+    expect(spec.mod).toEqual({ lfo: { frequency: 5, type: 'triangle', min: 2600, max: 10400 }, target: 'filterFrequency' })
+    // No Gain node is added for a filter LFO.
+    expect(spec.chain.map(n => n.node)).toEqual(['Filter'])
+  })
+
+  it('routes an amp LFO to a tremolo Gain appended at the output end', () => {
+    const spec = patchToNodeSpec({
+      ...PRESET_SYNTH_CHORDS,
+      lfo: { destination: 'amp', wave: 'sine', rateHz: 6, sync: false, syncRate: '8n', depth: 0.3 },
+    })
+    expect(spec.chain.map(n => n.node)).toEqual(['Filter', 'Gain'])
+    expect(spec.mod).toEqual({ lfo: { frequency: 6, type: 'sine', min: 0.7, max: 1 }, target: 'ampGain' })
+  })
+
+  it('uses the note-value rate when the LFO is tempo-synced', () => {
+    const spec = patchToNodeSpec({
+      ...PRESET_SYNTH_CHORDS,
+      lfo: { destination: 'amp', wave: 'square', rateHz: 5, sync: true, syncRate: '8n', depth: 1 },
+    })
+    expect((spec.mod?.lfo as { frequency: unknown }).frequency).toBe('8n')
+  })
+
+  it('is a no-op (no mod, no Gain) for a filter LFO on a filterless voice', () => {
+    const spec = patchToNodeSpec({
+      ...PRESET_PAD,
+      lfo: { destination: 'filter', wave: 'sine', rateHz: 5, sync: false, syncRate: '8n', depth: 0.5 },
+    })
+    expect(spec.mod).toBeUndefined()
+    expect(spec.chain).toEqual([])
+  })
+
+  it('leaves patches without an LFO free of any mod', () => {
+    expect(patchToNodeSpec(PRESET_SYNTH_CHORDS).mod).toBeUndefined()
+  })
+})
+
+// ── FX chain ───────────────────────────────────────────────────────────────────
+describe('patchToNodeSpec — FX chain', () => {
+  const withAllFx = {
+    ...PRESET_SYNTH_LEAD,
+    fx: {
+      drive: { amount: 0.4, wet: 0.5 },
+      bitcrusher: { bits: 6 },
+      chorus: { frequency: 1.5, depth: 0.5, wet: 0.4 },
+      vibrato: { frequency: 5, depth: 0.1, wet: 0.8 },
+      delay: { time: 0.25, sync: false, syncTime: '8n', feedback: 0.3, wet: 0.3 },
+      reverb: { decay: 2, wet: 0.3 },
+    },
+  }
+
+  it('orders every effect around the filter: drive → crush → filter → chorus → vibrato → delay → reverb', () => {
+    expect(patchToNodeSpec(withAllFx).chain.map(n => n.node)).toEqual(
+      ['Distortion', 'BitCrusher', 'Filter', 'Chorus', 'Vibrato', 'FeedbackDelay', 'Reverb'],
+    )
+  })
+
+  it('maps effect params to their node options', () => {
+    const byKind = Object.fromEntries(patchToNodeSpec(withAllFx).chain.map(n => [n.node, n.options]))
+    expect(byKind.Distortion).toEqual({ distortion: 0.4, wet: 0.5 })
+    expect(byKind.FeedbackDelay).toEqual({ delayTime: 0.25, feedback: 0.3, wet: 0.3 })
+    expect(byKind.Reverb).toEqual({ decay: 2, wet: 0.3 })
+  })
+
+  it('uses the note-value delay time when the delay is tempo-synced', () => {
+    const spec = patchToNodeSpec({ ...withAllFx, fx: { delay: { time: 0.25, sync: true, syncTime: '8n.', feedback: 0.3, wet: 0.3 } } })
+    const delay = spec.chain.find(n => n.node === 'FeedbackDelay')
+    expect(delay?.options.delayTime).toBe('8n.')
+  })
+
+  it('leaves the lo-fi voice byte-identical (only bitcrusher/filter/vibrato)', () => {
+    // Regression guard: the new effects must not perturb an existing FX voice.
+    expect(patchToNodeSpec(PRESET_LOFI).chain.map(n => n.node)).toEqual(['BitCrusher', 'Filter', 'Vibrato'])
+  })
+
+  it('applies the FX chain to a mono voice, with the filter staying internal', () => {
+    // A driven 808 (mono) needs distortion; the mono filter is NOT a chain node.
+    const spec = patchToNodeSpec(PRESET_808_TRAP)
+    expect(spec.voice).toBe('mono')
+    expect(spec.chain.map(n => n.node)).toEqual(['Distortion'])
+    expect(spec.synthOptions.filter).toBeDefined()
+    expect(spec.synthOptions.portamento).toBe(0.08)
+  })
+
+  it('keeps a fx-less mono voice (808 Sub, Synth Bass) with an empty chain', () => {
+    expect(patchToNodeSpec(PRESET_808_SUB).chain).toEqual([])
+    expect(patchToNodeSpec(PRESET_808_SUB).synthOptions.portamento).toBe(0.06)
+    expect(patchToNodeSpec(PRESET_SYNTH_BASS).chain).toEqual([])
+  })
+})
+
+// ── Pitch envelope ─────────────────────────────────────────────────────────────
+describe('patchToNodeSpec — pitch envelope', () => {
+  it('emits pitchEnv for a mono voice that has one (the 808 attack drop)', () => {
+    expect(patchToNodeSpec(PRESET_808_TRAP).pitchEnv).toEqual({ semitones: 8, decay: 0.06 })
+    expect(patchToNodeSpec(PRESET_808_SUB).pitchEnv).toEqual({ semitones: 4, decay: 0.05 })
+  })
+  it('has no pitchEnv on voices without one', () => {
+    expect(patchToNodeSpec(PRESET_SYNTH_BASS).pitchEnv).toBeUndefined()
+    expect(patchToNodeSpec(PRESET_PAD).pitchEnv).toBeUndefined()
   })
 })

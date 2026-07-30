@@ -12,6 +12,13 @@ interface ElectronAPI {
   isElectron: true
   apiPort: number
   saveTempFile: (filename: string, data: number[]) => Promise<string>
+  /** Native "Save As" dialog + write. Resolves { saved:false } if the user cancels,
+   *  else { saved:true, path }. `filters` is Electron's dialog file-type filter list. */
+  saveFile: (
+    defaultName: string,
+    data: ArrayBuffer,
+    filters?: Array<{ name: string; extensions: string[] }>,
+  ) => Promise<{ saved: boolean; path?: string }>
   startDrag: (filePath: string) => void
   checkForUpdates: () => Promise<{ status: string; version: string; latest?: string; message?: string }>
   logRendererError: (entry: { timestamp: string; context: string; message: string; stack?: string }) => Promise<void>

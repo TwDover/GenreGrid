@@ -20,6 +20,12 @@ import { downloadUrl } from '../services/api'
 import { makeMasterLimiter, softClipCurve } from '../soundfonts/loader'
 import { drumCharacterForStyle } from '../soundfonts/drums'
 import { makeSynthKit } from '../soundfonts/synthDrums'
+import { makeHybridKit, type KitSamplers } from '../soundfonts/customDrumKit'
+import { LayeredSampler } from '../soundfonts/layeredSampler'
+import { resolvePartInstrument } from '../soundfonts/customInstruments'
+import { buildSynthFromPatch, type SynthPatch } from '../soundfonts/synthPatch'
+import { useSynthPatches } from './useSynthPatches'
+import { useCustomInstruments } from './useCustomInstruments'
 import { voiceFor } from './useStyleCatalog'
 import { encodeAudio, type AudioFormat } from '../utils/audioEncoder'
 import { PLAYER_PARTS, type PlayerPart, CHANNEL_PART, SYNTH_STYLES, PAD_STYLES, LOFI_STYLES } from './playerConstants'
@@ -198,17 +204,76 @@ export async function offlineRenderRaw(
       // playing concurrently while this export ran.
       context.transport.bpm.value = bpm
 
+      // ── Assigned voices: synth patches + custom instruments ──────────
+      // Both render in export now, mirroring live playback's precedence:
+      //   patch > custom instrument > built-in voice.
+      // A patch is built from the SAME buildSynthFromPatch as live (threaded with THIS
+      // OfflineContext); a custom instrument is materialized to blob URLs and loaded
+      // into a LayeredSampler ON this context (awaited so buffers decode before render).
+      const sp = useSynthPatches()
+      const patchByPart: Partial<Record<PlayerPart, SynthPatch>> = {}
+      for (const part of ['chords', 'bass', 'melody', 'arpeggio', 'pads', 'counter_melody'] as PlayerPart[]) {
+        const p = sp.resolvePatchForPart(styleId, part)
+        if (p) patchByPart[part] = p
+      }
+
+      // Static pan a part was written with (CC10) — so custom samplers sit where the
+      // built-in voice would. Defined up here so the custom block can pan too.
+      const panForChannel = (ch: number): number => {
+        const track = midi.tracks.find(t => (t.channel ?? 0) === ch)
+        const cc = track?.controlChanges?.[10]
+        if (cc && cc.length) return Math.max(-1, Math.min(1, cc[cc.length - 1].value * 2 - 1))
+        return 0
+      }
+      const PART_CHANNEL: Partial<Record<PlayerPart, number>> = { chords: 0, melody: 2, arpeggio: 3, pads: 4, counter_melody: 5 }
+
+      // Custom instruments (Electron-only storage); skipped where a patch already wins.
+      const customByPart: Partial<Record<PlayerPart, LayeredSampler>> = {}
+      const customKit: KitSamplers = new Map()
+      const ci = useCustomInstruments()
+      if (ci.supported()) {
+        await ci.ensureLoaded()
+        for (const part of ['chords', 'bass', 'melody', 'arpeggio', 'pads', 'counter_melody'] as PlayerPart[]) {
+          if (!wants(part) || patchByPart[part]) continue
+          const r = resolvePartInstrument(ci.assignments.value, styleId, part, null)
+          if (r.source !== 'custom') continue
+          const manifest = await ci.materialize(r.id)
+          if (!manifest || !manifest.layers.length) continue
+          const ls = new LayeredSampler({ baseUrl: '', manifest, volume: -6, context })
+          const out = part === 'bass' ? comp : new Tone.Panner({ context, pan: panForChannel(PART_CHANNEL[part] ?? 0) }).connect(comp)
+          ls.connect(out)
+          await ls.loaded
+          customByPart[part] = ls
+        }
+        if (wants('drums')) {
+          const drumChoice = resolvePartInstrument(ci.assignments.value, styleId, 'drums', null)
+          if (drumChoice.source === 'custom') {
+            const kit = await ci.materializeKit(drumChoice.id)
+            for (const [pitch, m] of Object.entries(kit ?? {})) {
+              if (!m.layers.length) continue
+              const ls = new LayeredSampler({ baseUrl: '', manifest: m, volume: -4, context })
+              ls.connect(comp)
+              await ls.loaded
+              customKit.set(Number(pitch), ls)
+            }
+          }
+        }
+      }
+
       // ── Drum kit ─────────────────────────────────────────────────────
-      // Same synthesized engine as live playback, routed to the offline
+      // Synthesized engine + any custom kit pieces (hybrid), routed to the offline
       // compressor so the export matches what the user auditions.
       const drumKit = wants('drums')
-        ? makeSynthKit(drumCharacterForStyle(styleId), comp, context)
+        ? makeHybridKit(makeSynthKit(drumCharacterForStyle(styleId), comp, context), customKit)
         : null
 
-      // ── Bass synth ───────────────────────────────────────────────────
-      let bassSynth: Tone.MonoSynth | null = null
+      // ── Bass ─────────────────────────────────────────────────────────
+      // Patch > custom instrument > built-in synth bass.
+      let bassSynth: Tone.MonoSynth | Tone.PolySynth | LayeredSampler | null = null
       if (wants('bass')) {
-        bassSynth = new Tone.MonoSynth({
+        bassSynth = (patchByPart.bass ? buildSynthFromPatch(patchByPart.bass, [], comp, context) : null)
+          ?? customByPart.bass
+          ?? new Tone.MonoSynth({
           context,
           oscillator: { type: 'sawtooth' },
           filter: { Q: 2, type: 'lowpass', rolloff: -24 },
@@ -221,12 +286,6 @@ export async function offlineRenderRaw(
       // ── Melodic synths ───────────────────────────────────────────────
       // Mirror live playback: chords / melody / arpeggio each get a distinct
       // voice, panned from the part's CC10 so the export matches the preview.
-      const panForChannel = (ch: number): number => {
-        const track = midi.tracks.find(t => (t.channel ?? 0) === ch)
-        const cc = track?.controlChanges?.[10]
-        if (cc && cc.length) return Math.max(-1, Math.min(1, cc[cc.length - 1].value * 2 - 1))
-        return 0
-      }
       const mkVoice = (variant: 'chords' | 'lead' | 'arp' | 'pads' | 'strings', pan: number): Tone.PolySynth => {
         const panner = new Tone.Panner({ context, pan }).connect(comp)
         if (variant === 'arp') {
@@ -357,20 +416,32 @@ export async function offlineRenderRaw(
         }).connect(panner)
       }
 
-      let chordsSynth: Tone.PolySynth | null = null
-      let leadSynth: Tone.PolySynth | null = null
-      let arpSynth: Tone.PolySynth | null = null
-      let padsSynth: Tone.PolySynth | null = null
-      let stringsSynth: Tone.PolySynth | null = null
+      type MelodicVoice = Tone.PolySynth | LayeredSampler
+      let chordsSynth: MelodicVoice | null = null
+      let leadSynth: MelodicVoice | null = null
+      let arpSynth: MelodicVoice | null = null
+      let padsSynth: MelodicVoice | null = null
+      let stringsSynth: MelodicVoice | null = null
       const hasTrackOn = (ch: number) =>
         midi.tracks.some(t => (t.channel ?? 0) === ch && t.notes.length > 0)
+      // Precedence: patch > custom instrument > built-in variant. Patch/built-in connect
+      // through a panner to the compressor; the custom sampler was already panned + wired
+      // when it was materialized above.
+      const mkPartVoice = (part: PlayerPart, variant: 'chords' | 'lead' | 'arp' | 'pads' | 'strings', ch: number): MelodicVoice => {
+        const p = patchByPart[part]
+        if (p) {
+          const panner = new Tone.Panner({ context, pan: panForChannel(ch) }).connect(comp)
+          return buildSynthFromPatch(p, [], panner, context) as Tone.PolySynth
+        }
+        return customByPart[part] ?? mkVoice(variant, panForChannel(ch))
+      }
       // Only built when wanted AND the file actually carries the part — keeps
       // the offline graph light for single-stem renders.
-      if (wants('chords'))   chordsSynth = mkVoice('chords', panForChannel(0))
-      if (wants('melody'))   leadSynth   = mkVoice('lead',   panForChannel(2))
-      if (wants('arpeggio')) arpSynth    = mkVoice('arp',    panForChannel(3))
-      if (wants('pads') && hasTrackOn(4))           padsSynth    = mkVoice('pads',    panForChannel(4))
-      if (wants('counter_melody') && hasTrackOn(5)) stringsSynth = mkVoice('strings', panForChannel(5))
+      if (wants('chords'))   chordsSynth = mkPartVoice('chords', 'chords', 0)
+      if (wants('melody'))   leadSynth   = mkPartVoice('melody', 'lead', 2)
+      if (wants('arpeggio')) arpSynth    = mkPartVoice('arpeggio', 'arp', 3)
+      if (wants('pads') && hasTrackOn(4))           padsSynth    = mkPartVoice('pads', 'pads', 4)
+      if (wants('counter_melody') && hasTrackOn(5)) stringsSynth = mkPartVoice('counter_melody', 'strings', 5)
 
       // ── Schedule MIDI events ─────────────────────────────────────────
       // Triggered directly at each note's absolute time (seconds from render

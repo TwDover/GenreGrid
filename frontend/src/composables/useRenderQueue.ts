@@ -35,7 +35,21 @@ const jobs = ref<RenderJob[]>([])
 const isOpen = ref(false)
 let nextId = 1
 
-function triggerDownload(blob: Blob, filename: string) {
+async function triggerDownload(blob: Blob, filename: string) {
+  // Desktop app: save through the native OS "Save As" dialog (proper location picker,
+  // no browser download shelf). Browser build: the classic anchor download — a browser
+  // can't choose a save location, so it lands in Downloads.
+  const saveFile = typeof window !== 'undefined' ? window.electronAPI?.saveFile : undefined
+  if (saveFile) {
+    const ext = filename.includes('.') ? filename.split('.').pop()! : ''
+    const filters = ext ? [{ name: `${ext.toUpperCase()} file`, extensions: [ext] }] : undefined
+    try {
+      await saveFile(filename, await blob.arrayBuffer(), filters)
+      return
+    } catch {
+      // Native save failed unexpectedly — fall back to the browser download below.
+    }
+  }
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -60,7 +74,7 @@ export function useRenderQueue() {
     job.status = 'done'
     job.progress = 1
     job.blob = blob
-    triggerDownload(blob, job.filename)
+    void triggerDownload(blob, job.filename)
   }
   function failJob(id: number, error: string) {
     const job = jobs.value.find(j => j.id === id)
@@ -70,7 +84,7 @@ export function useRenderQueue() {
   }
   function redownload(id: number) {
     const job = jobs.value.find(j => j.id === id)
-    if (job?.blob) triggerDownload(job.blob, job.filename)
+    if (job?.blob) void triggerDownload(job.blob, job.filename)
   }
   function removeJob(id: number) {
     jobs.value = jobs.value.filter(j => j.id !== id)

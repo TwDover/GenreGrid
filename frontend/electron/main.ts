@@ -380,6 +380,26 @@ ipcMain.on('get-api-port', (event) => {
 })
 
 // Write MIDI bytes to a temp file and return the path
+// Remembered across saves this session so the picker reopens where you last saved.
+let lastSaveDir: string | null = null
+
+ipcMain.handle('save-file', async (event, { defaultName, data, filters }: {
+  defaultName: string
+  data: ArrayBuffer
+  filters?: Array<{ name: string; extensions: string[] }>
+}): Promise<{ saved: boolean; path?: string }> => {
+  const win = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getAllWindows()[0]
+  const safeName = path.basename(defaultName) || 'export'
+  const defaultPath = lastSaveDir ? path.join(lastSaveDir, safeName) : safeName
+  const result = win
+    ? await dialog.showSaveDialog(win, { defaultPath, filters })
+    : await dialog.showSaveDialog({ defaultPath, filters })
+  if (result.canceled || !result.filePath) return { saved: false }
+  await fs.promises.writeFile(result.filePath, Buffer.from(data))
+  lastSaveDir = path.dirname(result.filePath)
+  return { saved: true, path: result.filePath }
+})
+
 ipcMain.handle('save-temp-file', async (_, { filename, data }: { filename: string; data: number[] }) => {
   const dir = path.join(app.getPath('temp'), 'genregrid')
   await fs.promises.mkdir(dir, { recursive: true })

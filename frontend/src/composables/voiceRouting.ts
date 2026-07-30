@@ -18,6 +18,7 @@
 // channel: 0 = chords, 2 = melody, 3 = arpeggio, 4 = pads, 5 = counter-melody
 export interface VoiceContext {
   channel: number
+  hasPatch: boolean             // a user-designed synth patch is assigned to this part
   hasCustom: boolean            // a user custom instrument is assigned to this part
   hasSampler: boolean           // a sampled (identity) voice loaded for this part
   voiceId: string | null        // resolved instrument-identity id for this part
@@ -29,6 +30,7 @@ export interface VoiceContext {
 }
 
 export type MelodicVoiceKind =
+  | 'synth_patch'      // a user-designed patch (built via buildSynthFromPatch)
   | 'custom'            // the user's assigned instrument (returned as-is)
   | 'sampler'           // the loaded identity sampler (returned as-is)
   | 'melody_lead_soft'  // makeMelodyLead(true)
@@ -41,9 +43,11 @@ export type MelodicVoiceKind =
   | 'piano'             // the shared piano (returned as-is)
 
 // Mirrors getMelodicInstrument's original branch ORDER exactly — the first match
-// wins, so custom > sampler > identity-lead > part-specific voice > style family >
-// piano > synth default.
+// wins, so patch > custom > sampler > identity-lead > part-specific voice > style
+// family > piano > synth default. A user-designed patch is the most explicit intent,
+// so it wins over everything, the way custom/sampler win over the style defaults.
 export function resolveMelodicVoiceKind(c: VoiceContext): MelodicVoiceKind {
+  if (c.hasPatch) return 'synth_patch'
   if (c.hasCustom) return 'custom'
   if (c.hasSampler) return 'sampler'
   if (c.channel === 2 && c.voiceId === 'melody_lead') return 'melody_lead_soft'
