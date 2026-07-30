@@ -48,10 +48,12 @@ export function nearRightEdge(px: number, noteX: number, noteW: number, edgePx =
 }
 
 /** New duration for a note whose right edge is dragged to `pointerSec`. The start stays
- *  put; the end snaps to the grid; duration never drops below one grid unit. */
-export function resizedDuration(startSec: number, pointerSec: number, secondsPerBeat: number): number {
-  const g = gridSeconds(secondsPerBeat)
-  const end = snapTime(pointerSec, secondsPerBeat)
+ *  put; the end snaps to the grid; duration never drops below one grid unit. `division`
+ *  is the snap grid (0.25 = a 16th note, the default the inline roll uses). */
+export function resizedDuration(startSec: number, pointerSec: number, secondsPerBeat: number,
+                                division = 0.25): number {
+  const g = gridSeconds(secondsPerBeat, division)
+  const end = snapTime(pointerSec, secondsPerBeat, division)
   return Math.max(g, end - startSec)
 }
 
@@ -66,10 +68,11 @@ export function buildInsertedNote(
   midi: number,
   secondsPerBeat: number,
   velocity = 0.7,
+  division = 0.25,
 ): ParsedNote {
-  const g = gridSeconds(secondsPerBeat)
-  const start = snapTime(Math.min(aSec, bSec), secondsPerBeat)
-  const endSnapped = snapTime(Math.max(aSec, bSec), secondsPerBeat)
+  const g = gridSeconds(secondsPerBeat, division)
+  const start = snapTime(Math.min(aSec, bSec), secondsPerBeat, division)
+  const endSnapped = snapTime(Math.max(aSec, bSec), secondsPerBeat, division)
   const duration = Math.max(g, endSnapped - start)
   return {
     midi: Math.max(0, Math.min(127, Math.round(midi))),
@@ -78,4 +81,102 @@ export function buildInsertedNote(
     velocity: Math.max(0.01, Math.min(1, velocity)),
     isPercussion: false,
   }
+}
+
+// ── Zoomable-editor viewport ──────────────────────────────────────────────────
+// The modal editor (PianoRollEditor.vue) draws at an explicit scale + scroll rather
+// than fitting the whole file to the card. These transforms are the single source of
+// truth for that surface's note↔pixel math (kept here so they're unit-tested without a
+// DOM). Coordinates are canvas-buffer pixels; the note grid begins at (gutterW, rulerH),
+// and content scrolls under it by (scrollX, scrollY).
+export interface RollViewport {
+  pxPerBeat: number       // horizontal zoom
+  pxPerSemitone: number   // vertical zoom
+  scrollX: number         // content px scrolled left of the grid origin
+  scrollY: number         // content px scrolled above the grid origin
+  topPitch: number        // MIDI pitch drawn at the top grid row
+  secondsPerBeat: number  // file tempo — seconds ↔ beats
+  gutterW: number         // left keyboard-gutter width (px)
+  rulerH: number          // top ruler height (px)
+}
+
+/** Beat number → canvas x (grid origin at gutterW, minus horizontal scroll). */
+export function beatToX(beat: number, vp: RollViewport): number {
+  return vp.gutterW - vp.scrollX + beat * vp.pxPerBeat
+}
+
+/** Canvas x → beat number (inverse of beatToX), clamped ≥ 0. */
+export function xToBeat(px: number, vp: RollViewport): number {
+  if (vp.pxPerBeat <= 0) return 0
+  return Math.max(0, (px - vp.gutterW + vp.scrollX) / vp.pxPerBeat)
+}
+
+/** Seconds → canvas x. */
+export function timeToX(sec: number, vp: RollViewport): number {
+  return beatToX(vp.secondsPerBeat > 0 ? sec / vp.secondsPerBeat : 0, vp)
+}
+
+/** Canvas x → seconds, clamped ≥ 0. */
+export function xToTime(px: number, vp: RollViewport): number {
+  return xToBeat(px, vp) * vp.secondsPerBeat
+}
+
+/** MIDI pitch → canvas y (top row = topPitch; each semitone is pxPerSemitone tall). */
+export function pitchToY(midi: number, vp: RollViewport): number {
+  return vp.rulerH - vp.scrollY + (vp.topPitch - midi) * vp.pxPerSemitone
+}
+
+/** Canvas y → MIDI pitch (inverse of pitchToY), rounded + clamped to the MIDI range. */
+export function yToPitch(py: number, vp: RollViewport): number {
+  if (vp.pxPerSemitone <= 0) return vp.topPitch
+  const midi = vp.topPitch - (py - vp.rulerH + vp.scrollY) / vp.pxPerSemitone
+  return Math.max(0, Math.min(127, Math.round(midi)))
+}
+
+/** Pixel rect of a note in the zoomable editor — the forward transform the editor
+ *  both draws and hit-tests against (mirrors PianoRoll's `noteRect`). A percussion
+ *  note is a fixed-height diamond-ish bar on its pitch row. */
+export function noteRectZoom(note: ParsedNote, vp: RollViewport): { x: number; y: number; w: number; h: number } {
+  const x = timeToX(note.time, vp)
+  const w = Math.max(2, (note.duration / (vp.secondsPerBeat || 1)) * vp.pxPerBeat)
+  const y = pitchToY(note.midi, vp)
+  return { x, y, w, h: Math.max(3, vp.pxPerSemitone - 1) }
+}
+
+const _NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+
+/** MIDI number → scientific pitch name, e.g. 60 → "C4", 61 → "C#4". */
+export function midiToNoteName(midi: number): string {
+  const pc = ((midi % 12) + 12) % 12
+  const octave = Math.floor(midi / 12) - 1
+  return `${_NOTE_NAMES[pc]}${octave}`
+}
+
+/** True for the five black keys of the octave — used to shade the keyboard gutter. */
+export function isBlackKey(midi: number): boolean {
+  return [1, 3, 6, 8, 10].includes(((midi % 12) + 12) % 12)
+}
+
+/** Velocity lane y (canvas px) → velocity 0..1. The lane fills bottom-up: a hit at the
+ *  lane's bottom edge is ~0, the top edge ~1. Clamped to an audible floor. */
+export function velocityFromLaneY(py: number, laneTop: number, laneH: number): number {
+  if (laneH <= 0) return 0.7
+  const v = (laneTop + laneH - py) / laneH
+  return Math.max(0.02, Math.min(1, v))
+}
+
+/** Snap a drag delta (seconds) to the grid — used when moving a group of notes so they
+ *  shift by whole grid steps and stay aligned. */
+export function snapDelta(deltaSec: number, secondsPerBeat: number, division = 0.25): number {
+  const g = gridSeconds(secondsPerBeat, division)
+  if (g <= 0) return deltaSec
+  return Math.round(deltaSec / g) * g
+}
+
+/** Axis-aligned rectangle overlap (used to hit-test notes against a marquee box). */
+export function rectsOverlap(
+  ax: number, ay: number, aw: number, ah: number,
+  bx: number, by: number, bw: number, bh: number,
+): boolean {
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by
 }

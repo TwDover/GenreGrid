@@ -120,10 +120,17 @@
             </template>
             <span class="export-kind export-kind-midi">MIDI</span>
             <button
+              v-if="response.files.some(f => f.part === 'combined')"
+              class="btn btn-sm"
+              :disabled="zipLoading === `${response.generation_id}:multitrack`"
+              @click.stop="handleMultitrackDownload(response)"
+              title="One labeled multitrack MIDI — a track per part with correct instruments; drops straight onto a DAW timeline"
+            >{{ zipLoading === `${response.generation_id}:multitrack` ? '…' : 'Multitrack (.mid)' }}</button>
+            <button
               class="btn btn-sm"
               :disabled="zipLoading === `${response.generation_id}:bundle`"
               @click.stop="handleZipDownload(response, 'bundle')"
-              title="Download all parts as MIDI (ZIP)"
+              title="Download all parts as separate MIDI files (ZIP)"
             >{{ zipLoading === `${response.generation_id}:bundle` ? '…' : 'All parts (ZIP)' }}</button>
             <button
               v-if="response.summary.mode === 'arrangement'"
@@ -200,7 +207,7 @@ import QualityBadge from './QualityBadge.vue'
 import ArrangementBuilder from './ArrangementBuilder.vue'
 import type { GenerateResponse, FileInfo } from '../types/midi'
 import { errorMessage } from '../utils/errors'
-import { regeneratePart, saveToLibrary, bundleUrl, sectionsUrl } from '../services/api'
+import { regeneratePart, saveToLibrary, bundleUrl, sectionsUrl, downloadUrl } from '../services/api'
 import { useMidiPlayer, type PlayerPart } from '../composables/useMidiPlayer'
 import { useDownloadPrompt } from '../composables/useDownloadPrompt'
 import { useRenderQueue } from '../composables/useRenderQueue'
@@ -453,6 +460,33 @@ async function handleOfflineExport(response: GenerateResponse, mode: 'wav' | 'st
     exportingId.value = null
     exportProgress.value = 0
     exportStem.value = null
+  }
+}
+
+// Single labeled multitrack .mid (the combined file) — a track per part with GM
+// programs, names, key/tempo. The cleanest DAW handoff: one file, not N stems.
+async function handleMultitrackDownload(response: GenerateResponse) {
+  const combined = response.files.find(f => f.part === 'combined')
+  if (!combined) return
+  const key = `${response.generation_id}:multitrack`
+  if (zipLoading.value === key) return
+  const defaultName = `${response.style}_${response.generation_id.slice(0, 8)}`
+  const name = await promptFilename(defaultName, 'mid', 'Download multitrack MIDI')
+  if (name === null) return   // cancelled
+
+  zipLoading.value = key
+  const jobId = startJob(`${formatStyle(response.style)} — ${name}`, `${name}.mid`)
+  try {
+    const res = await fetch(downloadUrl(combined.url))
+    if (!res.ok) throw new Error('Download failed')
+    const blob = await res.blob()
+    completeJob(jobId, blob)
+  } catch (e) {
+    failJob(jobId, errorMessage(e) ?? 'Download failed')
+    regenError.value = errorMessage(e) ?? 'Download failed'
+    logError('Multitrack download', e)
+  } finally {
+    zipLoading.value = null
   }
 }
 

@@ -170,6 +170,7 @@ class BuildSongRequest(BaseModel):
     blend_amount: float = Field(default=0.5, ge=0.0, le=1.0)
     dj_edit: bool = False   # prepend/append an 8-bar beat-only (drums+bass) DJ intro/outro for mixing
     progression_override: Optional[List[str]] = Field(default=None, max_length=32)  # pin an explicit roman-numeral progression, bypassing the style pool
+    progression_text: Optional[str] = Field(default=None, max_length=200)  # free-typed roman numerals or chord names ("Am F C G"); parsed server-side into progression_override
 
 
 class RegenerateSongPartRequest(BaseModel):

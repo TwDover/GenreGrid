@@ -18,7 +18,8 @@ from app.models.schemas import (BuildSongRequest, SongSectionDef,
                                 RegenerateSongPartRequest, RestoreSongVersionRequest)
 from app.api.routes_song import (build_song, regenerate_song_part,
                                      list_song_versions, restore_song_version,
-                                     regenerate_song_section, build_song_from_melody)
+                                     regenerate_song_section, build_song_from_melody,
+                                     build_song_from_groove)
 from app.services.midi_writer import NoteEvent, write_midi
 from app.services.melody_import import parse_melody_midi, detect_key, derive_progression, fit_melody_to_bars
 
@@ -234,6 +235,115 @@ def test_build_song_from_melody_end_to_end():
     # Regenerating a part replays the hook context without error
     fi = regenerate_song_part(RegenerateSongPartRequest(generation_id=r.generation_id, part="drums"))
     assert fi.part == "drums"
+
+
+# ── Seed from a progression (5.4a) ───────────────────────────────────────────
+
+def test_build_song_with_progression_text_pins_harmony():
+    """A typed progression (roman OR chord names) becomes the song's harmony,
+    bypassing the style pool; a bad token is rejected with 400."""
+    import pytest
+    from fastapi import HTTPException
+
+    r = build_song(BuildSongRequest(
+        style_id="lofi", key="A", scale="minor", bpm=90, template="minimal",
+        parts=["chords", "bass"], seed=71, use_priors=False,
+        progression_text="Am F C G"))
+    assert r.progression == ["i", "bVI", "bIII", "bVII"]   # A-minor chord names → romans
+
+    r2 = build_song(BuildSongRequest(
+        style_id="lofi", key="A", scale="minor", bpm=90, template="minimal",
+        parts=["chords", "bass"], seed=71, use_priors=False,
+        progression_text="i VI iv v"))
+    assert r2.progression == ["i", "VI", "iv", "v"]
+
+    with pytest.raises(HTTPException) as exc:
+        build_song(BuildSongRequest(
+            style_id="lofi", key="C", scale="major", bpm=90, template="minimal",
+            parts=["chords"], seed=71, use_priors=False, progression_text="C Zzz G"))
+    assert exc.value.status_code == 400
+
+
+# ── Seed from a groove (5.4b) ─────────────────────────────────────────────────
+
+def _groove_bytes(kick_beats=(0, 2), snare_beats=(1, 3), bars=4) -> bytes:
+    """A synthetic GM drum groove (channel 9): kick/snare on the given beats plus
+    steady 8th-note closed hats, as MIDI bytes."""
+    mid = mido.MidiFile(type=1, ticks_per_beat=480)
+    t = mido.MidiTrack()
+    mid.tracks.append(t)
+    t.append(mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(120), time=0))
+    events = []   # (start_beat, pitch)
+    for bar in range(bars):
+        b0 = bar * 4
+        for beat in kick_beats:
+            events.append((b0 + beat, 36))
+        for beat in snare_beats:
+            events.append((b0 + beat, 38))
+        for k in range(8):
+            events.append((b0 + k * 0.5, 42))
+    msgs = []
+    for start, pitch in events:
+        tick = int(start * 480)
+        msgs.append((tick, "note_on", pitch))
+        msgs.append((tick + 60, "note_off", pitch))
+    msgs.sort(key=lambda x: x[0])
+    cur = 0
+    for tick, typ, pitch in msgs:
+        t.append(mido.Message(typ, channel=9, note=pitch,
+                              velocity=100 if typ == "note_on" else 0, time=tick - cur))
+        cur = tick
+    buf = io.BytesIO()
+    mid.save(file=buf)
+    return buf.getvalue()
+
+
+def _build_from_groove(data, **kw):
+    from fastapi import UploadFile
+    args = dict(style_id="lofi", key="C", scale="minor", bpm=120, time_signature="4/4",
+                template="minimal", parts="drums,bass", complexity=0.6, variation=0.4,
+                humanize=0.5, use_priors=False, chorus_key_shift=0, final_chorus_lift=0,
+                tempo_automation=0.5, progression_text=None, seed=72)
+    args.update(kw)
+    upload = UploadFile(file=io.BytesIO(data), filename="groove.mid")
+    return asyncio.run(build_song_from_groove(file=upload, **args))
+
+
+def test_build_song_from_groove_end_to_end_and_deterministic():
+    data = _groove_bytes()
+    r = _build_from_groove(data, seed=72)
+    d = EXPORTS_DIR / r.generation_id
+    assert (d / "drums.mid").exists() and (d / "song.mid").exists()
+
+    # Same seed + same groove → byte-identical song (seeded determinism).
+    r2 = _build_from_groove(data, seed=72)
+    assert (EXPORTS_DIR / r2.generation_id / "song.mid").read_bytes() == (d / "song.mid").read_bytes()
+
+
+def test_groove_drives_the_kick_pattern():
+    """A four-on-the-floor upload and a backbeat-only upload produce different
+    kicks — proof the mined groove actually reaches the drum generator."""
+    import hashlib
+    four = _build_from_groove(_groove_bytes(kick_beats=(0, 1, 2, 3)), seed=73)
+    two = _build_from_groove(_groove_bytes(kick_beats=(0, 2)), seed=73)
+    h_four = hashlib.md5((EXPORTS_DIR / four.generation_id / "drums.mid").read_bytes()).hexdigest()
+    h_two = hashlib.md5((EXPORTS_DIR / two.generation_id / "drums.mid").read_bytes()).hexdigest()
+    assert h_four != h_two
+
+
+def test_build_song_from_groove_rejects_non_drum_file():
+    import pytest
+    from fastapi import HTTPException
+    # A pitched melody on channel 0 has no channel-9 drums → 400.
+    with pytest.raises(HTTPException) as exc:
+        _build_from_groove(_melody_bytes())
+    assert exc.value.status_code == 400
+
+
+def test_groove_can_combine_with_a_typed_progression():
+    r = _build_from_groove(_groove_bytes(), seed=74,
+                           key="A", scale="minor", progression_text="Am F C G")
+    assert r.progression == ["i", "bVI", "bIII", "bVII"]
 
 
 # ── Note editing (/edit-part) ────────────────────────────────────────────────

@@ -153,6 +153,7 @@ export interface BuildSongRequest {
   final_chorus_lift?: number
   custom_template?: SongSectionDef[]
   progression_override?: string[]   // pin an explicit roman-numeral progression
+  progression_text?: string         // free-typed romans or chord names ("Am F C G"); parsed server-side
   blend_style_id?: string           // optional second style to blend with style_id
   blend_amount?: number             // 0..1 mix toward blend_style_id
 }

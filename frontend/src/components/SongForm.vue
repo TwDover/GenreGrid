@@ -215,6 +215,28 @@
               <button v-if="melodyFile" class="btn btn-icon melody-clear" @click="clearMelodyFile" title="Remove file">✕</button>
             </div>
           </div>
+
+          <div class="field">
+            <label>Seed from a progression
+              <span class="hint">roman numerals or chord names, e.g. <code>i VI III VII</code> or <code>Am F C G</code></span>
+            </label>
+            <input
+              v-model="form.progression_text"
+              type="text"
+              class="prog-input"
+              :disabled="!!melodyFile"
+              :placeholder="melodyFile ? 'derived from your melody' : 'e.g. Am F C G'"
+              title="Pins the song's harmony, bypassing the style's progression pool. Left blank, the style picks the progression."
+            />
+          </div>
+
+          <div class="field">
+            <label>Seed from a groove <span class="hint">an uploaded drum .mid sets the feel + kick/snare</span></label>
+            <div class="melody-row">
+              <input ref="grooveInput" type="file" accept=".mid,.midi" class="melody-file" @change="onGrooveFile" />
+              <button v-if="grooveFile" class="btn btn-icon melody-clear" @click="clearGrooveFile" title="Remove file">✕</button>
+            </div>
+          </div>
         </section>
       </div>
     </details>
@@ -225,6 +247,7 @@
         <span v-if="loading" class="sb-spinner">●</span>
         <span v-if="loading">Building song…</span>
         <span v-else-if="melodyFile">Build Song Around My Melody</span>
+        <span v-else-if="grooveFile">Build Song On My Groove</span>
         <span v-else>Build Full Song</span>
       </button>
       <div v-if="error" class="sb-error">{{ error }}</div>
@@ -236,7 +259,7 @@
 import { ref, computed, watch } from 'vue'
 import type { StyleInfo, BuildSongRequest, BuildSongResponse } from '../types/midi'
 import { errorMessage } from '../utils/errors'
-import { buildSong, buildSongFromMelody } from '../services/api'
+import { buildSong, buildSongFromMelody, buildSongFromGroove } from '../services/api'
 import { logError } from '../composables/useErrorLog'
 
 const props = defineProps<{ styles: StyleInfo[] }>()
@@ -342,6 +365,7 @@ const form = ref({
   tempo_automation: 0.5,
   blend_style_id: '' as string,
   blend_amount: 0.5,
+  progression_text: '',
 })
 
 // Custom template editor state — seeded with a sensible starting arrangement.
@@ -395,6 +419,18 @@ function clearMelodyFile() {
   if (melodyInput.value) melodyInput.value.value = ''
 }
 
+// ── Groove import ────────────────────────────────────────────────────────────
+const grooveInput = ref<HTMLInputElement | null>(null)
+const grooveFile = ref<File | null>(null)
+
+function onGrooveFile(e: Event) {
+  grooveFile.value = (e.target as HTMLInputElement).files?.[0] ?? null
+}
+function clearGrooveFile() {
+  grooveFile.value = null
+  if (grooveInput.value) grooveInput.value.value = ''
+}
+
 async function generate() {
   loading.value = true
   error.value = null
@@ -417,8 +453,32 @@ async function generate() {
       emit('built', result, `${templateLabel.value} (your melody)`)
       return
     }
+    if (grooveFile.value) {
+      // Drums play the uploaded groove's feel; harmony/melody come from the
+      // style (optionally pinned by the typed progression).
+      const result = await buildSongFromGroove(grooveFile.value, {
+        style_id: form.value.style_id,
+        key: form.value.key,
+        scale: form.value.scale,
+        bpm: form.value.bpm,
+        time_signature: form.value.time_signature,
+        template: form.value.template === 'custom' ? 'verse_chorus' : form.value.template,
+        parts: form.value.parts,
+        complexity: form.value.complexity,
+        variation: form.value.variation,
+        humanize: form.value.humanize,
+        use_priors: form.value.use_priors,
+        chorus_key_shift: form.value.chorus_key_shift,
+        final_chorus_lift: form.value.final_chorus_lift,
+        tempo_automation: form.value.tempo_automation,
+        progression_text: form.value.progression_text || undefined,
+      })
+      emit('built', result, `${templateLabel.value} (your groove)`)
+      return
+    }
     const payload: BuildSongRequest = { ...form.value }
     if (!payload.blend_style_id) delete payload.blend_style_id
+    if (!payload.progression_text) delete payload.progression_text
     if (form.value.template === 'custom') {
       payload.custom_template = customSections.value.map((s, i) => ({
         section_type: s.section_type,
@@ -523,4 +583,7 @@ async function generate() {
   color: var(--accent); padding: 0.3rem 0.6rem; cursor: pointer; margin-right: 0.5rem;
 }
 .melody-clear:hover { color: var(--bad); border-color: var(--bad); }
+.prog-input { width: 100%; font-family: var(--f-mono); font-size: var(--t-meta); }
+.prog-input:disabled { opacity: 0.5; cursor: not-allowed; }
+.field label code { font-family: var(--f-mono); font-size: 0.92em; color: var(--accent); }
 </style>

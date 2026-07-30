@@ -26,7 +26,7 @@
           <span class="sr-meta">{{ styleName }} · {{ result.total_bars }} bars · {{ result.bpm }} BPM · {{ result.key }}</span>
         </div>
         <div class="sr-actions">
-          <button class="sr-dl-btn" @click="download">↓ .mid</button>
+          <button class="sr-dl-btn" @click="download" title="One labeled multitrack MIDI — a track per part with correct instruments, section markers, and key/tempo; drops straight onto a DAW timeline">↓ .mid</button>
           <button class="sr-dl-btn" :disabled="renderingWav" @click="exportSongWav" :title="wavError || 'Render and download the full song as WAV — see the ⬇ header button for progress from anywhere'">
             <span v-if="renderingWav">{{ Math.round(wavProgress * 100) }}%</span>
             <span v-else>↓ .wav</span>

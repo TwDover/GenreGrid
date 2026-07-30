@@ -203,6 +203,24 @@ in the roadmap as a verified checkpoint.
   lightweight changelog/what's-new surface helps discoverability now that the feature set is
   deep. **Effort:** S.
 
+### 7.6 (new) Live playback-tempo control — "dial in the groove"
+- **Why:** BPM is only settable *before* generation (SongForm / GenerateForm), and changing it
+  regenerates the whole thing. A user auditioning a loop or shaping a part in the piano-roll
+  editor often just wants to *nudge the tempo and feel it* — speed a lofi beat up, drag a 7/8
+  groove slower — without a re-roll. There's now a transport in both the app
+  ([`TransportBar.vue`](../frontend/src/components/TransportBar.vue)) and the roll editor
+  ([`PianoRollEditor.vue`](../frontend/src/components/PianoRollEditor.vue)), so this fits right in.
+- **Approach:** a **non-destructive** playback-tempo control (a small BPM scrubber / ± next to the
+  transport, and one in the editor toolbar) that just sets `Tone.getTransport().bpm` — playback
+  only, no regeneration. Show it relative to the generated BPM (e.g. "105 → 118") with a reset.
+  Keep it distinct from the form's BPM (which *does* regenerate). Optional follow-up: an "apply
+  tempo" that bakes the chosen tempo into the export/stems (WAV render already renders at the
+  transport tempo; MIDI export would rewrite the tempo meta) — but the core win is the live feel.
+- **Entry:** `TransportBar.vue`, `PianoRollEditor.vue` (its `▶` transport already drives
+  `Tone.getTransport()`), `useMidiPlayer` (expose a `setPlaybackBpm`). **Effort:** S.
+  **Risk:** keep the seeded-determinism invariant — a live tempo change must not alter generated
+  note data; it's a transport speed only, and export stays byte-identical unless "apply" is used.
+
 ---
 
 ## Phase 8 — Bigger bets (spike, then decide)

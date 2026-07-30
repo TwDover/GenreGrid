@@ -172,6 +172,42 @@ export async function buildSongFromMelody(
   return res.json()
 }
 
+export async function buildSongFromGroove(
+  file: File,
+  params: {
+    style_id: string; key: string; scale: string; bpm: number
+    time_signature?: string; template: string; parts: string[]
+    complexity: number; variation: number; humanize: number
+    use_priors?: boolean; chorus_key_shift?: number; final_chorus_lift?: number
+    tempo_automation?: number; progression_text?: string; seed?: number
+  },
+): Promise<BuildSongResponse> {
+  const fd = new FormData()
+  fd.append('file', file)
+  fd.append('style_id', params.style_id)
+  fd.append('key', params.key)
+  fd.append('scale', params.scale)
+  fd.append('bpm', String(params.bpm))
+  fd.append('time_signature', params.time_signature ?? '4/4')
+  fd.append('template', params.template)
+  fd.append('parts', params.parts.join(','))
+  fd.append('complexity', String(params.complexity))
+  fd.append('variation', String(params.variation))
+  fd.append('humanize', String(params.humanize))
+  fd.append('use_priors', String(params.use_priors ?? false))
+  fd.append('chorus_key_shift', String(params.chorus_key_shift ?? 0))
+  fd.append('final_chorus_lift', String(params.final_chorus_lift ?? 1))
+  fd.append('tempo_automation', String(params.tempo_automation ?? 0.5))
+  if (params.progression_text) fd.append('progression_text', params.progression_text)
+  if (params.seed != null) fd.append('seed', String(params.seed))
+  const res = await fetch(`${BASE_URL}/build-song-from-groove`, { method: 'POST', body: fd })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Groove import failed')
+  }
+  return res.json()
+}
+
 export async function setPartGain(req: { generation_id: string; part: string; gain: number }): Promise<FileInfo> {
   const res = await fetch(`${BASE_URL}/set-part-gain`, {
     method: 'POST',
