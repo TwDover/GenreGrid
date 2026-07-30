@@ -85,6 +85,11 @@
       title="Manage custom instruments (upload your own samples)"
       @click="instrumentsPanelOpen = true"
     >🎹</button>
+    <button
+      class="tb-instr-btn"
+      title="Design a synth voice"
+      @click="openDesigner"
+    >🎛</button>
 
     <!-- Volume -->
     <div class="tb-volume">
@@ -106,6 +111,7 @@
 import { computed } from 'vue'
 import { useMidiPlayer, PLAYER_PARTS, type PlayerPart } from '../composables/useMidiPlayer'
 import { useCustomInstruments } from '../composables/useCustomInstruments'
+import { useSynthDesigner } from '../composables/useSynthDesigner'
 
 const {
   currentlyPlaying, nowPlayingLabel, isLoading, isRecording,
@@ -115,6 +121,7 @@ const {
 } = useMidiPlayer()
 
 const { panelOpen: instrumentsPanelOpen, supported: instrumentsSupported } = useCustomInstruments()
+const { openDesigner } = useSynthDesigner()
 
 const isIdle = computed(() => !currentlyPlaying.value && !isLoading.value)
 

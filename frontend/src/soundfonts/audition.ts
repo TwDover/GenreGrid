@@ -10,10 +10,11 @@
  */
 import * as Tone from 'tone'
 import { LayeredSampler, type LayeredSamplerManifest } from './layeredSampler'
-import { getDrumBus } from './loader'
+import { getDrumBus, getMelodicBus } from './loader'
 import { makeSynthKit, type SynthKit } from './synthDrums'
 import { drumCharacterForStyle } from './drums'
 import { KIT_ROOT } from './customInstruments'
+import { buildSynthFromPatch, type SynthPatch } from './synthPatch'
 
 // ── One-shot audition for the kit editor ─────────────────────────────────────
 // The kit editor is otherwise silent, so a file landing on the wrong drum only
@@ -64,4 +65,39 @@ export function disposeAudition(): void {
     for (const node of kit.nodes) node.dispose()
   }
   synthByCharacter.clear()
+}
+
+// ── Live audition for the synth designer ─────────────────────────────────────
+// The designer needs to hear the patch it's editing on a keyboard. We keep ONE
+// throwaway voice built from the current patch (via the same buildSynthFromPatch a
+// track uses, so it sounds exactly like playback), rebuilt only when the patch
+// actually changes — dragging a slider then hitting a key rebuilds once, not on
+// every input event. The preview routes through the shared melodic bus so its
+// chorus/delay match a real render.
+
+let previewNodes: Tone.ToneAudioNode[] = []
+let previewVoice: Tone.PolySynth | Tone.MonoSynth | null = null
+let previewSig = ''
+
+/** Play `note` on the patch under design, rebuilding the preview voice first if the
+ *  patch changed since the last note. `note` is a scientific-pitch name (e.g. "C4"). */
+export async function auditionPatchNote(patch: SynthPatch, note: string, velocity = 0.85): Promise<void> {
+  await Tone.start()
+  const sig = JSON.stringify(patch)
+  if (!previewVoice || sig !== previewSig) {
+    disposeSynthPreview()
+    previewNodes = []
+    previewVoice = buildSynthFromPatch(patch, previewNodes, getMelodicBus())
+    previewSig = sig
+  }
+  previewVoice.triggerAttackRelease(note, '8n', Tone.now(), velocity)
+}
+
+/** Free the designer's preview voice. Call when the designer closes so its nodes
+ *  don't linger in the audio graph. */
+export function disposeSynthPreview(): void {
+  for (const node of previewNodes) node.dispose()
+  previewNodes = []
+  previewVoice = null
+  previewSig = ''
 }
