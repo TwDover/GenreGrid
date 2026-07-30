@@ -8,7 +8,36 @@ on:
     branches: [main]
 
 jobs:
+  # ── Guard: a version tag must match frontend/package.json ────────────────────
+  # electron-builder stamps package.json's version into the installer names and
+  # latest.yml. If a `vX.Y.Z` tag is pushed without bumping package.json first,
+  # the release ships mislabeled binaries (e.g. a v0.2.1 release containing 0.2.0
+  # files) and auto-update silently never offers it. Fail fast here so the builds
+  # below never run on a mismatched tag. Skipped on branch/PR builds (no tag).
+  verify-tag:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tag must match frontend/package.json version
+        run: |
+          PKG_VERSION="$(node -p "require('./frontend/package.json').version")"
+          TAG="${GITHUB_REF_NAME}"
+          echo "package.json version: $PKG_VERSION"
+          echo "git tag:              $TAG"
+          if [ "$TAG" != "v$PKG_VERSION" ]; then
+            echo "::error::Tag $TAG does not match frontend/package.json version $PKG_VERSION (expected tag v$PKG_VERSION). Bump the version, commit, then re-tag."
+            exit 1
+          fi
+          echo "✓ Tag matches package.json — releasing v$PKG_VERSION"
+
   build-linux:
+    # Gate on verify-tag. The explicit `if` is required because a *skipped*
+    # dependency (branch/PR builds, where verify-tag's own `if` is false) would
+    # otherwise skip this job too — so run when verify-tag passed OR was skipped,
+    # and only block when it actually failed (a mismatched tag).
+    needs: [verify-tag]
+    if: ${{ needs.verify-tag.result == 'success' || needs.verify-tag.result == 'skipped' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -74,6 +103,8 @@ jobs:
           retention-days: 1
 
   build-windows:
+    needs: [verify-tag]
+    if: ${{ needs.verify-tag.result == 'success' || needs.verify-tag.result == 'skipped' }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -129,6 +160,8 @@ jobs:
     # increasingly just sit queued with no runner ever assigned until GitHub
     # auto-cancels them at the 24h mark — not something fixable from this repo.
     # Intel Mac users can build from source instead (see README).
+    needs: [verify-tag]
+    if: ${{ needs.verify-tag.result == 'success' || needs.verify-tag.result == 'skipped' }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
