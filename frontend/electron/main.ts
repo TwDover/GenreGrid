@@ -295,29 +295,65 @@ async function createWindow(): Promise<void> {
 }
 
 // ── Auto-update ──────────────────────────────────────────────────────────────
+// Push an update lifecycle event to every renderer window so the header's
+// Updates button can show live progress ("Updating… 42%"), a ready-to-restart
+// state, or a failure — instead of looking hung when a download stalls or fails.
+type UpdateStatus =
+  | { phase: 'progress'; percent: number }
+  | { phase: 'ready'; version: string }
+  | { phase: 'error'; message: string }
+function broadcastUpdateStatus(status: UpdateStatus): void {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send('update-status', status)
+  }
+}
+
+// Registers the autoUpdater event handlers exactly once (the manual
+// "check-for-updates" IPC path shares this same singleton, so its background
+// download fires these too). Idempotent — guarded by _updateHandlersBound.
+let _updateHandlersBound = false
+async function bindUpdaterEvents(): Promise<typeof import('electron-updater').autoUpdater> {
+  const { autoUpdater } = await import('electron-updater')
+  if (_updateHandlersBound) return autoUpdater
+  _updateHandlersBound = true
+  autoUpdater.autoDownload = true
+  // Progress: the installer bundles the whole backend (~hundreds of MB), so a
+  // download can take minutes — surface percent instead of silence.
+  autoUpdater.on('download-progress', (p) => {
+    broadcastUpdateStatus({ phase: 'progress', percent: Math.round(p.percent) })
+  })
+  // Failure: electron-updater fires 'error' on a stalled/failed/checksum-mismatch
+  // download. Previously nothing listened, so the restart dialog just never came.
+  autoUpdater.on('error', (err) => {
+    console.error('Auto-update error:', err)
+    broadcastUpdateStatus({ phase: 'error', message: String(err?.message ?? err) })
+  })
+  autoUpdater.on('update-downloaded', (info) => {
+    broadcastUpdateStatus({ phase: 'ready', version: info.version })
+    const choice = dialog.showMessageBoxSync({
+      type: 'info',
+      buttons: ['Restart now', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+      message: `GenreGrid ${info.version} is ready`,
+      detail: 'The update has been downloaded. Restart to apply it — or keep working and it installs on next launch.',
+    })
+    if (choice === 0) {
+      backendShutdownExpected = true
+      autoUpdater.quitAndInstall()
+    }
+  })
+  return autoUpdater
+}
+
 // Checks GitHub Releases (electron-builder publish config) for a newer version,
 // downloads it in the background, and offers a restart. Skipped on macOS: the
 // builds are unsigned and Squirrel.Mac refuses unsigned updates — Mac users
-// update via the Releases page. Failures are logged, never surfaced as errors.
+// update via the Releases page. Failures are logged and now surfaced to the UI.
 async function setupAutoUpdate(): Promise<void> {
   if (!app.isPackaged || process.platform === 'darwin') return
   try {
-    const { autoUpdater } = await import('electron-updater')
-    autoUpdater.autoDownload = true
-    autoUpdater.on('update-downloaded', (info) => {
-      const choice = dialog.showMessageBoxSync({
-        type: 'info',
-        buttons: ['Restart now', 'Later'],
-        defaultId: 0,
-        cancelId: 1,
-        message: `GenreGrid ${info.version} is ready`,
-        detail: 'The update has been downloaded. Restart to apply it — or keep working and it installs on next launch.',
-      })
-      if (choice === 0) {
-        backendShutdownExpected = true
-        autoUpdater.quitAndInstall()
-      }
-    })
+    const autoUpdater = await bindUpdaterEvents()
     await autoUpdater.checkForUpdates()
   } catch (err) {
     console.error('Auto-update check failed (non-fatal):', err)
@@ -332,7 +368,7 @@ ipcMain.handle('check-for-updates', async () => {
   if (!app.isPackaged) return { status: 'dev', version }
   if (process.platform === 'darwin') return { status: 'unsupported', version }
   try {
-    const { autoUpdater } = await import('electron-updater')
+    const autoUpdater = await bindUpdaterEvents()
     const result = await autoUpdater.checkForUpdates()
     const latest = result?.updateInfo?.version
     if (latest && latest !== version) return { status: 'downloading', version, latest }

@@ -294,6 +294,27 @@ async function checkForUpdates() {
   }
 }
 
+// Live background update status pushed from the main process (download progress,
+// ready-to-restart, or a failure), so the Updates button never looks hung — it
+// shows a percentage while downloading and surfaces a failure instead of silence.
+let _offUpdateStatus: (() => void) | null = null
+onMounted(() => {
+  if (!isElectron) return
+  _offUpdateStatus = window.electronAPI!.onUpdateStatus((s) => {
+    if (s.phase === 'progress') {
+      updateLabel.value = `↓ ${s.percent}%`
+      updateMessage.value = `Downloading update — ${s.percent}%`
+    } else if (s.phase === 'ready') {
+      updateLabel.value = 'Restart to update'
+      updateMessage.value = `v${s.version} downloaded — restart to apply (a prompt is also open)`
+    } else {
+      updateLabel.value = 'Update failed'
+      updateMessage.value = `${s.message} — grab the latest from the GitHub Releases page instead`
+    }
+  })
+})
+onUnmounted(() => { _offUpdateStatus?.() })
+
 const styles = ref<StyleInfo[]>([])
 const loading = ref(false)
 const batchLoading = ref(false)

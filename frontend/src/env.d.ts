@@ -21,6 +21,9 @@ interface ElectronAPI {
   ) => Promise<{ saved: boolean; path?: string }>
   startDrag: (filePath: string) => void
   checkForUpdates: () => Promise<{ status: string; version: string; latest?: string; message?: string }>
+  onUpdateStatus: (
+    cb: (status: { phase: 'progress'; percent: number } | { phase: 'ready'; version: string } | { phase: 'error'; message: string }) => void,
+  ) => () => void
   logRendererError: (entry: { timestamp: string; context: string; message: string; stack?: string }) => Promise<void>
 
   /** User custom-instrument storage (see docs/custom-instruments-design.md). Audio
