@@ -30,6 +30,7 @@ from app.models.schemas import (FileInfo, BuildSongRequest, BuildSongResponse,
                                 RollSongPartRequest, SongPartCandidate, KeepSongPartCandidateRequest,
                                 RebuildSongProgressionRequest)
 from app.services.style_loader import load_style
+from app.services.progression_import import parse_progression, ROMAN_TOKEN_RE
 from app.services.midi_writer import (NoteEvent, write_midi, rebuild_combined_from_parts, mido_key_signature)
 from app.core.config import EXPORTS_DIR
 from app.core.meter import parse_meter
@@ -55,12 +56,22 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 @router.post("/build-song", response_model=BuildSongResponse)
 def build_song(req: BuildSongRequest):
-    """Generate a full song by stitching independently-generated sections."""
+    """Generate a full song by stitching independently-generated sections.
+
+    A free-typed `progression_text` (roman numerals or chord names) is parsed into
+    the `progression_override` seam so the song is built on the user's harmony,
+    bypassing the style's progression pool (mirrors the melody-import derivation).
+    """
+    if req.progression_text and req.progression_text.strip():
+        try:
+            req.progression_override = parse_progression(req.progression_text, req.key, req.scale)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     return _do_build_song(req)
 
 
-_ROMAN_TOKEN_RE = re.compile(
-    r'^[b#]?(VII|VI|IV|V|III|II|I|vii|vi|iv|v|iii|ii|i)(maj7|m7b5|dim7|dim|aug|sus[24]|add\d+|m?6|m?7|m?9|\+)?$')
+# Single-token roman validator, shared with progression_import.
+_ROMAN_TOKEN_RE = ROMAN_TOKEN_RE
 
 
 @router.post("/rebuild-song-progression", response_model=BuildSongResponse)
@@ -110,9 +121,13 @@ def rebuild_song_progression(req: RebuildSongProgressionRequest):
 
 
 def _do_build_song(req: BuildSongRequest, user_progression: list[str] | None = None,
-                   hook_melody: list[NoteEvent] | None = None) -> BuildSongResponse:
+                   hook_melody: list[NoteEvent] | None = None,
+                   groove_override: dict | None = None) -> BuildSongResponse:
     """Shared song-build core. `user_progression`/`hook_melody` come from the
-    melody-import endpoint: the song is built around the user's uploaded idea."""
+    melody-import endpoint: the song is built around the user's uploaded idea.
+    `groove_override` — a mined groove (derived drum fields + feel) from the
+    groove-import endpoint; overlaid onto the style so the drums play the user's
+    uploaded feel."""
     try:
         style = load_style(req.style_id)
     except ValueError as e:
@@ -141,6 +156,19 @@ def _do_build_song(req: BuildSongRequest, user_progression: list[str] | None = N
                        if req.custom_template else None)
     style = _blend_styles(style, getattr(req, "blend_style_id", None), getattr(req, "blend_amount", 0.5))
     style = {**style, "_humanize_scale": req.humanize}
+
+    # Overlay an uploaded groove's mined drum fields + feel onto the style. The
+    # "__uploaded__" sentinel names a groove with no file on disk, so the
+    # generator's own _overlay_groove step (priors.groove_fields_for) finds
+    # nothing and leaves this injection intact.
+    if groove_override:
+        derived = groove_override.get("derived") or {}
+        drums = {**style.get("drums", {}), **derived}
+        if groove_override.get("fills"):
+            drums["fills"] = groove_override["fills"]
+        style = {**style, "drums": drums, "groove": "__uploaded__"}
+        if groove_override.get("feel"):
+            style["feel"] = groove_override["feel"]
 
     base_seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
 
@@ -540,6 +568,88 @@ async def build_song_from_melody(
         tempo_automation=tempo_automation,
     )
     return _do_build_song(req, user_progression=progression, hook_melody=melody)
+
+
+def _mine_uploaded_groove(data: bytes) -> dict | None:
+    """Mine a finalized groove (derived drum fields + feel + fills) from an
+    uploaded drum-MIDI file, reusing the corpus miner (app.mining.drums). Returns
+    None if the file has no usable channel-10 drum groove."""
+    import tempfile, os
+    from app.mining.midi_io import read_song
+    from app.mining.drums import (empty_groove, analyze_drum_song,
+                                   analyze_fill_song, finalize_groove)
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".mid", delete=False)
+    try:
+        tmp.write(data)
+        tmp.close()
+        song = read_song(tmp.name)
+    finally:
+        os.unlink(tmp.name)
+
+    groove = empty_groove("__uploaded__")
+    if not analyze_drum_song(song, groove):
+        return None
+    analyze_fill_song(song, groove)          # best-effort: mine one fill if present
+    return finalize_groove(groove)
+
+
+@router.post("/build-song-from-groove", response_model=BuildSongResponse)
+async def build_song_from_groove(
+    file: UploadFile = FastAPIFile(...),
+    style_id: str = Form(...),
+    key: str = Form("C"),
+    scale: str = Form("minor"),
+    bpm: int = Form(120),
+    time_signature: str = Form("4/4"),
+    template: str = Form("verse_chorus"),
+    parts: str = Form("chords,bass,melody,drums,pads"),
+    complexity: float = Form(0.6),
+    variation: float = Form(0.4),
+    humanize: float = Form(0.5),
+    use_priors: bool = Form(False),
+    chorus_key_shift: int = Form(0),
+    final_chorus_lift: int = Form(1),
+    tempo_automation: float = Form(0.5),
+    progression_text: str | None = Form(None),
+    seed: int | None = Form(None),
+):
+    """Build a full song whose drums play an uploaded groove's feel.
+
+    The groove .mid is mined (kick/snare pattern, hat placement, swing, and the
+    per-class microtiming/velocity feel) with the same analyzer the corpus miner
+    uses, then overlaid onto the chosen style's drums. Harmony/melody are still
+    generated by the style (optionally seeded by a typed progression).
+    """
+    data = await file.read()
+    if len(data) > 5_000_000:
+        raise HTTPException(status_code=400, detail="MIDI file too large (5 MB max)")
+    try:
+        groove = _mine_uploaded_groove(data)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Could not parse that file as MIDI")
+    if not groove:
+        raise HTTPException(status_code=400, detail="No usable drum groove found (need channel-10 / GM drums with at least 16 hits)")
+
+    try:
+        load_style(style_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    req = BuildSongRequest(
+        style_id=style_id, key=key, scale=scale, bpm=bpm, time_signature=time_signature,
+        complexity=complexity, variation=variation, humanize=humanize,
+        parts=[p.strip() for p in parts.split(",") if p.strip()],
+        template=template, seed=seed, use_priors=use_priors,
+        chorus_key_shift=chorus_key_shift, final_chorus_lift=final_chorus_lift,
+        tempo_automation=tempo_automation,
+    )
+    if progression_text and progression_text.strip():
+        try:
+            req.progression_override = parse_progression(progression_text, key, scale)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    return _do_build_song(req, groove_override=groove)
 
 
 def _rescale_stem_velocities(path, factor: float) -> None:

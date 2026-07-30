@@ -52,6 +52,28 @@ def test_generate_loop_over_http():
     assert stem.status_code == 200 and stem.content[:4] == b"MThd"
 
 
+def test_combined_midi_is_a_labeled_multitrack_with_key(tmp_path):
+    """The single combined.mid drops onto a DAW timeline: a named track per part,
+    correct GM programs, and a key signature (roadmap-2 5.3)."""
+    import io as _io
+    import mido as _mido
+    r = client.post("/generate", json={
+        "style_id": "lofi", "key": "A", "scale": "minor", "bpm": 90, "bars": 4,
+        "complexity": 0.5, "variation": 0.4, "parts": ["chords", "bass", "melody", "drums"],
+        "mode": "loop", "seed": 5, "humanize": 0.5, "use_priors": False,
+    })
+    assert r.status_code == 200
+    combined = next(f for f in r.json()["files"] if f["part"] == "combined")
+    data = client.get(combined["url"]).content
+    mid = _mido.MidiFile(file=_io.BytesIO(data))
+    named = [tr.name for tr in mid.tracks if tr.name]
+    programs = [m for tr in mid.tracks for m in tr if m.type == "program_change"]
+    keys = [m.key for tr in mid.tracks for m in tr if m.type == "key_signature"]
+    assert len(named) >= 4          # one named track per part
+    assert len(programs) >= 3       # GM programs assigned (drums have no program_change)
+    assert keys == ["Am"]           # A-minor key signature present
+
+
 def test_cors_allows_localhost_but_not_external_sites():
     # A random-port renderer origin (as in the packaged app) is granted
     r = client.options("/generate", headers={

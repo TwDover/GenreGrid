@@ -66,6 +66,18 @@ const _allUnmuted = (): Record<PlayerPart, boolean> =>
 const channelMuted = ref<Record<PlayerPart, boolean>>(_allUnmuted())
 
 
+// Cached single-note preview instruments for the piano-roll editor, keyed by
+// "<styleId>:<part>". Built lazily from the same voice resolution as playback (minus
+// custom instruments / panning) and kept for the session so key clicks are instant.
+type AuditionEntry =
+  | { kind: 'voice'; inst: { triggerAttackRelease: (n: string, d: number, t: number, v: number) => void } }
+  | { kind: 'drums'; kit: { trigger: (p: number, v: number, t: number) => void } }
+const _auditionCache = new Map<string, AuditionEntry>()
+// part → MIDI channel (inverse of CHANNEL_PART; drives voice choice for audition).
+const _PART_CHANNEL: Record<PlayerPart, number> = {
+  chords: 0, bass: 1, melody: 2, arpeggio: 3, pads: 4, counter_melody: 5, drums: 9,
+}
+
 // Abort token — incremented on every new play; stale toggles bail out after each await
 let _playToken = 0
 // Duration of the currently loaded track — used by setLooping to apply loopEnd
@@ -148,7 +160,8 @@ function cleanup() {
 }
 
 export function useMidiPlayer() {
-  async function toggle(url: string, styleId?: string, label?: string, loop?: boolean) {
+  async function toggle(url: string, styleId?: string, label?: string, loop?: boolean,
+                        loopRegion?: { start: number; end: number }) {
     if (currentlyPlaying.value === url) {
       cleanup()
       return
@@ -404,7 +417,14 @@ export function useMidiPlayer() {
       durationSeconds.value = midi.duration
       currentlyPlaying.value = url
 
-      if (looping.value) {
+      // An explicit loop region (the piano-roll editor's loop band) wins over the
+      // whole-clip loop toggle: play only the selected span, repeating.
+      if (loopRegion && loopRegion.end > loopRegion.start) {
+        Tone.getTransport().loop = true
+        Tone.getTransport().loopStart = Math.max(0, loopRegion.start)
+        Tone.getTransport().loopEnd = loopRegion.end
+        Tone.getTransport().seconds = Math.max(0, loopRegion.start)
+      } else if (looping.value) {
         Tone.getTransport().loop = true
         Tone.getTransport().loopStart = 0
         Tone.getTransport().loopEnd = midi.duration
@@ -416,7 +436,7 @@ export function useMidiPlayer() {
       console.log(`[play] transport started — state=${Tone.getTransport().state} seconds=${Tone.getTransport().seconds.toFixed(2)} loop=${looping.value}`)
       startPositionPolling()
 
-      if (!looping.value) {
+      if (!looping.value && !(loopRegion && loopRegion.end > loopRegion.start)) {
         Tone.getTransport().scheduleOnce(() => { cleanup() }, midi.duration + 1)
       }
     } catch (e) {
@@ -438,6 +458,83 @@ export function useMidiPlayer() {
       Tone.getTransport().loopEnd = durationSeconds.value
     }
     Tone.getTransport().loop = v
+  }
+
+  // ── Note audition (piano-roll editor key / insert preview) ──────────────────
+  // Build (once) a preview instrument for a style's part, reusing the same voice
+  // resolution playback uses. Custom instruments and per-part panning are skipped —
+  // a single-note preview doesn't need them — so this can differ slightly from the
+  // mixed playback voice, which is an acceptable trade for instant feedback.
+  async function _buildAudition(styleId: string | undefined, part: PlayerPart): Promise<AuditionEntry> {
+    const key = `${styleId ?? ''}:${part}`
+    const cached = _auditionCache.get(key)
+    if (cached) return cached
+
+    const isSynth = styleId ? SYNTH_STYLES.has(styleId) : false
+    const isMelodicSynth = styleId ? MELODIC_SYNTH_STYLES.has(styleId) : false
+    const isPad = styleId ? PAD_STYLES.has(styleId) : false
+    const isLofi = styleId ? LOFI_STYLES.has(styleId) : false
+    const useSamples = sampleMode.value === 'samples'
+    const nodes: Tone.ToneAudioNode[] = []
+    let entry: AuditionEntry
+
+    if (part === 'drums') {
+      const synthKit = makeSynthKit(drumCharacterForStyle(styleId))
+      entry = { kind: 'drums', kit: makeHybridKit(synthKit, new Map()) }
+    } else if (part === 'bass') {
+      const bassVoice = voiceFor(styleId, 'bass')
+      const sampler = (useSamples && !isSynth && bassVoice && SAMPLED_BASS_VOICES.has(bassVoice))
+        ? await getBassSampler(bassVoice) : null
+      entry = { kind: 'voice', inst: sampler ?? makeSynthBass(nodes) }
+    } else {
+      const channel = _PART_CHANNEL[part] ?? 0
+      const voiceId = voiceFor(styleId, part)
+      const sampler = (useSamples && voiceId && SAMPLED_VOICES.has(voiceId))
+        ? await getMelodicSamplerById(voiceId) : null
+      const piano = (useSamples && !isSynth && !isPad && !isLofi && !isMelodicSynth && !sampler
+        && (part === 'chords' || part === 'melody')) ? await getPianoSampler() : null
+      const kind = resolveMelodicVoiceKind({
+        channel, hasCustom: false, hasSampler: !!sampler, voiceId,
+        isLofi, isSynth, isMelodicSynth, isPad, hasPiano: !!piano,
+      })
+      const bus = getMelodicBus()
+      let inst: Tone.PolySynth | LayeredSampler
+      switch (kind) {
+        case 'sampler':          inst = sampler!; break
+        case 'piano':            inst = piano!; break
+        case 'pad':              inst = makePad(nodes, bus); break
+        case 'strings':          inst = makeStrings(nodes, bus); break
+        case 'arp_pluck':        inst = makeArpPluck(nodes, bus); break
+        case 'lofi':             inst = makeLofiSynth(nodes, bus); break
+        case 'synth_chords':     inst = makeSynthChords(nodes, bus); break
+        case 'melody_lead_soft': inst = makeMelodyLead(true, nodes, bus); break
+        case 'synth_lead':       inst = makeMelodyLead(false, nodes, bus); break
+        default:                 inst = makeMelodyLead(true, nodes, bus); break   // incl. 'custom' (no custom in preview)
+      }
+      entry = { kind: 'voice', inst }
+    }
+    _auditionCache.set(key, entry)
+    return entry
+  }
+
+  /** Warm the preview instrument so the first key click sounds instantly. */
+  function prepareAudition(styleId: string | undefined, part: PlayerPart) {
+    _buildAudition(styleId, part).catch(e => console.warn('[audition] prepare failed', e))
+  }
+
+  /** Play a single pitch on the part's instrument (editor key / note preview). */
+  async function audition(styleId: string | undefined, part: PlayerPart, midi: number,
+                          durationSec = 0.4, velocity = 0.9) {
+    try {
+      await Tone.start()
+      applyVolume(volume.value)
+      const entry = await _buildAudition(styleId, part)
+      const t = Tone.now()
+      if (entry.kind === 'drums') entry.kit.trigger(midi, velocity, t)
+      else entry.inst.triggerAttackRelease(Tone.Frequency(midi, 'midi').toNote(), durationSec, t, velocity)
+    } catch (e) {
+      console.warn('[audition] failed', e)
+    }
   }
 
   async function exportAudio(
@@ -611,5 +708,5 @@ export function useMidiPlayer() {
     ]).catch(() => { /* best-effort, ignore network errors */ })
   }
 
-  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, sampleMode, setSampleMode, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause, cue, playCued, cuedLabel }
+  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, sampleMode, setSampleMode, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause, cue, playCued, cuedLabel, prepareAudition, audition }
 }

@@ -32,6 +32,7 @@
       </button>
       <button v-if="rollable" class="icon-btn roll-btn" :disabled="regenLoading || locked" @click="$emit('roll', file.part)" :title="locked ? 'Locked — unlock to roll' : 'Roll 3 variations to compare and keep one'">×3</button>
       <button v-if="hasUndo" class="icon-btn" @click="$emit('undo')" title="Undo last regeneration">↩</button>
+      <button v-if="editable && midiData" class="icon-btn" @click="showEditor = true" title="Open the full piano-roll editor (zoom, keyboard, grid)">✎</button>
       <button v-if="!simple || lockable" class="icon-btn lock-btn" :class="{ locked }" @click="$emit('toggle-lock', file.part)" :title="locked ? 'Unlock part' : 'Lock part (keeps it when re-rolling sections)'">
         {{ locked ? '🔒' : '🔓' }}
       </button>
@@ -101,6 +102,21 @@
       />
       <div v-else class="roll-empty" />
     </div>
+
+    <PianoRollEditor
+      v-if="showEditor && midiData"
+      ref="editorRef"
+      :notes="midiData.notes"
+      :duration="midiData.duration"
+      :seconds-per-beat="secondsPerBeat"
+      :keyRoot="keyRoot"
+      :scale="scale"
+      :partName="file.part"
+      :styleId="styleId"
+      @notes-changed="onNotesChanged"
+      @save="saveEdits"
+      @close="showEditor = false"
+    />
   </div>
 </template>
 
@@ -118,6 +134,7 @@ import { useRenderQueue } from '../composables/useRenderQueue'
 import { logError } from '../composables/useErrorLog'
 import { instrumentLabel } from '../composables/useStyleCatalog'
 import PianoRoll from './PianoRoll.vue'
+import PianoRollEditor from './PianoRollEditor.vue'
 
 const props = defineProps<{
   file: FileInfo
@@ -172,6 +189,8 @@ function baseName(filename: string): string {
 
 // ── Note editing (song stems) ────────────────────────────────────────────────
 const rollRef = ref<InstanceType<typeof PianoRoll> | null>(null)
+const editorRef = ref<InstanceType<typeof PianoRollEditor> | null>(null)
+const showEditor = ref(false)
 const editedNotes = ref<ParsedNote[] | null>(null)
 const editDirty = ref(false)
 const savingEdits = ref(false)
@@ -216,6 +235,7 @@ async function saveEdits() {
     editDirty.value = false
     editedNotes.value = null
     rollRef.value?.markSaved()
+    editorRef.value?.markSaved()
     emit('edited', props.file.part)   // hand-edited parts auto-lock so a section re-roll won't discard them
     await cacheTempFile(props.file.url)   // re-verify + refresh caches / drag temp file
   } catch (e) {

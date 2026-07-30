@@ -21,7 +21,7 @@ from pydantic import BaseModel
 
 from app.models.schemas import GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, GenerateSummary, QualityScore, BatchGenerateRequest
 from app.services.style_loader import load_style
-from app.services.midi_writer import NoteEvent, write_midi, write_combined_midi, rebuild_combined_from_parts, concatenate_midi_files, read_note_starts
+from app.services.midi_writer import NoteEvent, write_midi, write_combined_midi, rebuild_combined_from_parts, concatenate_midi_files, read_note_starts, mido_key_signature
 from app.core.meter import parse_meter
 from app.generators.chords import generate_chords, resolve_progression
 from app.generators.bass import generate_bass
@@ -183,7 +183,8 @@ def generate(req: GenerateRequest):
         combined_path = output_dir / "combined.mid"
         clean_events = {p: _drop_quiet(_scale_velocity(e, p, _sid)) for p, e in all_events.items()}
         write_combined_midi(clean_events, combined_path, bpm=bpm, programs=programs,
-                           cc_parts=cc_parts, pb_parts=pb_parts, track_names=track_names, meter=meter)
+                           cc_parts=cc_parts, pb_parts=pb_parts, track_names=track_names, meter=meter,
+                           key_signature=mido_key_signature(req.key, req.scale))
         files.append(FileInfo(part="combined", filename="combined.mid", url=f"/exports/{gen_id}/combined.mid"))
 
     # In arrangement mode, also write per-section MIDI files
@@ -320,7 +321,8 @@ def generate_stream(req: GenerateRequest):
             clean = {p: _drop_quiet(_scale_velocity(e, p, _sid)) for p, e in best_events.items()}
             write_combined_midi(clean, combined_path, bpm=bpm, programs=programs,
                                cc_parts=best_cc or {}, pb_parts=best_pb or {},
-                               track_names=track_names, meter=meter)
+                               track_names=track_names, meter=meter,
+                               key_signature=mido_key_signature(req.key, req.scale))
             files.append(FileInfo(part="combined", filename="combined.mid",
                                   url=f"/exports/{gen_id}/combined.mid"))
 
