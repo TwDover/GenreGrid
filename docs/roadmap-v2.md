@@ -181,6 +181,33 @@ Clavinet, drawbar organ, accordion, nylon guitar — if a CC0/CC-BY multisample 
   simple 3-band master EQ would let users finish a mix without a DAW.
 - **Effort:** M.  **Risk:** scope creep toward a full mixer — keep it to presets, not a console.
 
+### 6.6 Synthesizer / sound-design patch designer  ✅ shipped (2026-07-30)
+**Done, and then some.** `soundfonts/synthPatch.ts` defines the `SynthPatch` shape (engine-aware:
+`engine: 'subtractive'`), a pure `patchToNodeSpec`, and a context-aware `buildSynthFromPatch` that
+renders identically in **live playback and offline export**. The seven built-ins are preset patches
+(`synthVoices.ts` factories are thin wrappers, gated byte-identical by `synthPatch.test.ts`).
+`components/SynthDesigner.vue` is the designer — oscillator, filter, **amp / filter / pitch**
+envelopes, one LFO (filter or amp/tremolo), and a full FX chain (drive, bitcrusher, chorus,
+vibrato, delay, reverb) — with a keyboard audition (dry, octave-shiftable), a saved-patch library,
+and per-part assignment. `composables/useSynthPatches.ts` persists the library + assignments in
+localStorage (browser build included); `voiceRouting.ts` resolves a `synth-patch` source above the
+style defaults; `useMidiPlayer.ts` and `useOfflineRender.ts` build assigned patches from the same
+factory. Delivered beyond the original plan:
+
+- **Pitch envelope** (mono voices) — the per-note 808/kick attack drop.
+- **FX on mono voices** — so a bass patch can be driven/saturated (filter stays internal).
+- **Curated preset library** — 808 Sub / 808 Boom / 808 Trap, Reese, Acid, Supersaw Lead,
+  Warm Pad, Pluck, all in a `BUILTIN_PATCHES` registry addressable by slug.
+- **Style → patch kits** — a style suggests patches per part; one click assigns them (per-style,
+  reversible). See `STYLE_KITS` in `useSynthPatches.ts`.
+- **Custom-instrument samples now render in offline export** too (melodic, bass, drums) — closing
+  the pre-existing gap where only synth voices exported. Patch > custom > built-in, mirroring live.
+
+**Still reserved (not built):** the `engine` follow-ons — FM (`Tone.FMSynth`), wavetable, additive/
+granular; and pitch envelope on **poly** voices (needs per-voice detune, unlike the mono path).
+
+_Original plan follows._
+
 ### 6.6 (new) Synthesizer / sound-design patch designer  ★ new instrument source
 - **Why:** today a part's timbre is either a **sampled** voice (identity sampler / custom
   multisample) or one of a handful of **hard-coded** Tone synth factories
@@ -277,6 +304,15 @@ CI already runs the frontend suite — the Linux job's **"Frontend tests"** step
 ([`.github/workflows/build.yml`](../.github/workflows/build.yml)). No gap here; an earlier
 note that vitest wasn't wired was wrong (the step uses `npm test`, not `npm run test`). Left
 in the roadmap as a verified checkpoint.
+
+### 7.1b Native "Save As" for exports  ✅ shipped (2026-07-30)
+Exports (MIDI / WAV / ZIP) used a browser `<a download>`, so the desktop app dropped files into
+Downloads via Chromium's download shelf — a browser feel, not a desktop one. Now a `save-file` IPC
+handler (`electron/main.ts`) opens a native `showSaveDialog` (correct file-type filter, remembers
+the last folder) and writes the bytes; `electron/preload.ts` exposes `electronAPI.saveFile`.
+`useRenderQueue.ts` prefers the native save in Electron (anchor download stays the browser-build
+fallback), and `useDownloadPrompt.ts` skips the in-app rename modal there so it's a single OS
+dialog for name **and** location.
 
 ### 7.2 Code signing + notarization (macOS *and* Windows)  ★ real distribution gap
 - **Why:** **both** the macOS and Windows jobs build **unsigned** (macOS sets

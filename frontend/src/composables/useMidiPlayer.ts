@@ -22,6 +22,8 @@ import { getMelodicSamplerById, SAMPLED_VOICES } from '../soundfonts/melodic'
 import { LayeredSampler } from '../soundfonts/layeredSampler'
 import { resolvePartInstrument } from '../soundfonts/customInstruments'
 import { useCustomInstruments } from './useCustomInstruments'
+import { useSynthPatches } from './useSynthPatches'
+import { buildSynthFromPatch, type SynthPatch } from '../soundfonts/synthPatch'
 import { voiceFor, setActiveStyle } from './useStyleCatalog'
 import { SYNTH_STYLES, MELODIC_SYNTH_STYLES, PAD_STYLES, LOFI_STYLES, PLAYER_PARTS, type PlayerPart, CHANNEL_PART } from './playerConstants'
 import { isRendering, offlineRenderRaw } from './useOfflineRender'
@@ -280,6 +282,18 @@ export function useMidiPlayer() {
         }
       }
 
+      // User-designed synth patches assigned to melodic parts (pure JSON, no IPC, so
+      // resolved synchronously and in any sample mode). A patch wins over the built-in
+      // voice for its part — see resolveMelodicVoiceKind. Built lazily in getMelodicInstrument.
+      const patchByPart: Partial<Record<PlayerPart, SynthPatch>> = {}
+      {
+        const sp = useSynthPatches()
+        for (const part of ['chords', 'bass', 'melody', 'arpeggio', 'pads', 'counter_melody'] as PlayerPart[]) {
+          const p = sp.resolvePatchForPart(styleId, part)
+          if (p) patchByPart[part] = p
+        }
+      }
+
       const midi = new Midi(buf)
 
       // Cache parsed notes for the piano roll
@@ -341,6 +355,7 @@ export function useMidiPlayer() {
       function getMelodicInstrument(channel: number, pan: number): Tone.PolySynth | LayeredSampler {
         if (voiceCache[channel]) return voiceCache[channel]
 
+        const patch = patchByPart[CHANNEL_PART[channel]]
         const custom = customByPart[CHANNEL_PART[channel]]
         // A sampled (identity) voice loaded for this part, and the resolved voice id
         // (only chords/melody/arp carry these; other channels have none).
@@ -349,11 +364,12 @@ export function useMidiPlayer() {
 
         // Pure decision (see voiceRouting.ts) — construction stays here.
         const kind = resolveMelodicVoiceKind({
-          channel, hasCustom: !!custom, hasSampler: !!sampler, voiceId,
+          channel, hasPatch: !!patch, hasCustom: !!custom, hasSampler: !!sampler, voiceId,
           isLofi, isSynth, isMelodicSynth, isPad, hasPiano: !!piano,
         })
         let inst: Tone.PolySynth | LayeredSampler
         switch (kind) {
+          case 'synth_patch':      inst = makePanned((out) => buildSynthFromPatch(patch!, disposables, out) as Tone.PolySynth, pan); break
           case 'custom':           inst = custom!; break
           case 'sampler':          inst = sampler!; break
           case 'piano':            inst = piano!; break               // Salamander grand (shared)
@@ -387,9 +403,10 @@ export function useMidiPlayer() {
           scheduledParts.push(part)
 
         } else if (channel === 1) {
-          // Bass — a user custom instrument wins, then a sampled voice (samples mode +
-          // confirmed-license set), otherwise the synth bass (electronic/synth mode).
-          const bassInst = customByPart.bass ?? bassSampler ?? getSynthBass()
+          // Bass — a designed patch wins, then a user custom instrument, then a sampled
+          // voice (samples mode + confirmed-license set), otherwise the synth bass.
+          const bassInst = (patchByPart.bass ? buildSynthFromPatch(patchByPart.bass, disposables, getBassBus()) : null)
+            ?? customByPart.bass ?? bassSampler ?? getSynthBass()
           const notes = track.notes.map(n => ({
             time: n.time, midi: n.midi, duration: n.duration, velocity: n.velocity,
           }))
@@ -495,7 +512,7 @@ export function useMidiPlayer() {
       const piano = (useSamples && !isSynth && !isPad && !isLofi && !isMelodicSynth && !sampler
         && (part === 'chords' || part === 'melody')) ? await getPianoSampler() : null
       const kind = resolveMelodicVoiceKind({
-        channel, hasCustom: false, hasSampler: !!sampler, voiceId,
+        channel, hasPatch: false, hasCustom: false, hasSampler: !!sampler, voiceId,
         isLofi, isSynth, isMelodicSynth, isPad, hasPiano: !!piano,
       })
       const bus = getMelodicBus()

@@ -10,7 +10,7 @@
  */
 import * as Tone from 'tone'
 import { LayeredSampler, type LayeredSamplerManifest } from './layeredSampler'
-import { getDrumBus, getMelodicBus } from './loader'
+import { getDrumBus, getMasterCompressor } from './loader'
 import { makeSynthKit, type SynthKit } from './synthDrums'
 import { drumCharacterForStyle } from './drums'
 import { KIT_ROOT } from './customInstruments'
@@ -70,10 +70,14 @@ export function disposeAudition(): void {
 // ── Live audition for the synth designer ─────────────────────────────────────
 // The designer needs to hear the patch it's editing on a keyboard. We keep ONE
 // throwaway voice built from the current patch (via the same buildSynthFromPatch a
-// track uses, so it sounds exactly like playback), rebuilt only when the patch
-// actually changes — dragging a slider then hitting a key rebuilds once, not on
-// every input event. The preview routes through the shared melodic bus so its
-// chorus/delay match a real render.
+// track uses), rebuilt only when the patch actually changes — dragging a slider then
+// hitting a key rebuilds once, not on every input event.
+//
+// The preview routes DRY, straight to the master compressor — NOT through the shared
+// melodic bus. That bus adds a chorus + a dotted-eighth feedback delay meant for
+// melodic style voices; on a bass patch it reads as an unwanted rhythmic echo. Going
+// dry lets the patch be judged on its own sound (its own FX chain still plays); a
+// bass patch already renders dry in a track (it plays through the bass bus).
 
 let previewNodes: Tone.ToneAudioNode[] = []
 let previewVoice: Tone.PolySynth | Tone.MonoSynth | null = null
@@ -87,7 +91,7 @@ export async function auditionPatchNote(patch: SynthPatch, note: string, velocit
   if (!previewVoice || sig !== previewSig) {
     disposeSynthPreview()
     previewNodes = []
-    previewVoice = buildSynthFromPatch(patch, previewNodes, getMelodicBus())
+    previewVoice = buildSynthFromPatch(patch, previewNodes, getMasterCompressor())
     previewSig = sig
   }
   previewVoice.triggerAttackRelease(note, '8n', Tone.now(), velocity)

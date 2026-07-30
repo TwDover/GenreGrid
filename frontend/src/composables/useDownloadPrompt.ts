@@ -35,6 +35,12 @@ export function useDownloadPrompt() {
   /** Show the rename dialog; resolves to the sanitized base name (no extension),
    *  or null if the user cancelled. */
   function promptFilename(defaultName: string, extension: string, title = 'Save file'): Promise<string | null> {
+    // Desktop app: the native "Save As" dialog (triggered on download) collects the
+    // name AND the folder in one OS step, so skip the in-app rename modal — a second
+    // name prompt would be redundant. Browser: show the modal (no native picker).
+    if (typeof window !== 'undefined' && window.electronAPI?.saveFile) {
+      return Promise.resolve(sanitizeFilename(defaultName))
+    }
     // A second prompt while one is open cancels the first rather than queuing —
     // there's only one modal, and only one export action happens at a time.
     _resolve?.(null)

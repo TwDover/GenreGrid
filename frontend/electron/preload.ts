@@ -21,6 +21,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveTempFile: (filename: string, data: number[]): Promise<string> =>
     ipcRenderer.invoke('save-temp-file', { filename, data }),
 
+  // Native "Save As" dialog + write — used for exports so the desktop app saves
+  // through the OS file picker instead of a browser-style download.
+  saveFile: (
+    defaultName: string,
+    data: ArrayBuffer,
+    filters?: Array<{ name: string; extensions: string[] }>,
+  ): Promise<{ saved: boolean; path?: string }> =>
+    ipcRenderer.invoke('save-file', { defaultName, data, filters }),
+
   // Trigger a native OS drag from the given file path (DAWs can receive this).
   // sendSync keeps this in the same event frame as the dragstart gesture.
   startDrag: (filePath: string): void => {
