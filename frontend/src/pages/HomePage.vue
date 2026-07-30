@@ -201,6 +201,7 @@
     <ErrorLogPanel />
     <RenderQueuePanel />
     <InstrumentsPanel />
+    <SynthDesigner />
   </div>
 </template>
 
@@ -219,6 +220,7 @@ import DownloadNamePrompt from '../components/DownloadNamePrompt.vue'
 import ErrorLogPanel from '../components/ErrorLogPanel.vue'
 import RenderQueuePanel from '../components/RenderQueuePanel.vue'
 import InstrumentsPanel from '../components/InstrumentsPanel.vue'
+import SynthDesigner from '../components/SynthDesigner.vue'
 import { useErrorLog } from '../composables/useErrorLog'
 import { setStyleCatalog } from '../composables/useStyleCatalog'
 import { useRenderQueue } from '../composables/useRenderQueue'
