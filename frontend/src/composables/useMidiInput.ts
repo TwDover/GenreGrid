@@ -32,6 +32,16 @@ export function parseMidiMessage(data: ArrayLike<number>): MidiNoteEvent {
 type WebMidiInput = { id: string; name: string | null; onmidimessage: ((e: { data: Uint8Array }) => void) | null }
 type WebMidiAccess = { inputs: Map<string, WebMidiInput>; onstatechange: ((e: unknown) => void) | null }
 
+// Note-event tap: consumers (e.g. the recorder) subscribe to the live note stream
+// that also drives audition. `velocity` is 0..1; note-off carries velocity 0.
+export interface LiveNote { type: 'on' | 'off'; note: number; velocity: number }
+const noteListeners = new Set<(ev: LiveNote) => void>()
+/** Subscribe to live MIDI note-on/off (already parsed + filtered). Returns an unsubscribe. */
+export function onMidiNote(cb: (ev: LiveNote) => void): () => void {
+  noteListeners.add(cb)
+  return () => { noteListeners.delete(cb) }
+}
+
 // ── Shared module state (one MIDI-in session across the app) ─────────────────
 const enabled = ref(false)
 const requesting = ref(false)
@@ -42,6 +52,15 @@ const part = ref<PlayerPart>('melody')         // which voice the controller pla
 const activeNotes = ref(0)                      // held-note count (drives a UI pulse)
 
 let access: WebMidiAccess | null = null
+
+// Audition override: while a consumer (e.g. the piano-roll editor) is open, monitor
+// through THAT part's exact voice+style instead of the global "now playing" one.
+let auditionOverride: { style: string | undefined; part: PlayerPart } | null = null
+/** Route MIDI-in monitoring through a specific style+part (the thing being edited). */
+export function setAuditionTarget(style: string | undefined, part: PlayerPart): void {
+  auditionOverride = { style, part }
+}
+export function clearAuditionTarget(): void { auditionOverride = null }
 
 export function useMidiInput() {
   const player = useMidiPlayer()
@@ -55,13 +74,17 @@ export function useMidiInput() {
   function handleMessage(input: WebMidiInput, data: Uint8Array) {
     if (selectedId.value && input.id !== selectedId.value) return   // honor the device filter
     const ev = parseMidiMessage(data)
-    const style = activeStyleId.value ?? undefined
+    // The override (the edited instrument) wins over the global now-playing voice.
+    const style = auditionOverride ? auditionOverride.style : (activeStyleId.value ?? undefined)
+    const prt = auditionOverride ? auditionOverride.part : part.value
     if (ev.type === 'noteon') {
       activeNotes.value++
-      player.auditionOn(style, part.value, ev.note, ev.velocity / 127)
+      player.auditionOn(style, prt, ev.note, ev.velocity / 127)
+      noteListeners.forEach(l => l({ type: 'on', note: ev.note, velocity: ev.velocity / 127 }))
     } else if (ev.type === 'noteoff') {
       activeNotes.value = Math.max(0, activeNotes.value - 1)
-      player.auditionOff(style, part.value, ev.note)
+      player.auditionOff(style, prt, ev.note)
+      noteListeners.forEach(l => l({ type: 'off', note: ev.note, velocity: 0 }))
     }
   }
 

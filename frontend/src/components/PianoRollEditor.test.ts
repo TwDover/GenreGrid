@@ -28,6 +28,21 @@ const player = {
 }
 vi.mock('../composables/useMidiPlayer', () => ({ useMidiPlayer: () => player }))
 
+// Mock live MIDI-in + metronome so recording is drivable without Web MIDI / audio.
+// `recNoteCb` captures the recorder's note-stream handler so tests can inject notes.
+let recNoteCb: ((ev: { type: 'on' | 'off'; note: number; velocity: number }) => void) | null = null
+const midiIn = { enabled: ref(false), part: ref('melody'), enable: vi.fn().mockResolvedValue(undefined), setPart: vi.fn() }
+vi.mock('../composables/useMidiInput', () => ({
+  useMidiInput: () => midiIn,
+  onMidiNote: (cb: (ev: { type: 'on' | 'off'; note: number; velocity: number }) => void) => { recNoteCb = cb; return () => { recNoteCb = null } },
+  setAuditionTarget: vi.fn(),
+  clearAuditionTarget: vi.fn(),
+}))
+vi.mock('../composables/useMetronome', () => ({
+  countIn: vi.fn().mockResolvedValue(0),
+  setMeter: vi.fn(),
+}))
+
 import PianoRollEditor from './PianoRollEditor.vue'
 import type { ParsedNote } from '../composables/useMidiPlayer'
 
@@ -372,6 +387,66 @@ describe('PianoRollEditor — loop flags', () => {
     const after = player.toggle.mock.calls[0][4]
     expect(after.start).toBeGreaterThan(before.start)   // start moved in
     expect(after.end).toBeCloseTo(before.end, 5)        // end unchanged
+    wrapper.unmount()
+  })
+})
+
+describe('PianoRollEditor — MIDI recording', () => {
+  const recBtn = (w: VueWrapper) => w.findAll('button').find(b => /rec/i.test(b.text()))!
+
+  it('loop-records played notes (overdub) and commits them on stop', async () => {
+    const wrapper = mountEditor([melodic(60, 0.5)])   // one existing note
+    await clickFit(wrapper)
+
+    await recBtn(wrapper).trigger('click')     // arm + start recording
+    await flushPromises()
+    expect(recNoteCb).toBeTypeOf('function')   // recorder subscribed to the note stream
+    expect(player.toggle).toHaveBeenCalled()   // looping playback started (with a region)
+    expect(player.toggle.mock.calls[0][4]).toBeTruthy()
+
+    // Play two notes (note-on then note-off).
+    recNoteCb!({ type: 'on', note: 67, velocity: 0.8 }); recNoteCb!({ type: 'off', note: 67, velocity: 0 })
+    recNoteCb!({ type: 'on', note: 72, velocity: 0.6 }); recNoteCb!({ type: 'off', note: 72, velocity: 0 })
+
+    await recBtn(wrapper).trigger('click')     // stop → quantize + commit + auto-save
+    const [notes, dirty] = lastEmit(wrapper)!
+    expect(dirty).toBe(true)
+    expect(notes).toHaveLength(3)              // original + two overdubbed
+    expect(notes.map(n => n.midi)).toEqual(expect.arrayContaining([60, 67, 72]))
+    expect(recNoteCb).toBeNull()               // unsubscribed on stop
+    expect(wrapper.emitted('save')).toBeTruthy()   // a take auto-saves so it can't vanish
+    wrapper.unmount()
+  })
+
+  it('has no Record button on a drum part', async () => {
+    const wrapper = mountEditor([{ midi: 36, time: 0, duration: 0.25, velocity: 0.9, isPercussion: true }])
+    await clickFit(wrapper)
+    expect(wrapper.findAll('button').some(b => /rec/i.test(b.text()))).toBe(false)
+    wrapper.unmount()
+  })
+})
+
+describe('PianoRollEditor — undo/redo', () => {
+  const undoBtn = (w: VueWrapper) => w.findAll('button').find(b => b.text() === '↶')!
+  const redoBtn = (w: VueWrapper) => w.findAll('button').find(b => b.text() === '↷')!
+
+  it('undoes and redoes a note insertion', async () => {
+    const wrapper = mountEditor([melodic(60, 0.5)])
+    await clickFit(wrapper)
+    expect(undoBtn(wrapper).attributes('disabled')).toBeDefined()   // nothing to undo yet
+
+    // Insert a note (drag-to-create then release).
+    await wrapper.find('canvas').trigger('mousedown', { clientX: 300, clientY: 220 })
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 300, clientY: 220 }))
+    expect(lastEmit(wrapper)![0]).toHaveLength(2)
+
+    // Undo via Ctrl+Z, then the toolbar redo button.
+    await wrapper.find('canvas').trigger('keydown', { key: 'z', ctrlKey: true })
+    expect(lastEmit(wrapper)![0]).toHaveLength(1)   // back to the original note
+    expect(undoBtn(wrapper).attributes('disabled')).toBeDefined()   // nothing left to undo
+
+    await redoBtn(wrapper).trigger('click')
+    expect(lastEmit(wrapper)![0]).toHaveLength(2)   // insertion restored
     wrapper.unmount()
   })
 })

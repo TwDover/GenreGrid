@@ -516,11 +516,23 @@ Recorded/performed MIDI is **captured user data** (like an imported melody) — 
   keyed by transport ticks; on stop, quantize to the snap grid and persist via `/edit-part` (loop)
   or the section-rebuild path (song), snapshotting History first. **Metronome + count-in (7.4) is a
   prerequisite — pull it forward.**
-- **Loop-record / overdub in the roll editor:** [`PianoRollEditor.vue`](../frontend/src/components/PianoRollEditor.vue)
-  already has a loop region, transport, and playhead — add record-arm so each loop pass **overdubs**
-  into the region. This is the "modify the loop/arrangement by playing it" ask.
-- **Record in song mode into a specific instrument/section:** arm a song part, loop a section (or
-  play through), record into it, persist via section rebuild + History.
+- ✅ **Loop-record / overdub in the roll editor (shipped 2026-07-30):** a **● Rec** button on
+  [`PianoRollEditor.vue`](../frontend/src/components/PianoRollEditor.vue) arms recording — an
+  optional count-in (7.4), then the loop region (or the whole part, bar-aligned) plays and each
+  pass **overdubs** the notes you play in. `useMidiInput` gained an `onMidiNote` tap; captured
+  note-on/off are timed off the transport (`seconds × tempoRatio`, matching the playhead), appear
+  live, and on stop are **quantized to the snap grid** and persisted via the existing `commit()` →
+  `notes-changed` → `/edit-part` path (History-snapshotted). Drum parts guarded off for v1. Tests:
+  `PianoRollEditor.test.ts` recording block (overdub capture→quantize→commit; drum-part guard).
+  Play-test follow-ups (2026-07-30): MIDI-in now **monitors the edited instrument's exact voice**
+  (a `setAuditionTarget` override in `useMidiInput`, set while the editor is open); a **take
+  auto-saves** on stop; an **undo/redo** stack (Ctrl/Cmd+Z · Shift+Z, toolbar ↶/↷) snapshots each
+  committed change; and a real **persistence bug** was fixed — after `/edit-part` the piano-roll
+  cache is now refreshed (`setMidiData`), since `prefetchMidi` no-ops on an already-cached URL and
+  a reopened editor was showing pre-edit notes. **Still v1-limited:** overdubbed notes bake in on
+  the next replay (the looping blob isn't rebuilt mid-take); replace/punch mode is future.
+- **Record in song mode into a specific instrument/section (next):** arm a song part, loop a
+  section (or play through), record into it, persist via section rebuild + History.
 - **Effort:** M (audition + transport + edit-part all exist; the new work is capture→ticks→quantize
   and the record-arm UX). **Risk:** timing accuracy + overdub/loop semantics — keep the note model
   unified (9.0) and quantize on save.
