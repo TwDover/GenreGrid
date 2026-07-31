@@ -173,7 +173,7 @@ const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 // File System Access API — available in Chrome/Edge, not in Firefox/Safari
 const hasPicker = typeof window !== 'undefined' && 'showSaveFilePicker' in window
 
-const { toggle, currentlyPlaying, isLoading, getMidiData, prefetchMidi, offlineRender } = useMidiPlayer()
+const { toggle, currentlyPlaying, isLoading, getMidiData, setMidiData, prefetchMidi, offlineRender } = useMidiPlayer()
 const { promptFilename } = useDownloadPrompt()
 const { audioFormat } = useExportFormat()
 const { toast } = useToasts()
@@ -235,6 +235,10 @@ async function saveEdits() {
     })
 
     await editPart({ generation_id: genId, part: props.file.part, notes: payload })
+    // Refresh the piano-roll cache with what we just saved — otherwise prefetchMidi
+    // no-ops on the already-cached URL and a reopened editor shows the pre-edit notes.
+    const dur = notes.reduce((m, n) => Math.max(m, n.time + n.duration), midiData.value?.duration ?? 0)
+    setMidiData(props.file.url, { notes: notes.map(n => ({ ...n })), duration: dur })
     editDirty.value = false
     editedNotes.value = null
     rollRef.value?.markSaved()

@@ -111,6 +111,22 @@
       @click="openDesigner"
     >🎛</button>
 
+    <!-- Metronome + count-in: a click to play/record against (meter-accented). -->
+    <div v-if="!isRecording" class="tb-metro">
+      <button
+        class="tb-instr-btn tb-metro-btn"
+        :class="{ 'is-on': metroEnabled }"
+        :title="metroEnabled ? 'Metronome on — click' : 'Metronome — click along (accents the downbeat)'"
+        @click="toggleMetronome"
+      >♩</button>
+      <button
+        class="tb-instr-btn tb-metro-ci"
+        :class="{ 'is-on': countInBars > 0 }"
+        :title="countInTitle"
+        @click="cycleCountIn"
+      >{{ countInBars > 0 ? `${countInBars}·CI` : 'CI' }}</button>
+    </div>
+
     <!-- Live MIDI input: play a connected controller through the current voice. -->
     <div v-if="midiSupported" class="tb-midi" :class="{ active: midiEnabled }">
       <button
@@ -162,6 +178,7 @@ import { useMidiPlayer, PLAYER_PARTS, type PlayerPart } from '../composables/use
 import { useCustomInstruments } from '../composables/useCustomInstruments'
 import { useSynthDesigner } from '../composables/useSynthDesigner'
 import { useMidiInput } from '../composables/useMidiInput'
+import { useMetronome } from '../composables/useMetronome'
 
 const {
   currentlyPlaying, nowPlayingLabel, isLoading, isRecording,
@@ -182,6 +199,32 @@ const {
 const MIDI_PARTS = ['melody', 'chords', 'bass', 'pads', 'arpeggio', 'counter_melody', 'drums'] as const
 function onMidiPart(e: Event) { setMidiPart((e.target as HTMLSelectElement).value as PlayerPart) }
 function onMidiDevice(e: Event) { midiSelectedId.value = (e.target as HTMLSelectElement).value || null }
+
+const {
+  enabled: metroEnabled, countInBars, setEnabled: setMetroEnabled, setCountInBars,
+  startTicking: metroStartTicking, stopTicking: metroStopTicking, startStandalone: metroStartStandalone, stopStandalone: metroStopStandalone,
+} = useMetronome()
+function toggleMetronome() {
+  const next = !metroEnabled.value
+  setMetroEnabled(next)
+  // While a track plays, the click rides the running transport; when idle, run the
+  // transport just for the click (a standalone practice/tempo click).
+  if (currentlyPlaying.value) {
+    if (next) metroStartTicking(); else metroStopTicking()
+  } else {
+    if (next) metroStartStandalone(); else metroStopStandalone()
+  }
+}
+const COUNT_IN_STEPS = [0, 1, 2]
+function cycleCountIn() {
+  const i = COUNT_IN_STEPS.indexOf(countInBars.value)
+  setCountInBars(COUNT_IN_STEPS[(i + 1) % COUNT_IN_STEPS.length] ?? 0)
+}
+const countInTitle = computed(() =>
+  countInBars.value > 0
+    ? `Count-in: ${countInBars.value} bar${countInBars.value > 1 ? 's' : ''} of clicks before playback/recording`
+    : 'Count-in: off — click to add a 1- or 2-bar lead-in before playback/recording',
+)
 
 const isIdle = computed(() => !currentlyPlaying.value && !isLoading.value)
 
@@ -403,6 +446,14 @@ const tempoTitle = computed(() =>
 .tb-instr-btn:hover { color: var(--text); }
 .tb-instr-btn:disabled { opacity: 0.5; cursor: default; }
 
+/* Metronome + count-in */
+.tb-metro { display: inline-flex; align-items: center; gap: 0.2rem; flex-shrink: 0; }
+.tb-metro-btn { font-size: 1rem; }
+.tb-metro-ci { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.03em; }
+.tb-metro-btn.is-on, .tb-metro-ci.is-on {
+  border-color: var(--accent); background: var(--accent-surface-strong); color: var(--accent-bright);
+}
+
 /* Live MIDI input control */
 .tb-midi { display: inline-flex; align-items: center; gap: 0.25rem; flex-shrink: 0; }
 .tb-midi-btn { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.68rem; }
@@ -422,6 +473,6 @@ const tempoTitle = computed(() =>
 @media (max-width: 900px) {
   .tb-label { display: none; }
   .tb-vol-slider { width: 60px; }
-  .tb-mode, .tb-midi { display: none; }   /* keep the narrow bar uncluttered */
+  .tb-mode, .tb-midi, .tb-metro { display: none; }   /* keep the narrow bar uncluttered */
 }
 </style>

@@ -27,7 +27,18 @@
         <button class="pre-btn pre-play" @click="togglePlay" :title="playing ? 'Stop' : (loopStartBeat !== null ? 'Play the loop region' : 'Play this part')">
           {{ playing ? '■' : '▶' }}
         </button>
+        <button
+          v-if="!isDrumPart"
+          class="pre-btn pre-rec"
+          :class="{ armed: recording }"
+          @click="toggleRecord"
+          :title="recording ? 'Stop recording' : 'Loop-record MIDI (overdub) — plays the loop and captures what you play; count-in if set'"
+        >{{ recording ? '● REC' : '● Rec' }}</button>
         <button v-if="loopStartBeat !== null" class="pre-btn pre-loopclear" @click="clearLoop" title="Clear the loop region">Loop ✕</button>
+        <div class="pre-group">
+          <button class="pre-btn" :disabled="!canUndo" @click="undo" title="Undo (Ctrl/Cmd+Z)">↶</button>
+          <button class="pre-btn" :disabled="!canRedo" @click="redo" title="Redo (Ctrl/Cmd+Shift+Z)">↷</button>
+        </div>
         <!-- Live playback tempo — playback speed only; note data and export unchanged. -->
         <div
           v-if="playing"
@@ -100,6 +111,8 @@ import * as Tone from 'tone'
 import { Midi } from '@tonejs/midi'
 import { useTheme, themeColor } from '../composables/useTheme'
 import { useMidiPlayer, type ParsedNote } from '../composables/useMidiPlayer'
+import { useMidiInput, onMidiNote, setAuditionTarget, clearAuditionTarget, type LiveNote } from '../composables/useMidiInput'
+import { countIn as metroCountIn, setMeter as metroSetMeter } from '../composables/useMetronome'
 import { CHANNEL_PART, type PlayerPart } from '../composables/playerConstants'
 import { scaleNotes } from '../utils/chordResolver'
 import {
@@ -164,6 +177,14 @@ let phRaf: number | null = null
 // Loop region in beats (null = play through once). Snapped to the grid on drag.
 const loopStartBeat = ref<number | null>(null)
 const loopEndBeat = ref<number | null>(null)
+
+// ── Live MIDI recording (loop-record / overdub) ──────────────────────────────
+const midiIn = useMidiInput()
+const recording = ref(false)
+let offMidiNote: (() => void) | null = null           // note-stream unsubscribe
+let recRegion: { start: number; end: number } | null = null   // loop region (sec) being recorded into
+const pendingRec = new Map<number, { start: number; velocity: number }>()   // held note-ons
+let capturedRec: ParsedNote[] = []                    // notes added this take (quantized on stop)
 
 const isDrumPart = computed(() => localNotes.value.some(n => n.isPercussion))
 const secPerBeat = computed(() => props.secondsPerBeat || 0.5)
@@ -821,6 +842,13 @@ function onKeyDown(e: KeyboardEvent) {
   if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
     selected.value = new Set(localNotes.value); e.preventDefault(); redraw(); return
   }
+  // Undo / redo — no selection needed.
+  if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault()
+    if (e.shiftKey) redo(); else undo()
+    return
+  }
+  if ((e.key === 'y' || e.key === 'Y') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); redo(); return }
   if (selected.value.size === 0) return
   const sel = [...selected.value]
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
@@ -843,8 +871,31 @@ function onKeyDown(e: KeyboardEvent) {
 function commit() {
   dirty.value = true
   emit('notes-changed', localNotes.value.map(x => ({ ...x })), true)
+  snapshotHistory()
   redraw()
 }
+
+// ── Undo / redo (session history of committed note states) ──────────────────
+const undoStack = ref<ParsedNote[][]>([])
+const histIndex = ref(-1)
+function snapshotHistory() {
+  undoStack.value = undoStack.value.slice(0, histIndex.value + 1)   // drop any redo branch
+  undoStack.value.push(localNotes.value.map(n => ({ ...n })))
+  if (undoStack.value.length > 80) undoStack.value.shift()
+  histIndex.value = undoStack.value.length - 1
+}
+const canUndo = computed(() => histIndex.value > 0)
+const canRedo = computed(() => histIndex.value < undoStack.value.length - 1)
+function restoreHistory(idx: number) {
+  histIndex.value = idx
+  localNotes.value = undoStack.value[idx].map(n => ({ ...n }))
+  selected.value = new Set()
+  dirty.value = true
+  emit('notes-changed', localNotes.value.map(x => ({ ...x })), true)
+  redraw()
+}
+function undo() { if (canUndo.value) restoreHistory(histIndex.value - 1) }
+function redo() { if (canRedo.value) restoreHistory(histIndex.value + 1) }
 
 // ── Playback + audition ──────────────────────────────────────────────────────
 function audition(midi: number) {
@@ -877,6 +928,7 @@ function loopRegionSec(): { start: number; end: number } | undefined {
 }
 
 async function togglePlay() {
+  if (recording.value) { stopRecord(); return }
   if (playing.value) { stopPlayback(); return }
   const url = buildPartMidi()
   playing.value = true
@@ -911,6 +963,86 @@ function startPlayhead() {
 }
 function stopPlayhead() {
   if (phRaf !== null) { cancelAnimationFrame(phRaf); phRaf = null }
+}
+
+// ── Recording ────────────────────────────────────────────────────────────────
+/** The span to loop-record into: the set loop region, else the whole part
+ *  (bar-aligned, min one bar). */
+function recordRegionSec(): { start: number; end: number } {
+  const r = loopRegionSec()
+  if (r) return r
+  const maxEnd = localNotes.value.reduce((m, n) => Math.max(m, n.time + n.duration), 0)
+  const beats = Math.max(BEATS_PER_BAR, Math.ceil((maxEnd / secPerBeat.value) / BEATS_PER_BAR) * BEATS_PER_BAR)
+  return { start: 0, end: beats * secPerBeat.value }
+}
+
+/** Transport position in the part's native seconds (matches the playhead). */
+function transportNativeSec(): number {
+  return Tone.getTransport().seconds * player.tempoRatio.value
+}
+
+function onRecNote(ev: LiveNote): void {
+  if (!recording.value) return
+  if (ev.type === 'on') {
+    pendingRec.set(ev.note, { start: transportNativeSec(), velocity: ev.velocity || 0.7 })
+  } else {
+    const p = pendingRec.get(ev.note)
+    if (p) { pendingRec.delete(ev.note); pushCaptured(ev.note, p.start, transportNativeSec(), p.velocity) }
+  }
+}
+
+function pushCaptured(midi: number, start: number, end: number, velocity: number): void {
+  const region = recRegion ?? recordRegionSec()
+  // A note held across the loop wrap ends before it started — clamp to the region tail.
+  const dur = end > start ? end - start : Math.max(0.05, region.end - start)
+  const note: ParsedNote = { midi: Math.round(midi), time: Math.max(0, start), duration: Math.max(0.05, dur), velocity, isPercussion: false }
+  localNotes.value.push(note)
+  capturedRec.push(note)
+  redraw()   // notes appear as you play them (overdub)
+}
+
+async function startRecord(): Promise<void> {
+  if (recording.value || isDrumPart.value) return
+  if (playing.value) stopPlayback()
+  // Recording needs live MIDI-in flowing; monitoring routes through this part's
+  // voice via the audition target set on open (setAuditionTarget in onMounted).
+  if (!midiIn.enabled.value) await midiIn.enable()
+
+  recRegion = recordRegionSec()
+  capturedRec = []
+  pendingRec.clear()
+  offMidiNote = onMidiNote(onRecNote)
+
+  // Count-in (editor is 4/4); clicks then start the looping capture.
+  metroSetMeter(BEATS_PER_BAR, 4)
+  await metroCountIn()
+
+  recording.value = true
+  const url = buildPartMidi()
+  playing.value = true
+  await player.toggle(url, props.styleId, `Rec: ${props.partName}`, false, recRegion)
+  startPlayhead()
+}
+
+function stopRecord(): void {
+  if (!recording.value) return
+  offMidiNote?.(); offMidiNote = null
+  // Close any still-held notes at the current position.
+  for (const [midi, p] of pendingRec) pushCaptured(midi, p.start, transportNativeSec(), p.velocity)
+  pendingRec.clear()
+  // Quantize each captured note's start to the snap grid.
+  for (const n of capturedRec) n.time = snapBeat(n.time / secPerBeat.value) * secPerBeat.value
+  const captured = capturedRec.length
+  capturedRec = []
+  recording.value = false
+  recRegion = null
+  stopPlayback()
+  // A take is a deliberate capture — commit AND auto-save so it can't vanish on close.
+  if (captured > 0) { commit(); emit('save') }
+}
+
+function toggleRecord(): void {
+  if (recording.value) stopRecord(); else startRecord()
 }
 
 function clearLoop() {
@@ -980,6 +1112,9 @@ watch(() => props.notes, (n) => {
 watch([division, tool, theme], () => redraw())
 
 onMounted(async () => {
+  snapshotHistory()   // baseline state for undo — before any await so it precedes edits
+  // While the editor is open, route live MIDI-in monitoring through THIS part's voice.
+  setAuditionTarget(props.styleId, partForAudio.value)
   await nextTick()
   syncCanvasSize()
   fit()
@@ -991,6 +1126,8 @@ onMounted(async () => {
 
 onUnmounted(() => {
   ro?.disconnect()
+  offMidiNote?.()   // drop the recording note-stream subscription
+  clearAuditionTarget()   // stop routing MIDI-in through this part
   if (playing.value) player.stop()
   stopPlayhead()
   if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null }
@@ -1062,6 +1199,10 @@ onUnmounted(() => {
 .pre-play { font-size: 0.9rem; color: var(--accent); border-color: var(--accent-edge); }
 .pre-play:hover:not(:disabled) { background: var(--accent-wash); }
 .pre-loopclear { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, var(--line)); }
+.pre-rec { font-weight: 700; font-size: var(--t-micro); color: var(--error, #e5484d); border-color: color-mix(in srgb, var(--error, #e5484d) 45%, var(--line)); }
+.pre-rec:hover:not(:disabled) { background: color-mix(in srgb, var(--error, #e5484d) 12%, transparent); }
+.pre-rec.armed { background: var(--error, #e5484d); color: #fff; border-color: var(--error, #e5484d); animation: pre-rec-blink 1s step-start infinite; }
+@keyframes pre-rec-blink { 50% { opacity: 0.55; } }
 .pre-tempo { display: inline-flex; align-items: center; gap: 0.15rem; }
 .pre-tempo .pre-tempo-step { padding: 0 0.3rem; min-width: 24px; }
 .pre-tempo-val {

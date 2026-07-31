@@ -25,6 +25,7 @@ import { useCustomInstruments } from './useCustomInstruments'
 import { useSynthPatches } from './useSynthPatches'
 import { buildSynthFromPatch, type SynthPatch } from '../soundfonts/synthPatch'
 import { voiceFor, setActiveStyle } from './useStyleCatalog'
+import { startTicking as metroStart, stopTicking as metroStop, setMeter as metroSetMeter, countIn as metroCountIn } from './useMetronome'
 import { SYNTH_STYLES, MELODIC_SYNTH_STYLES, PAD_STYLES, LOFI_STYLES, PLAYER_PARTS, type PlayerPart, CHANNEL_PART } from './playerConstants'
 import { isRendering, offlineRenderRaw } from './useOfflineRender'
 import type { AudioFormat } from '../utils/audioEncoder'
@@ -182,6 +183,7 @@ let customSamplers: LayeredSampler[] = []
 
 function cleanup() {
   isPaused.value = false
+  metroStop()   // clear the metronome's repeat before cancelling transport events
   Tone.getTransport().stop()
   Tone.getTransport().cancel()
   Tone.getTransport().loop = false
@@ -354,6 +356,9 @@ export function useMidiPlayer() {
       generatedBpm.value = nativeBpm
       playbackBpm.value = nativeBpm
       Tone.getTransport().bpm.value = nativeBpm
+      // Meter for the metronome click grid (accent per bar); default 4/4.
+      const ts = midi.header.timeSignatures[0]?.timeSignature
+      metroSetMeter(ts?.[0] ?? 4, ts?.[1] ?? 4)
 
       // Resolve piano fallback if still needed (never in 'synth' mode — useSamples gates it)
       const piano = (useSamples && !isSynth && !isPad && !isLofi && !isMelodicSynth && !_chordsSampled)
@@ -492,6 +497,7 @@ export function useMidiPlayer() {
       }
 
       Tone.getTransport().start()
+      metroStart()   // click along if the metronome is on (re-scheduled after the cancel above)
       console.log(`[play] transport started — state=${Tone.getTransport().state} seconds=${Tone.getTransport().seconds.toFixed(2)} loop=${looping.value}`)
       startPositionPolling()
 
@@ -707,6 +713,12 @@ export function useMidiPlayer() {
     return midiStore.value[url] ?? null
   }
 
+  /** Replace the cached piano-roll data for a URL — call after a save so a reopened
+   *  editor reads the edited notes (prefetchMidi is a no-op once a URL is cached). */
+  function setMidiData(url: string, data: MidiData): void {
+    midiStore.value[url] = data
+  }
+
   async function prefetchMidi(url: string): Promise<void> {
     if (midiStore.value[url]) return
     try {
@@ -795,7 +807,10 @@ export function useMidiPlayer() {
   }
 
   async function playCued() {
-    if (cuedPlay) await cuedPlay()
+    if (!cuedPlay) return
+    // Count-in (if set): click a lead-in, then start the track when it finishes.
+    await metroCountIn()
+    await cuedPlay()
   }
 
   /** One master play/pause toggle, shared by the transport ▶/⏸ button and the Space key:
@@ -834,5 +849,5 @@ export function useMidiPlayer() {
     ]).catch(() => { /* best-effort, ignore network errors */ })
   }
 
-  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, sampleMode, setSampleMode, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause, cue, playCued, playPause, cuedLabel, prepareAudition, audition, auditionOn, auditionOff, generatedBpm, playbackBpm, tempoRatio, isTempoNudged, setPlaybackBpm, resetPlaybackBpm }
+  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, sampleMode, setSampleMode, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause, cue, playCued, playPause, cuedLabel, prepareAudition, audition, auditionOn, auditionOff, setMidiData, generatedBpm, playbackBpm, tempoRatio, isTempoNudged, setPlaybackBpm, resetPlaybackBpm }
 }
