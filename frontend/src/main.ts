@@ -13,6 +13,8 @@ import App from './App.vue'
 import './styles/themes.css'
 import './composables/useTheme'   // applies the persisted theme before first paint
 import { installGlobalErrorHandlers, logError } from './composables/useErrorLog'
+import { registerApcMiniDriver } from './composables/useApcMini'
+import { useMidiInput } from './composables/useMidiInput'
 import * as Tone from 'tone'
 import { getMasterCompressor, getMelodicBus, getDrumBus, getBassBus } from './soundfonts/loader'
 
@@ -116,8 +118,22 @@ console.log(
 // unanticipated bug, not just the ones we knew to handle.
 installGlobalErrorHandlers()
 
+// Control surfaces: attaches automatically once MIDI input is enabled and the
+// device is present (lights + transport + mixer on an APC mini mk2).
+registerApcMiniDriver()
+
 const app = createApp(App)
 app.config.errorHandler = (err, _instance, info) => {
   logError(`Vue error (${info})`, err)
 }
 app.mount('#app')
+
+// If the last session left MIDI input on, re-enable it now so a connected
+// controller (and its lights) is live the moment the app opens. No permission
+// prompt in Electron; a rejected/unsupported request just leaves MIDI off.
+// Deferred a tick past mount — calling requestMIDIAccess before the renderer's
+// first paint/IPC settle can leave the request permanently unresolved.
+setTimeout(() => {
+  const midi = useMidiInput()
+  if (midi.supported && midi.wasEnabledLastSession()) void midi.enable()
+}, 0)

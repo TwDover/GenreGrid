@@ -118,6 +118,7 @@ import { Midi } from '@tonejs/midi'
 import { useTheme, themeColor } from '../composables/useTheme'
 import { useMidiPlayer, type ParsedNote } from '../composables/useMidiPlayer'
 import { useMidiInput, onMidiNote, setAuditionTarget, clearAuditionTarget, type LiveNote } from '../composables/useMidiInput'
+import { registerStepSurface, type StepSurfaceLane } from '../composables/useApcMini'
 import { countIn as metroCountIn, setMeter as metroSetMeter } from '../composables/useMetronome'
 import { CHANNEL_PART, type PlayerPart } from '../composables/playerConstants'
 import { scaleNotes } from '../utils/chordResolver'
@@ -1144,6 +1145,86 @@ function toggleRecord(): void {
   if (recording.value) stopRecord(); else startRecord()
 }
 
+// ── Control-surface step sequencer (APC mini grid over this drum pattern) ────
+// While a drum part is open, the editor registers itself as the "step surface":
+// the 8×8 pad grid shows/edits the pattern at 1/16 resolution over the record
+// region (the loop region if set, else the whole part). Bottom row = kick, per
+// Ableton's drum-rack convention.
+const STEP_DIV_BEATS = 0.25   // 1/16 in 4/4
+const DEFAULT_STEP_LANES = [36, 38, 42, 46, 39, 45, 50, 49]   // kick snare chat ohat clap ltom htom crash
+let unregisterStepSurface: (() => void) | null = null
+
+function stepRegion(): { start: number; end: number } {
+  return recordRegionSec()
+}
+function stepSec(): number { return STEP_DIV_BEATS * secPerBeat.value }
+
+function stepLanes(): StepSurfaceLane[] {
+  // Start from the canonical rack; swap defaults the pattern doesn't use (from the
+  // top lane down) for pitches it does, so every sounding piece gets a row.
+  const used = [...new Set(localNotes.value.filter(n => n.isPercussion).map(n => Math.round(n.midi)))]
+  const extra = used.filter(p => !DEFAULT_STEP_LANES.includes(p)).sort((a, b) => a - b)
+  const pitches = [...DEFAULT_STEP_LANES]
+  for (let i = pitches.length - 1; i >= 0 && extra.length > 0; i--) {
+    if (!used.includes(pitches[i])) pitches[i] = extra.shift()!
+  }
+  return pitches.map(p => ({ pitch: p, name: drumPieceName(p) }))
+}
+
+/** Notes of `pitch` whose start falls inside step `step` of the region. */
+function notesInStep(pitch: number, step: number): ParsedNote[] {
+  const r = stepRegion()
+  const a = r.start + step * stepSec()
+  const b = a + stepSec()
+  return localNotes.value.filter(n =>
+    n.isPercussion && Math.round(n.midi) === pitch && n.time >= a - 1e-6 && n.time < b - 1e-6)
+}
+
+function toggleStepCell(lane: number, step: number): void {
+  const pitch = stepLanes()[lane]?.pitch
+  if (pitch === undefined) return
+  const hits = notesInStep(pitch, step)
+  if (hits.length > 0) {
+    localNotes.value = localNotes.value.filter(n => !hits.includes(n))
+  } else {
+    const r = stepRegion()
+    localNotes.value.push({
+      midi: pitch, time: r.start + step * stepSec(), duration: stepSec(),
+      velocity: 0.9, isPercussion: true,
+    })
+  }
+  commit()   // one undo entry per pad press, notes appear in the roll immediately
+}
+
+function syncStepSurface(): void {
+  const wants = isDrumPart.value
+  if (wants && !unregisterStepSurface) {
+    unregisterStepSurface = registerStepSurface({
+      lanes: stepLanes,
+      stepCount: () => {
+        const r = stepRegion()
+        return Math.max(1, Math.round((r.end - r.start) / stepSec()))
+      },
+      stepAt: (lane, step) => {
+        const pitch = stepLanes()[lane]?.pitch
+        return pitch !== undefined && notesInStep(pitch, step).length > 0
+      },
+      toggleStep: toggleStepCell,
+      playheadStep: () => {
+        if (!playing.value) return -1
+        const r = stepRegion()
+        const s = Math.floor((playheadSec.value - r.start) / stepSec())
+        return s >= 0 && s < Math.round((r.end - r.start) / stepSec()) ? s : -1
+      },
+      recording: () => recording.value,
+      toggleRecord,
+    })
+  } else if (!wants && unregisterStepSurface) {
+    unregisterStepSurface(); unregisterStepSurface = null
+  }
+}
+watch(isDrumPart, syncStepSurface)
+
 // ── Sections (song mode) ─────────────────────────────────────────────────────
 const hasSections = computed(() => props.sections.length > 0)
 
@@ -1251,8 +1332,9 @@ onMounted(async () => {
   // MIDI", so playing a connected controller sounds the instrument being edited without
   // the user having to enable input from somewhere else first. Idempotent + a no-op if
   // MIDI is unsupported or no device is connected; input stays on (shared) after close.
-  setAuditionTarget(props.styleId, partForAudio.value)
+  setAuditionTarget(props.styleId, partForAudio.value, props.keyRoot, props.scale)
   if (midiIn.supported) midiIn.enable()
+  syncStepSurface()   // hand the pattern to the APC grid while a drum part is open
   await nextTick()
   syncCanvasSize()
   fit()
@@ -1267,6 +1349,7 @@ onUnmounted(() => {
   offMidiNote?.()   // drop the recording note-stream subscription
   disposeOverdubPart()
   clearAuditionTarget()   // stop routing MIDI-in through this part
+  unregisterStepSurface?.(); unregisterStepSurface = null
   if (playing.value) player.stop()
   stopPlayhead()
   if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null }

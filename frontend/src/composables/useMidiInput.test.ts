@@ -95,6 +95,17 @@ describe('useMidiInput — routing', () => {
     expect(player.auditionOn).toHaveBeenCalledWith(undefined, 'bass', 24, 100 / 127)
   })
 
+  it('releases through the routing captured at note-on when the target changes mid-note', async () => {
+    const midi = useMidiInput()
+    await midi.enable()
+    const input = access.inputs.get('dev1')!
+    input.onmidimessage!({ data: new Uint8Array([0x90, 60, 100]) })   // starts on melody
+    midi.setPart('bass')                                              // target moves under the held key
+    input.onmidimessage!({ data: new Uint8Array([0x80, 60, 0]) })
+    // The off releases the voice that's actually sounding — not the new target.
+    expect(player.auditionOff).toHaveBeenCalledWith(undefined, 'melody', 60)
+  })
+
   it('honors the device filter (ignores messages from other inputs)', async () => {
     const midi = useMidiInput()
     await midi.enable()
