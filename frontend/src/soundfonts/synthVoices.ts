@@ -60,9 +60,9 @@ export function makeStrings(disposables: Tone.ToneAudioNode[], output: Tone.Tone
 }
 
 // Synth bass: sawtooth MonoSynth with a moving filter + portamento — routed to the
-// dedicated bass bus (house/techno/dnb etc.).
-export function makeSynthBass(disposables: Tone.ToneAudioNode[]): Tone.MonoSynth {
-  return buildSynthFromPatch(PRESET_SYNTH_BASS, disposables, getBassBus()) as Tone.MonoSynth
+// dedicated bass bus (house/techno/dnb etc.) by default, or a caller-supplied output.
+export function makeSynthBass(disposables: Tone.ToneAudioNode[], output: Tone.ToneAudioNode = getBassBus()): Tone.MonoSynth {
+  return buildSynthFromPatch(PRESET_SYNTH_BASS, disposables, output) as Tone.MonoSynth
 }
 
 // Lo-fi synth: warm triangle → bitcrusher → lowpass → vibrato.

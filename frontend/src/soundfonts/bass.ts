@@ -9,7 +9,7 @@
  * <https://www.gnu.org/licenses/> for details.
  */
 import * as Tone from 'tone'
-import { getBassBus } from './loader'
+import { getPartInsert } from './partInsert'
 import { LayeredSampler, loadLayeredSampler } from './layeredSampler'
 
 // The per-style bass sample set now comes from the instrument registry: each
@@ -63,7 +63,9 @@ export function getBassSampler(voice?: string | null): Promise<LayeredSampler> {
   const inst = voice ?? DEFAULT_INSTRUMENT
   if (bassCache.has(inst)) return bassCache.get(inst)!
 
-  const fxInput = buildBassFx(inst, getBassBus())
+  // Bass is a single part (unlike the melodic samplers), so all bass voices —
+  // synth, sampled, custom — share the one persistent per-part insert (roadmap 9.3).
+  const fxInput = buildBassFx(inst, getPartInsert('bass').gain)
 
   const promise = loadLayeredSampler({
     baseUrl: `/samples/bass/${BASS_SAMPLE_DIR[inst] ?? inst}/`,

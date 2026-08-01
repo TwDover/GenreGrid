@@ -196,6 +196,22 @@ export async function offlineRenderRaw(
       }
       const comp = new Tone.Gain({ context, gain: 1 }).connect(busOut)
 
+      // Per-part output insert (roadmap 9.3), mirroring useMidiPlayer.ts's live-side
+      // insert: every part's voice(s) connect here instead of straight to `comp`, so
+      // a part's volume/pan applies uniformly regardless of which underlying voice it
+      // uses. Unlike the live side this doesn't need to be persistent or reset — each
+      // buildGraph() call is a fresh, one-shot offline render, and (per the orchestration
+      // above) only ever carries ONE real part's audio, so a plain per-call cache suffices.
+      const partInserts = new Map<PlayerPart, Tone.Gain>()
+      const partInsert = (part: PlayerPart, pan: number): Tone.Gain => {
+        const existing = partInserts.get(part)
+        if (existing) return existing
+        const panner = new Tone.Panner({ context, pan }).connect(comp)
+        const gain = new Tone.Gain({ context, gain: 1 }).connect(panner)
+        partInserts.set(part, gain)
+        return gain
+      }
+
       // Only needed so Transport-relative delay-time notation ('8n', '4n', …)
       // in the effects below resolves against the song's real tempo — no note
       // is actually scheduled through the Transport (see below). This is the
@@ -240,7 +256,7 @@ export async function offlineRenderRaw(
           const manifest = await ci.materialize(r.id)
           if (!manifest || !manifest.layers.length) continue
           const ls = new LayeredSampler({ baseUrl: '', manifest, volume: -6, context })
-          const out = part === 'bass' ? comp : new Tone.Panner({ context, pan: panForChannel(PART_CHANNEL[part] ?? 0) }).connect(comp)
+          const out = partInsert(part, part === 'bass' ? 0 : panForChannel(PART_CHANNEL[part] ?? 0))
           ls.connect(out)
           await ls.loaded
           customByPart[part] = ls
@@ -252,7 +268,7 @@ export async function offlineRenderRaw(
             for (const [pitch, m] of Object.entries(kit ?? {})) {
               if (!m.layers.length) continue
               const ls = new LayeredSampler({ baseUrl: '', manifest: m, volume: -4, context })
-              ls.connect(comp)
+              ls.connect(partInsert('drums', 0))
               await ls.loaded
               customKit.set(Number(pitch), ls)
             }
@@ -264,14 +280,14 @@ export async function offlineRenderRaw(
       // Synthesized engine + any custom kit pieces (hybrid), routed to the offline
       // compressor so the export matches what the user auditions.
       const drumKit = wants('drums')
-        ? makeHybridKit(makeSynthKit(drumCharacterForStyle(styleId), comp, context), customKit)
+        ? makeHybridKit(makeSynthKit(drumCharacterForStyle(styleId), partInsert('drums', 0), context), customKit)
         : null
 
       // ── Bass ─────────────────────────────────────────────────────────
       // Patch > custom instrument > built-in synth bass.
       let bassSynth: Tone.MonoSynth | Tone.PolySynth | LayeredSampler | null = null
       if (wants('bass')) {
-        bassSynth = (patchByPart.bass ? buildSynthFromPatch(patchByPart.bass, [], comp, context) : null)
+        bassSynth = (patchByPart.bass ? buildSynthFromPatch(patchByPart.bass, [], partInsert('bass', 0), context) : null)
           ?? customByPart.bass
           ?? new Tone.MonoSynth({
           context,
@@ -280,16 +296,16 @@ export async function offlineRenderRaw(
           envelope: { attack: 0.01, decay: 0.1, sustain: 0.9, release: 0.5 },
           filterEnvelope: { attack: 0.06, decay: 0.2, sustain: 0.5, release: 0.5, baseFrequency: 200, octaves: 2.6 },
           volume: -3,
-        }).connect(comp)
+        }).connect(partInsert('bass', 0))
       }
 
       // ── Melodic synths ───────────────────────────────────────────────
       // Mirror live playback: chords / melody / arpeggio each get a distinct
-      // voice, panned from the part's CC10 so the export matches the preview.
-      const mkVoice = (variant: 'chords' | 'lead' | 'arp' | 'pads' | 'strings', pan: number): Tone.PolySynth => {
-        const panner = new Tone.Panner({ context, pan }).connect(comp)
+      // voice, connected through that part's insert (panned from CC10 — set by
+      // the caller, mkPartVoice below — so the export matches the preview).
+      const mkVoice = (variant: 'chords' | 'lead' | 'arp' | 'pads' | 'strings', out: Tone.ToneAudioNode): Tone.PolySynth => {
         if (variant === 'arp') {
-          const delay = new Tone.FeedbackDelay({ context, delayTime: '8n.', feedback: 0.24, wet: 0.16 }).connect(panner)
+          const delay = new Tone.FeedbackDelay({ context, delayTime: '8n.', feedback: 0.24, wet: 0.16 }).connect(out)
           const lp = new Tone.Filter({ context, frequency: 4200, type: 'lowpass' }).connect(delay)
           return new Tone.PolySynth({
             context,
@@ -303,7 +319,7 @@ export async function offlineRenderRaw(
         }
         if (variant === 'pads') {
           // Pads part — same sustained wash as live playback's makePad
-          const delay = new Tone.FeedbackDelay({ context, delayTime: '4n', feedback: 0.4, wet: 0.3 }).connect(panner)
+          const delay = new Tone.FeedbackDelay({ context, delayTime: '4n', feedback: 0.4, wet: 0.3 }).connect(out)
           return new Tone.PolySynth({
             context,
             voice: Tone.Synth,
@@ -316,7 +332,7 @@ export async function offlineRenderRaw(
         }
         if (variant === 'strings') {
           // Counter-melody — matches makeStrings in live playback
-          const lp = new Tone.Filter({ context, frequency: 2400, type: 'lowpass' }).connect(panner)
+          const lp = new Tone.Filter({ context, frequency: 2400, type: 'lowpass' }).connect(out)
           const chorus = new Tone.Chorus({ context, frequency: 0.8, depth: 0.35, wet: 0.3 }).connect(lp)
           chorus.start()
           return new Tone.PolySynth({
@@ -337,7 +353,7 @@ export async function offlineRenderRaw(
           // Dedicated articulate melody lead (matches makeMelodyLead in live play):
           // fast attack, tamed low-pass, only a whisper of chorus so it stays in tune.
           const soft = isPad
-          const delay = new Tone.FeedbackDelay({ context, delayTime: '8n.', feedback: 0.22, wet: soft ? 0.22 : 0.14 }).connect(panner)
+          const delay = new Tone.FeedbackDelay({ context, delayTime: '8n.', feedback: 0.22, wet: soft ? 0.22 : 0.14 }).connect(out)
           const chorus = new Tone.Chorus({ context, frequency: 1.8, depth: 0.12, wet: 0.14 }).connect(delay)
           chorus.start()
           const lp = new Tone.Filter({ context, frequency: soft ? 3000 : 3800, type: 'lowpass', rolloff: -12, Q: 0.8 }).connect(chorus)
@@ -354,7 +370,7 @@ export async function offlineRenderRaw(
           }).connect(lp)
         }
         if (isPad) {
-          const delay = new Tone.FeedbackDelay({ context, delayTime: '4n', feedback: 0.38, wet: 0.28 }).connect(panner)
+          const delay = new Tone.FeedbackDelay({ context, delayTime: '4n', feedback: 0.38, wet: 0.28 }).connect(out)
           return new Tone.PolySynth({
             context,
             voice: Tone.Synth,
@@ -366,7 +382,7 @@ export async function offlineRenderRaw(
           }).connect(delay)
         }
         if (isLofi) {
-          const lp = new Tone.Filter({ context, frequency: 5200, type: 'lowpass' }).connect(panner)
+          const lp = new Tone.Filter({ context, frequency: 5200, type: 'lowpass' }).connect(out)
           return new Tone.PolySynth({
             context,
             voice: Tone.Synth,
@@ -379,7 +395,7 @@ export async function offlineRenderRaw(
         }
         if (isSynth) {
           if (variant === 'chords') {
-            const lp = new Tone.Filter({ context, frequency: 2600, type: 'lowpass' }).connect(panner)
+            const lp = new Tone.Filter({ context, frequency: 2600, type: 'lowpass' }).connect(out)
             const chorus = new Tone.Chorus({ context, frequency: 1.4, depth: 0.5, wet: 0.35 }).connect(lp)
             chorus.start()
             return new Tone.PolySynth({
@@ -392,7 +408,7 @@ export async function offlineRenderRaw(
               },
             }).connect(chorus)
           }
-          const delay = new Tone.PingPongDelay({ context, delayTime: '8n', feedback: 0.18, wet: 0.1 }).connect(panner)
+          const delay = new Tone.PingPongDelay({ context, delayTime: '8n', feedback: 0.18, wet: 0.1 }).connect(out)
           const chorus = new Tone.Chorus({ context, frequency: 3, depth: 0.4, wet: 0.22 }).connect(delay)
           chorus.start()
           return new Tone.PolySynth({
@@ -413,7 +429,7 @@ export async function offlineRenderRaw(
             envelope: { attack: 0.02, decay: 0.15, sustain: 0.7, release: 0.9 },
             volume: -8,
           },
-        }).connect(panner)
+        }).connect(out)
       }
 
       type MelodicVoice = Tone.PolySynth | LayeredSampler
@@ -425,15 +441,14 @@ export async function offlineRenderRaw(
       const hasTrackOn = (ch: number) =>
         midi.tracks.some(t => (t.channel ?? 0) === ch && t.notes.length > 0)
       // Precedence: patch > custom instrument > built-in variant. Patch/built-in connect
-      // through a panner to the compressor; the custom sampler was already panned + wired
-      // when it was materialized above.
+      // through this part's insert; the custom sampler was already connected through
+      // its own insert when it was materialized above.
       const mkPartVoice = (part: PlayerPart, variant: 'chords' | 'lead' | 'arp' | 'pads' | 'strings', ch: number): MelodicVoice => {
         const p = patchByPart[part]
         if (p) {
-          const panner = new Tone.Panner({ context, pan: panForChannel(ch) }).connect(comp)
-          return buildSynthFromPatch(p, [], panner, context) as Tone.PolySynth
+          return buildSynthFromPatch(p, [], partInsert(part, panForChannel(ch)), context) as Tone.PolySynth
         }
-        return customByPart[part] ?? mkVoice(variant, panForChannel(ch))
+        return customByPart[part] ?? mkVoice(variant, partInsert(part, panForChannel(ch)))
       }
       // Only built when wanted AND the file actually carries the part — keeps
       // the offline graph light for single-stem renders.

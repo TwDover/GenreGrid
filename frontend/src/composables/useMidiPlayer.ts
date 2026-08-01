@@ -12,7 +12,8 @@ import { ref, computed } from 'vue'
 import * as Tone from 'tone'
 import { Midi } from '@tonejs/midi'
 import { downloadUrl } from '../services/api'
-import { getPianoSampler, getMasterLimiterNode, getBassBus, getMelodicBus, getDrumBus, duckOnKick, resetBusLevels, applyMelodicFxPreset, setMasterTrimDb } from '../soundfonts/loader'
+import { getPianoSampler, getMasterLimiterNode, duckOnKick, resetBusLevels, applyMelodicFxPreset, setMasterTrimDb } from '../soundfonts/loader'
+import { getPartInsert, resetPartInsert } from '../soundfonts/partInsert'
 import { MELODIC_FX_PRESETS, MASTER_TRIM_DB, fxFamilyFor } from '../soundfonts/fxPresets'
 import { drumCharacterForStyle } from '../soundfonts/drums'
 import { makeSynthKit } from '../soundfonts/synthDrums'
@@ -233,6 +234,11 @@ export function useMidiPlayer() {
       applyVolume(volume.value)
       console.log(`[play] volume applied: destVol=${Tone.getDestination().volume.value.toFixed(1)}dB`)
 
+      // Every part's output insert (roadmap 9.3) is a persistent node reused across
+      // plays — reset it to flat/centered now so a previous song's automation can't
+      // bleed into this one before this song's own static pan / automation is applied.
+      for (const p of PLAYER_PARTS) resetPartInsert(p)
+
       const isSynth        = styleId ? SYNTH_STYLES.has(styleId) : false
       const isMelodicSynth = styleId ? MELODIC_SYNTH_STYLES.has(styleId) : false
       const isPad          = styleId ? PAD_STYLES.has(styleId) : false
@@ -263,22 +269,28 @@ export function useMidiPlayer() {
       // has a confirmed-license set (SAMPLED_VOICES / SAMPLED_BASS_VOICES); everything
       // else still synthesizes.
       const useSamples = sampleMode.value === 'samples'
-      const _samplerP = (v: string | null) =>
-        (useSamples && v ? getMelodicSamplerById(v) : null) ?? Promise.resolve(null)
-      // The Salamander grand piano is the last-resort chords/melody voice, needed
-      // only when the chords part has no sampled voice and no synth family fits.
-      const _chordsSampled = useSamples && !!_partVoice.chords && SAMPLED_VOICES.has(_partVoice.chords)
+      const _samplerP = (v: string | null, part: PlayerPart) =>
+        (useSamples && v ? getMelodicSamplerById(v, part, getPartInsert(part).gain) : null) ?? Promise.resolve(null)
       const _bassVoice = voiceFor(styleId, 'bass')
       const _bassSampled = useSamples && !isSynth && !!_bassVoice && SAMPLED_BASS_VOICES.has(_bassVoice)
 
       const fetchUrl = url.startsWith('blob:') || url.startsWith('data:') ? url : downloadUrl(url)
-      const [, buf, bassSampler, chordsSamp, melodySamp, arpSamp] = await Promise.all([
-        (useSamples && !isSynth && !isPad && !isLofi && !isMelodicSynth && !_chordsSampled) ? getPianoSampler() : Promise.resolve(null),
+      const [buf, bassSampler, chordsSamp, melodySamp, arpSamp] = await Promise.all([
         fetch(fetchUrl).then(r => r.arrayBuffer()),
         _bassSampled ? getBassSampler(_bassVoice) : Promise.resolve(null),
-        _samplerP(_partVoice.chords),
-        _samplerP(_partVoice.melody),
-        _samplerP(_partVoice.arpeggio),
+        _samplerP(_partVoice.chords, 'chords'),
+        _samplerP(_partVoice.melody, 'melody'),
+        _samplerP(_partVoice.arpeggio, 'arpeggio'),
+      ])
+
+      // The Salamander grand piano is the last-resort chords/melody voice, needed
+      // only when a part has no sampled voice and no synth family fits. Each part
+      // that needs it loads its OWN piano instance (see getPianoSampler) — decided
+      // only now, since it depends on whether that part's sampler actually resolved.
+      const pianoEligible = useSamples && !isSynth && !isPad && !isLofi && !isMelodicSynth
+      const [chordsPiano, melodyPiano] = await Promise.all([
+        (pianoEligible && !chordsSamp) ? getPianoSampler('chords', getPartInsert('chords').gain) : Promise.resolve(null),
+        (pianoEligible && !melodySamp) ? getPianoSampler('melody', getPartInsert('melody').gain) : Promise.resolve(null),
       ])
 
       if (token !== _playToken) return
@@ -302,7 +314,7 @@ export function useMidiPlayer() {
             if (!manifest || manifest.layers.length === 0) return
             const ls = new LayeredSampler({ baseUrl: '', manifest, volume: -6 })
             await ls.loaded
-            ls.connect(part === 'bass' ? getBassBus() : getMelodicBus())
+            ls.connect(getPartInsert(part).gain)
             customByPart[part] = ls
             customSamplers.push(ls)
           }))
@@ -317,7 +329,7 @@ export function useMidiPlayer() {
               if (!manifest.layers.length) return
               const ls = new LayeredSampler({ baseUrl: '', manifest, volume: -4 })
               await ls.loaded
-              ls.connect(getDrumBus())
+              ls.connect(getPartInsert('drums').gain)
               customKit.set(Number(pitch), ls)
               customSamplers.push(ls)
             }))
@@ -366,21 +378,17 @@ export function useMidiPlayer() {
       const ts = midi.header.timeSignatures[0]?.timeSignature
       metroSetMeter(ts?.[0] ?? 4, ts?.[1] ?? 4)
 
-      // Resolve piano fallback if still needed (never in 'synth' mode — useSamples gates it)
-      const piano = (useSamples && !isSynth && !isPad && !isLofi && !isMelodicSynth && !_chordsSampled)
-        ? await getPianoSampler()
-        : null
-
       // Synthesized drum kit — one voice per articulation, tuned to the style's
       // character. Replaces the old thin/fake-cymbal samples for every genre.
       // A user kit assigned to the drums part layers over this per piece (below).
-      const synthDrumKit = makeSynthKit(drumCharacterForStyle(styleId))
+      // Routed through the drums part insert (roadmap 9.3), not the bus directly.
+      const synthDrumKit = makeSynthKit(drumCharacterForStyle(styleId), getPartInsert('drums').gain)
       disposables.push(...synthDrumKit.nodes)
       // User kit pieces (loaded above) take over the pitches they cover; the rest
       // stay synthesized, so a two-piece kit is usable without filling every slot.
       const drumKit = makeHybridKit(synthDrumKit, customKit)
       let _synthBass: Tone.MonoSynth | null = null
-      const getSynthBass = () => { if (!_synthBass) _synthBass = makeSynthBass(disposables); return _synthBass }
+      const getSynthBass = () => { if (!_synthBass) _synthBass = makeSynthBass(disposables, getPartInsert('bass').gain); return _synthBass }
 
       // Static pan (CC10) a track was written with, as the -1..1 a Tone.Panner wants.
       function trackPan(track: typeof midi.tracks[number]): number {
@@ -388,18 +396,15 @@ export function useMidiPlayer() {
       }
 
       // Melodic voices are resolved per part (chords / melody / arpeggio) so they
-      // no longer share one timbre. Each synth-based voice is routed through its
-      // own Panner fed from the part's CC10 so the server-side stereo placement is
-      // actually audible. Bundled samplers (Rhodes, vibraphone, etc.) and the piano
-      // fallback are cached/shared with their own fx chains, so chords+melody reuse
-      // that one instrument (acoustic styles read fine sharing a voice); only the
-      // arpeggio gets a distinct pluck on top.
+      // no longer share one timbre. Every voice — synth, sampler, or the piano
+      // fallback — connects through that part's persistent insert (roadmap 9.3),
+      // whose Panner is set from the part's CC10 here exactly as before.
       const voiceCache: Record<number, Tone.PolySynth | LayeredSampler> = {}
 
-      function makePanned(build: (out: Tone.ToneAudioNode) => Tone.PolySynth, pan: number): Tone.PolySynth {
-        const panner = new Tone.Panner(pan).connect(getMelodicBus())
-        disposables.push(panner)
-        return build(panner)
+      function makePanned(build: (out: Tone.ToneAudioNode) => Tone.PolySynth, part: PlayerPart, pan: number): Tone.PolySynth {
+        const insert = getPartInsert(part)
+        insert.panner.pan.value = pan
+        return build(insert.gain)
       }
 
       // channel 0 = chords, 2 = melody, 3 = arpeggio, 4 = pads,
@@ -407,12 +412,14 @@ export function useMidiPlayer() {
       function getMelodicInstrument(channel: number, pan: number): Tone.PolySynth | LayeredSampler {
         if (voiceCache[channel]) return voiceCache[channel]
 
-        const patch = patchByPart[CHANNEL_PART[channel]]
-        const custom = customByPart[CHANNEL_PART[channel]]
+        const part = CHANNEL_PART[channel]
+        const patch = patchByPart[part]
+        const custom = customByPart[part]
         // A sampled (identity) voice loaded for this part, and the resolved voice id
         // (only chords/melody/arp carry these; other channels have none).
         const sampler = ({ 0: chordsSamp, 2: melodySamp, 3: arpSamp } as Record<number, LayeredSampler | null>)[channel] ?? null
         const voiceId = ({ 0: _partVoice.chords, 2: _partVoice.melody, 3: _partVoice.arpeggio } as Record<number, string | null>)[channel] ?? null
+        const piano = ({ 0: chordsPiano, 2: melodyPiano } as Record<number, LayeredSampler | null>)[channel] ?? null
 
         // Pure decision (see voiceRouting.ts) — construction stays here.
         const kind = resolveMelodicVoiceKind({
@@ -421,17 +428,17 @@ export function useMidiPlayer() {
         })
         let inst: Tone.PolySynth | LayeredSampler
         switch (kind) {
-          case 'synth_patch':      inst = makePanned((out) => buildSynthFromPatch(patch!, disposables, out) as Tone.PolySynth, pan); break
+          case 'synth_patch':      inst = makePanned((out) => buildSynthFromPatch(patch!, disposables, out) as Tone.PolySynth, part, pan); break
           case 'custom':           inst = custom!; break
           case 'sampler':          inst = sampler!; break
-          case 'piano':            inst = piano!; break               // Salamander grand (shared)
-          case 'pad':              inst = makePanned((out) => makePad(disposables, out), pan); break
-          case 'strings':          inst = makePanned((out) => makeStrings(disposables, out), pan); break
-          case 'arp_pluck':        inst = makePanned((out) => makeArpPluck(disposables, out), pan); break
-          case 'lofi':             inst = makePanned((out) => makeLofiSynth(disposables, out), pan); break
-          case 'synth_chords':     inst = makePanned((out) => makeSynthChords(disposables, out), pan); break
-          case 'melody_lead_soft': inst = makePanned((out) => makeMelodyLead(true, disposables, out), pan); break
-          case 'synth_lead':       inst = makePanned((out) => makeMelodyLead(false, disposables, out), pan); break
+          case 'piano':            inst = piano!; break               // this part's own Salamander grand instance
+          case 'pad':              inst = makePanned((out) => makePad(disposables, out), part, pan); break
+          case 'strings':          inst = makePanned((out) => makeStrings(disposables, out), part, pan); break
+          case 'arp_pluck':        inst = makePanned((out) => makeArpPluck(disposables, out), part, pan); break
+          case 'lofi':             inst = makePanned((out) => makeLofiSynth(disposables, out), part, pan); break
+          case 'synth_chords':     inst = makePanned((out) => makeSynthChords(disposables, out), part, pan); break
+          case 'melody_lead_soft': inst = makePanned((out) => makeMelodyLead(true, disposables, out), part, pan); break
+          case 'synth_lead':       inst = makePanned((out) => makeMelodyLead(false, disposables, out), part, pan); break
           default: { const _never: never = kind; throw new Error(`unreachable voice kind: ${_never}`) }
         }
         voiceCache[channel] = inst
@@ -458,7 +465,7 @@ export function useMidiPlayer() {
         } else if (channel === 1) {
           // Bass — a designed patch wins, then a user custom instrument, then a sampled
           // voice (samples mode + confirmed-license set), otherwise the synth bass.
-          const bassInst = (patchByPart.bass ? buildSynthFromPatch(patchByPart.bass, disposables, getBassBus()) : null)
+          const bassInst = (patchByPart.bass ? buildSynthFromPatch(patchByPart.bass, disposables, getPartInsert('bass').gain) : null)
             ?? customByPart.bass ?? bassSampler ?? getSynthBass()
           const notes = track.notes.map(n => ({
             time: n.time, midi: n.midi, duration: n.duration, velocity: n.velocity,
@@ -558,7 +565,7 @@ export function useMidiPlayer() {
     let entry: AuditionEntry
 
     if (part === 'drums') {
-      const synthKit = makeSynthKit(drumCharacterForStyle(styleId))
+      const synthKit = makeSynthKit(drumCharacterForStyle(styleId), getPartInsert('drums').gain)
       entry = { kind: 'drums', kit: makeHybridKit(synthKit, new Map()) }
     } else if (part === 'bass') {
       const bassVoice = voiceFor(styleId, 'bass')
@@ -566,19 +573,20 @@ export function useMidiPlayer() {
         ? await getBassSampler(bassVoice) : null
       // The synth bass is a monophonic MonoSynth (releases the single voice, not by
       // note); the sampled bass releases per-note like the melodic voices.
-      entry = { kind: 'voice', inst: sampler ?? makeSynthBass(nodes), mono: !sampler }
+      entry = { kind: 'voice', inst: sampler ?? makeSynthBass(nodes, getPartInsert('bass').gain), mono: !sampler }
     } else {
       const channel = _PART_CHANNEL[part] ?? 0
       const voiceId = voiceFor(styleId, part)
+      const insertGain = getPartInsert(part).gain
       const sampler = (useSamples && voiceId && SAMPLED_VOICES.has(voiceId))
-        ? await getMelodicSamplerById(voiceId) : null
+        ? await getMelodicSamplerById(voiceId, part, insertGain) : null
       const piano = (useSamples && !isSynth && !isPad && !isLofi && !isMelodicSynth && !sampler
-        && !susFallback && (part === 'chords' || part === 'melody')) ? await getPianoSampler() : null
+        && !susFallback && (part === 'chords' || part === 'melody')) ? await getPianoSampler(part, insertGain) : null
       const kind = resolveMelodicVoiceKind({
         channel, hasPatch: false, hasCustom: false, hasSampler: !!sampler, voiceId,
         isLofi, isSynth, isMelodicSynth, isPad, hasPiano: !!piano,
       })
-      const bus = getMelodicBus()
+      const bus = insertGain
       let inst: Tone.PolySynth | LayeredSampler
       switch (kind) {
         case 'sampler':          inst = sampler!; break
@@ -863,15 +871,17 @@ export function useMidiPlayer() {
     // mode never loads samplers. Drums are synthesized for every style now, so only
     // the confirmed-license bass/melodic sets warm here.
     if (isSynth || isPad || isLofi || sampleMode.value !== 'samples') return
-    // Warm the registry-selected sample sets for this style (best-effort).
+    // Warm the registry-selected sample sets for this style (best-effort), each
+    // through its part's own insert so the warmed instance is already wired the
+    // way real playback will use it.
     const melodicVoices = (['chords', 'melody', 'arpeggio'] as const)
-      .map(part => voiceFor(styleId, part))
-      .filter((v): v is string => !!v && SAMPLED_VOICES.has(v))
+      .map(part => ({ part, voiceId: voiceFor(styleId, part) }))
+      .filter((v): v is { part: 'chords' | 'melody' | 'arpeggio'; voiceId: string } => !!v.voiceId && SAMPLED_VOICES.has(v.voiceId))
     const bassVoice = voiceFor(styleId, 'bass')
     const bassP = bassVoice && SAMPLED_BASS_VOICES.has(bassVoice) ? [getBassSampler(bassVoice)] : []
     Promise.all([
       ...bassP,
-      ...melodicVoices.map(v => getMelodicSamplerById(v)),
+      ...melodicVoices.map(({ part, voiceId }) => getMelodicSamplerById(voiceId, part, getPartInsert(part).gain)),
     ]).catch(() => { /* best-effort, ignore network errors */ })
   }
 
