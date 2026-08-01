@@ -33,13 +33,15 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 // vi.mock factories are hoisted above the whole file, so the fake classes have
 // to be built inside vi.hoisted() rather than declared as normal top-level
 // classes — otherwise the factory below runs before they're initialized.
-const { createdInstances, FakeMembraneSynth, FakeSynth, FakeNoiseSynth, FakeMetalSynth, FakeFilter, FakeDistortion } = vi.hoisted(() => {
+const { createdInstances, FakeMembraneSynth, FakeSynth, FakeNoiseSynth, FakeMetalSynth, FakeFilter, FakeDistortion, FakePanner } = vi.hoisted(() => {
   const createdInstances: FakeVoiceInstance[] = []
 
   class FakeVoice {
     static requiredArity = 4
     calls: unknown[][] = []
     frequency = { value: 0 }
+    detune = { value: 0 }
+    volume = { value: 0 }
     private _busyUntil = -Infinity
     private _attack: number
     private _decay: number
@@ -89,8 +91,13 @@ const { createdInstances, FakeMembraneSynth, FakeSynth, FakeNoiseSynth, FakeMeta
     constructor(_opts?: unknown) {}
     connect(_dest: unknown) { return this }
   }
+  class FakePanner {
+    pan = { value: 0 }
+    constructor(_opts?: unknown) {}
+    connect(_dest: unknown) { return this }
+  }
 
-  return { createdInstances, FakeMembraneSynth, FakeSynth, FakeNoiseSynth, FakeMetalSynth, FakeFilter, FakeDistortion }
+  return { createdInstances, FakeMembraneSynth, FakeSynth, FakeNoiseSynth, FakeMetalSynth, FakeFilter, FakeDistortion, FakePanner }
 })
 
 vi.mock('tone', () => ({
@@ -100,6 +107,7 @@ vi.mock('tone', () => ({
   MetalSynth: FakeMetalSynth,
   Filter: FakeFilter,
   Distortion: FakeDistortion,
+  Panner: FakePanner,
   getContext: () => ({}),
 }))
 
@@ -108,7 +116,7 @@ vi.mock('./loader', () => ({
 }))
 
 import type * as Tone from 'tone'
-import { makeSynthKit } from './synthDrums'
+import { makeSynthKit, builtinKitPatch } from './synthDrums'
 
 // Minimal surface of a fake voice as seen by the assertions (they only read
 // `.calls`); every FakeVoice subclass satisfies it structurally.
@@ -141,7 +149,7 @@ describe('makeSynthKit', () => {
   it('never retriggers a voice before its envelope window closes, across every drum piece', () => {
     // 'acoustic' carries the longest decays (cymbalDecay 1.8s, rideDecay 0.9s) —
     // the worst case for the timing bug this guards against.
-    const kit = makeSynthKit('acoustic', fakeOut(), fakeContext())
+    const kit = makeSynthKit(builtinKitPatch('acoustic'), fakeOut(), fakeContext())
     const pitches = [KICK, SNARE, CLAP, CLOSED_HAT, OPEN_HAT, CRASH, RIDE, TOM]
     expect(() => {
       // Hammer every piece with hits close enough together (50ms) that a
@@ -156,7 +164,7 @@ describe('makeSynthKit', () => {
   })
 
   it('round-robins across multiple instances instead of reusing one voice', () => {
-    const kit = makeSynthKit('acoustic', fakeOut(), fakeContext())
+    const kit = makeSynthKit(builtinKitPatch('acoustic'), fakeOut(), fakeContext())
     for (let i = 0; i < 8; i++) kit.trigger(RIDE, 0.8, i * 2)   // plenty of gap — pooling is the only reason this needs >1 instance
     const rideInstances = createdInstances.filter(v => v instanceof FakeMetalSynth)
     expect(rideInstances.length).toBeGreaterThan(1)
@@ -167,7 +175,7 @@ describe('makeSynthKit', () => {
     // calls used to omit the note argument, silently shifting duration into
     // the note slot, time into the duration slot, and velocity into the time
     // slot. FakeVoice's arity check makes that shape throw immediately.
-    const kit = makeSynthKit('acoustic', fakeOut(), fakeContext())
+    const kit = makeSynthKit(builtinKitPatch('acoustic'), fakeOut(), fakeContext())
     expect(() => kit.trigger(CLOSED_HAT, 0.8, 1.0)).not.toThrow()
     expect(() => kit.trigger(OPEN_HAT, 0.8, 2.0)).not.toThrow()
     expect(() => kit.trigger(CRASH, 0.8, 3.0)).not.toThrow()
@@ -175,15 +183,23 @@ describe('makeSynthKit', () => {
   })
 
   it('fires the clap "second slap" on a different instance without colliding', () => {
-    const kit = makeSynthKit('acoustic', fakeOut(), fakeContext())
+    const kit = makeSynthKit(builtinKitPatch('acoustic'), fakeOut(), fakeContext())
     expect(() => kit.trigger(CLAP, 0.8, 1.0)).not.toThrow()
     const clapInstances = createdInstances.filter(v => v instanceof FakeNoiseSynth)
     const totalClapCalls = clapInstances.reduce((sum, v) => sum + v.calls.length, 0)
     expect(totalClapCalls).toBe(2)   // main hit + second slap
   })
 
+  it('fires a second "wire buzz" noise layer alongside the skin transient on every snare hit', () => {
+    const kit = makeSynthKit(builtinKitPatch('acoustic'), fakeOut(), fakeContext())
+    expect(() => kit.trigger(SNARE, 0.8, 1.0)).not.toThrow()
+    const noiseInstances = createdInstances.filter(v => v instanceof FakeNoiseSynth)
+    const totalNoiseCalls = noiseInstances.reduce((sum, v) => sum + v.calls.length, 0)
+    expect(totalNoiseCalls).toBe(2)   // skin transient + wire buzz
+  })
+
   it('handles an unknown percussion pitch by falling back to the closed hat', () => {
-    const kit = makeSynthKit('acoustic', fakeOut(), fakeContext())
+    const kit = makeSynthKit(builtinKitPatch('acoustic'), fakeOut(), fakeContext())
     expect(() => kit.trigger(999, 0.8, 1.0)).not.toThrow()
   })
 })

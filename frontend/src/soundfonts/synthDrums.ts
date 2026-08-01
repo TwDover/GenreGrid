@@ -27,42 +27,85 @@ import { getDrumBus } from './loader'
 export type DrumCharacter =
   | 'acoustic' | 'punchy' | 'lofi' | 'vintage' | 'digital' | 'techno' | 'breakbeat'
 
-interface Preset {
+/** The tonal-voice oscillator waves usable per drum piece. A subset of
+ *  `OscillatorWave` in synthPatch.ts — drum bodies are single membrane/tone
+ *  voices, so unison (`fat*`) waves don't apply here. */
+export type DrumOscWave = 'sine' | 'triangle' | 'sawtooth' | 'square'
+/** Noise color for the drum designer's noise-driven layers (click/snare/clap). */
+export type DrumNoiseType = 'white' | 'pink' | 'brown'
+
+/**
+ * A synthesized drum kit as pure, serializable data — the drum-side analog of
+ * `SynthPatch`. Every numeric knob a kit character used to hardcode is here, plus
+ * the oscillator/noise choices each voice used to bake in inline, so a user can
+ * design a kick, snare, or hat from its raw tones (roadmap: drum voice designer).
+ */
+export interface DrumKitPatch {
   kickNote: string
+  kickOscType: DrumOscWave
   kickPitchDecay: number
   kickOctaves: number
   kickDecay: number
   subNote: string           // dedicated sub-sine layer note (the "boom")
+  subOscType: DrumOscWave
   subDecay: number          // how long the sub tail rings
   subLevel: number          // sub layer volume in dB (lower = less boom)
+  clickNoiseType: DrumNoiseType
   snareToneFreq: number
+  snareToneOscType: DrumOscWave
   snareToneMix: number      // 0–1 weight of the tonal "crack" vs noise body
+  snareNoiseType: DrumNoiseType
   snareNoiseDecay: number
+  /** 0–1 weight of a second, brighter "wire buzz" noise layer blended under the
+   *  main snare noise — real snares are a skin transient PLUS a separate, longer,
+   *  higher-pitched buzz from the snare wires; this is that second layer. */
+  snareBuzzMix: number
+  clapNoiseType: DrumNoiseType
   hatFreq: number
   hatDecay: number          // closed-hat decay; open/crash/ride scale off this
   hatHarmonicity: number
   hatModIndex: number
   cymbalDecay: number       // crash length
   rideDecay: number
+  tomOscType: DrumOscWave
   masterLPF: number         // kit-wide low-pass for warmth (20000 = off)
   drive: number             // subtle saturation amount (0 = clean)
+  /** 0–1 amount of per-hit micro-variation (pitch/level jitter on kick, snare tone
+   *  and toms; stereo pan jitter on hats/cymbals) — real kits never hit identically
+   *  twice; this is what keeps a kit from reading as sequenced/robotic. 0 = off. */
+  humanize: number
+  /** An uploaded drum sample kit (a `CustomInstrument` id, `kind: 'drums'`, from the
+   *  Instruments panel library) to blend under this synth kit — a real sample as a
+   *  base to design around, not just a full sample-kit override. Undefined = pure
+   *  synth (see `makeBlendedKit` in customDrumKit.ts). */
+  sampleKitId?: string
+  /** 0–1 kit-wide mix between the synth (0) and the sample (1) for any piece the
+   *  sample kit covers; pieces it doesn't cover stay pure synth regardless. */
+  sampleBlend: number
 }
 
-const PRESETS: Record<DrumCharacter, Preset> = {
+export interface BuiltinKitEntry { label: string; patch: DrumKitPatch }
+
+export const BUILTIN_KITS: Record<DrumCharacter, BuiltinKitEntry> = {
   // Warm, rounded, longer decays — jazz / latin / cinematic
-  acoustic:  { kickNote: 'C1', kickPitchDecay: 0.06, kickOctaves: 4,  kickDecay: 0.58, subNote: 'C1', subDecay: 0.55, subLevel: -11, snareToneFreq: 190, snareToneMix: 0.5,  snareNoiseDecay: 0.20, hatFreq: 380, hatDecay: 0.05, hatHarmonicity: 5.1, hatModIndex: 24, cymbalDecay: 1.8, rideDecay: 0.9, masterLPF: 15000, drive: 0.0 },
+  acoustic: { label: 'Acoustic', patch: { kickNote: 'C1', kickOscType: 'sine', kickPitchDecay: 0.06, kickOctaves: 4,  kickDecay: 0.58, subNote: 'C1', subOscType: 'sine', subDecay: 0.55, subLevel: -11, clickNoiseType: 'white', snareToneFreq: 190, snareToneOscType: 'triangle', snareToneMix: 0.5,  snareNoiseType: 'white', snareNoiseDecay: 0.20, snareBuzzMix: 0.35, clapNoiseType: 'pink', hatFreq: 380, hatDecay: 0.05, hatHarmonicity: 5.1, hatModIndex: 24, cymbalDecay: 1.8, rideDecay: 0.9, tomOscType: 'sine', masterLPF: 15000, drive: 0.0, humanize: 0.30, sampleBlend: 0 } },
   // Tight, forward, classic drum-machine snap — soul / rnb / funk (LINN)
-  punchy:    { kickNote: 'C1', kickPitchDecay: 0.04, kickOctaves: 5,  kickDecay: 0.46, subNote: 'C1', subDecay: 0.48, subLevel: -9,  snareToneFreq: 210, snareToneMix: 0.55, snareNoiseDecay: 0.16, hatFreq: 430, hatDecay: 0.04, hatHarmonicity: 5.4, hatModIndex: 30, cymbalDecay: 1.4, rideDecay: 0.7, masterLPF: 17000, drive: 0.08 },
+  punchy: { label: 'Punchy', patch: { kickNote: 'C1', kickOscType: 'sine', kickPitchDecay: 0.04, kickOctaves: 5,  kickDecay: 0.46, subNote: 'C1', subOscType: 'sine', subDecay: 0.48, subLevel: -9,  clickNoiseType: 'white', snareToneFreq: 210, snareToneOscType: 'triangle', snareToneMix: 0.55, snareNoiseType: 'white', snareNoiseDecay: 0.16, snareBuzzMix: 0.45, clapNoiseType: 'pink', hatFreq: 430, hatDecay: 0.04, hatHarmonicity: 5.4, hatModIndex: 30, cymbalDecay: 1.4, rideDecay: 0.7, tomOscType: 'sine', masterLPF: 17000, drive: 0.08, humanize: 0.15, sampleBlend: 0 } },
   // Dusty, filtered, soft transients — lofi / cloud rap / ambient
-  lofi:      { kickNote: 'B0', kickPitchDecay: 0.07, kickOctaves: 4,  kickDecay: 0.52, subNote: 'B0', subDecay: 0.6,  subLevel: -7,  snareToneFreq: 170, snareToneMix: 0.4,  snareNoiseDecay: 0.14, hatFreq: 320, hatDecay: 0.035,hatHarmonicity: 4.2, hatModIndex: 18, cymbalDecay: 1.1, rideDecay: 0.6, masterLPF: 8500,  drive: 0.05 },
+  lofi: { label: 'Lo-fi', patch: { kickNote: 'B0', kickOscType: 'sine', kickPitchDecay: 0.07, kickOctaves: 4,  kickDecay: 0.52, subNote: 'B0', subOscType: 'sine', subDecay: 0.6,  subLevel: -7,  clickNoiseType: 'white', snareToneFreq: 170, snareToneOscType: 'triangle', snareToneMix: 0.4,  snareNoiseType: 'white', snareNoiseDecay: 0.14, snareBuzzMix: 0.25, clapNoiseType: 'pink', hatFreq: 320, hatDecay: 0.035,hatHarmonicity: 4.2, hatModIndex: 18, cymbalDecay: 1.1, rideDecay: 0.6, tomOscType: 'sine', masterLPF: 8500,  drive: 0.05, humanize: 0.35, sampleBlend: 0 } },
   // Thin, retro, quirky — the CR-78 feel
-  vintage:   { kickNote: 'C1', kickPitchDecay: 0.05, kickOctaves: 5,  kickDecay: 0.34, subNote: 'C1', subDecay: 0.35, subLevel: -15, snareToneFreq: 220, snareToneMix: 0.35, snareNoiseDecay: 0.12, hatFreq: 500, hatDecay: 0.03, hatHarmonicity: 6.0, hatModIndex: 22, cymbalDecay: 1.0, rideDecay: 0.5, masterLPF: 12000, drive: 0.0 },
+  vintage: { label: 'Vintage', patch: { kickNote: 'C1', kickOscType: 'sine', kickPitchDecay: 0.05, kickOctaves: 5,  kickDecay: 0.34, subNote: 'C1', subOscType: 'sine', subDecay: 0.35, subLevel: -15, clickNoiseType: 'white', snareToneFreq: 220, snareToneOscType: 'triangle', snareToneMix: 0.35, snareNoiseType: 'white', snareNoiseDecay: 0.12, snareBuzzMix: 0.30, clapNoiseType: 'pink', hatFreq: 500, hatDecay: 0.03, hatHarmonicity: 6.0, hatModIndex: 22, cymbalDecay: 1.0, rideDecay: 0.5, tomOscType: 'sine', masterLPF: 12000, drive: 0.0, humanize: 0.25, sampleBlend: 0 } },
   // Clean, bright digital PCM — R-8, dancehall / reggaeton
-  digital:   { kickNote: 'B0', kickPitchDecay: 0.045,kickOctaves: 5,  kickDecay: 0.50, subNote: 'A0', subDecay: 0.55, subLevel: -6,  snareToneFreq: 200, snareToneMix: 0.5,  snareNoiseDecay: 0.18, hatFreq: 460, hatDecay: 0.045,hatHarmonicity: 5.6, hatModIndex: 32, cymbalDecay: 1.5, rideDecay: 0.8, masterLPF: 18000, drive: 0.0 },
+  digital: { label: 'Digital', patch: { kickNote: 'B0', kickOscType: 'sine', kickPitchDecay: 0.045,kickOctaves: 5,  kickDecay: 0.50, subNote: 'A0', subOscType: 'sine', subDecay: 0.55, subLevel: -6,  clickNoiseType: 'white', snareToneFreq: 200, snareToneOscType: 'triangle', snareToneMix: 0.5,  snareNoiseType: 'white', snareNoiseDecay: 0.18, snareBuzzMix: 0.50, clapNoiseType: 'pink', hatFreq: 460, hatDecay: 0.045,hatHarmonicity: 5.6, hatModIndex: 32, cymbalDecay: 1.5, rideDecay: 0.8, tomOscType: 'sine', masterLPF: 18000, drive: 0.0, humanize: 0.05, sampleBlend: 0 } },
   // Hard, tight, sub-heavy — house / techno / dnb
-  techno:    { kickNote: 'A0', kickPitchDecay: 0.035,kickOctaves: 6,  kickDecay: 0.44, subNote: 'A0', subDecay: 0.6,  subLevel: -4,  snareToneFreq: 180, snareToneMix: 0.4,  snareNoiseDecay: 0.15, hatFreq: 520, hatDecay: 0.04, hatHarmonicity: 5.8, hatModIndex: 34, cymbalDecay: 1.3, rideDecay: 0.7, masterLPF: 19000, drive: 0.12 },
+  techno: { label: 'Techno', patch: { kickNote: 'A0', kickOscType: 'sine', kickPitchDecay: 0.035,kickOctaves: 6,  kickDecay: 0.44, subNote: 'A0', subOscType: 'sine', subDecay: 0.6,  subLevel: -4,  clickNoiseType: 'white', snareToneFreq: 180, snareToneOscType: 'triangle', snareToneMix: 0.4,  snareNoiseType: 'white', snareNoiseDecay: 0.15, snareBuzzMix: 0.40, clapNoiseType: 'pink', hatFreq: 520, hatDecay: 0.04, hatHarmonicity: 5.8, hatModIndex: 34, cymbalDecay: 1.3, rideDecay: 0.7, tomOscType: 'sine', masterLPF: 19000, drive: 0.12, humanize: 0.08, sampleBlend: 0 } },
   // Sampled hip-hop breakbeat feel — boom bap / trap
-  breakbeat: { kickNote: 'A0', kickPitchDecay: 0.05, kickOctaves: 5,  kickDecay: 0.5,  subNote: 'A0', subDecay: 0.62, subLevel: -5,  snareToneFreq: 200, snareToneMix: 0.5,  snareNoiseDecay: 0.19, hatFreq: 400, hatDecay: 0.05, hatHarmonicity: 4.8, hatModIndex: 26, cymbalDecay: 1.5, rideDecay: 0.8, masterLPF: 13000, drive: 0.1 },
+  breakbeat: { label: 'Breakbeat', patch: { kickNote: 'A0', kickOscType: 'sine', kickPitchDecay: 0.05, kickOctaves: 5,  kickDecay: 0.5,  subNote: 'A0', subOscType: 'sine', subDecay: 0.62, subLevel: -5,  clickNoiseType: 'white', snareToneFreq: 200, snareToneOscType: 'triangle', snareToneMix: 0.5,  snareNoiseType: 'white', snareNoiseDecay: 0.19, snareBuzzMix: 0.40, clapNoiseType: 'pink', hatFreq: 400, hatDecay: 0.05, hatHarmonicity: 4.8, hatModIndex: 26, cymbalDecay: 1.5, rideDecay: 0.8, tomOscType: 'sine', masterLPF: 13000, drive: 0.1, humanize: 0.28, sampleBlend: 0 } },
+}
+
+/** A built-in kit's patch by character slug. */
+export function builtinKitPatch(character: DrumCharacter): DrumKitPatch {
+  return BUILTIN_KITS[character]?.patch ?? BUILTIN_KITS.acoustic.patch
 }
 
 // GM drum pitch → voice
@@ -112,17 +155,18 @@ function makePool<T extends Tone.ToneAudioNode>(factory: () => T): () => T {
 }
 
 /**
- * Build a synthesized drum kit. `out` defaults to the drum submix bus; the offline
- * renderer passes its own compressor so the kit lives in the offline audio graph.
- * `context` should be passed explicitly by the offline renderer too — otherwise every
- * node here falls back to Tone's ambient context, which is the live-playback context.
+ * Build a synthesized drum kit from a patch. `out` defaults to the drum submix bus;
+ * the offline renderer passes its own compressor so the kit lives in the offline
+ * audio graph. `context` should be passed explicitly by the offline renderer too —
+ * otherwise every node here falls back to Tone's ambient context, which is the
+ * live-playback context.
  */
 export function makeSynthKit(
-  character: DrumCharacter = 'acoustic',
+  patch: DrumKitPatch = BUILTIN_KITS.acoustic.patch,
   out: Tone.ToneAudioNode = getDrumBus(),
   context: Tone.BaseContext = Tone.getContext(),
 ): SynthKit {
-  const p = PRESETS[character] ?? PRESETS.acoustic
+  const p = patch
   const nodes: Tone.ToneAudioNode[] = []
   const keep = <T extends Tone.ToneAudioNode>(n: T): T => { nodes.push(n); return n }
 
@@ -137,7 +181,7 @@ export function makeSynthKit(
     context,
     pitchDecay: p.kickPitchDecay,
     octaves: p.kickOctaves,
-    oscillator: { type: 'sine' },
+    oscillator: { type: p.kickOscType },
     envelope: { attack: 0.001, decay: p.kickDecay, sustain: 0, release: 0.04 },
     volume: -1,
   })).connect(kitOut))
@@ -145,7 +189,7 @@ export function makeSynthKit(
   // fundamental with a slow rounded decay; per-preset level controls how deep.
   const nextKickSub = makePool(() => keep(new Tone.Synth({
     context,
-    oscillator: { type: 'sine' },
+    oscillator: { type: p.subOscType },
     envelope: { attack: 0.004, decay: p.subDecay, sustain: 0, release: 0.08 },
     volume: p.subLevel,
   })).connect(kitOut))
@@ -153,7 +197,7 @@ export function makeSynthKit(
   const kickClickFilter = keep(new Tone.Filter({ context, frequency: 1600, type: 'highpass' })).connect(kitOut)
   const nextKickClick = makePool(() => keep(new Tone.NoiseSynth({
     context,
-    noise: { type: 'white' },
+    noise: { type: p.clickNoiseType },
     envelope: { attack: 0.001, decay: 0.02, sustain: 0, release: 0.03 },
     volume: -22,
   })).connect(kickClickFilter))
@@ -162,29 +206,46 @@ export function makeSynthKit(
   const snareNoiseBP = keep(new Tone.Filter({ context, frequency: 1800, type: 'bandpass', Q: 0.7 })).connect(kitOut)
   const nextSnareNoise = makePool(() => keep(new Tone.NoiseSynth({
     context,
-    noise: { type: 'white' },
+    noise: { type: p.snareNoiseType },
     envelope: { attack: 0.001, decay: p.snareNoiseDecay, sustain: 0, release: 0.03 },
     volume: -8,
   })).connect(snareNoiseBP))
   const nextSnareTone = makePool(() => keep(new Tone.Synth({
     context,
-    oscillator: { type: 'triangle' },
+    oscillator: { type: p.snareToneOscType },
     envelope: { attack: 0.001, decay: 0.12, sustain: 0, release: 0.02 },
     volume: -12 + Math.round(p.snareToneMix * 8),
   })).connect(kitOut))
+  // Wire buzz: a second, brighter/thinner noise layer that rings a bit longer than the
+  // skin transient above — real snares are the skin hit PLUS a separate buzz off the
+  // snare wires, not one noise burst. Decay/level derive from the existing skin knobs
+  // (snareNoiseDecay/snareBuzzMix) rather than adding more sliders, same as how
+  // open-hat/crash/ride already scale off the closed-hat/crash settings.
+  const snareBuzzHP = keep(new Tone.Filter({ context, frequency: 4500, type: 'highpass' })).connect(kitOut)
+  const nextSnareBuzz = makePool(() => keep(new Tone.NoiseSynth({
+    context,
+    noise: { type: p.snareNoiseType },
+    envelope: { attack: 0.001, decay: p.snareNoiseDecay * 1.6, sustain: 0, release: 0.05 },
+    volume: -18 + Math.round(p.snareBuzzMix * 10),
+  })).connect(snareBuzzHP))
 
   // ── Clap: two fast noise bursts ───────────────────────────────────────────
   const clapBP = keep(new Tone.Filter({ context, frequency: 1200, type: 'bandpass', Q: 1.2 })).connect(kitOut)
   const nextClap = makePool(() => keep(new Tone.NoiseSynth({
     context,
-    noise: { type: 'pink' },
+    noise: { type: p.clapNoiseType },
     envelope: { attack: 0.001, decay: 0.14, sustain: 0, release: 0.04 },
     volume: -9,
   })).connect(clapBP))
 
   // ── Hats & cymbals: MetalSynth voices with real decay ─────────────────────
+  // Each pooled instance gets its own Panner so humanize can jitter stereo position
+  // per hit (mic'd hats/overheads never sit dead-center identically twice) — tracked
+  // in a WeakMap since makePool's factory only returns the instrument itself.
+  const metalPanners = new WeakMap<Tone.MetalSynth, Tone.Panner>()
   const hatHP = keep(new Tone.Filter({ context, frequency: 7000, type: 'highpass' })).connect(kitOut)
   const nextClosedHat = makePool(() => {
+    const pan = keep(new Tone.Panner({ context, pan: 0 })).connect(hatHP)
     const h = keep(new Tone.MetalSynth({
       context,
       envelope: { attack: 0.001, decay: p.hatDecay, sustain: 0, release: 0.01 },
@@ -192,11 +253,13 @@ export function makeSynthKit(
       volume: -16,
     }))
     h.frequency.value = p.hatFreq
-    h.connect(hatHP)
+    h.connect(pan)
+    metalPanners.set(h, pan)
     return h
   })
 
   const nextOpenHat = makePool(() => {
+    const pan = keep(new Tone.Panner({ context, pan: 0 })).connect(hatHP)
     const h = keep(new Tone.MetalSynth({
       context,
       envelope: { attack: 0.001, decay: p.hatDecay * 7, sustain: 0.02, release: 0.2 },
@@ -204,12 +267,14 @@ export function makeSynthKit(
       volume: -18,
     }))
     h.frequency.value = p.hatFreq * 0.85
-    h.connect(hatHP)
+    h.connect(pan)
+    metalPanners.set(h, pan)
     return h
   })
 
   const cymbalHP = keep(new Tone.Filter({ context, frequency: 4000, type: 'highpass' })).connect(kitOut)
   const nextCrash = makePool(() => {
+    const pan = keep(new Tone.Panner({ context, pan: 0 })).connect(cymbalHP)
     const c = keep(new Tone.MetalSynth({
       context,
       envelope: { attack: 0.001, decay: p.cymbalDecay, sustain: 0, release: 0.6 },
@@ -217,11 +282,13 @@ export function makeSynthKit(
       volume: -22,
     }))
     c.frequency.value = 300
-    c.connect(cymbalHP)
+    c.connect(pan)
+    metalPanners.set(c, pan)
     return c
   })
 
   const nextRide = makePool(() => {
+    const pan = keep(new Tone.Panner({ context, pan: 0 })).connect(cymbalHP)
     const r = keep(new Tone.MetalSynth({
       context,
       envelope: { attack: 0.001, decay: p.rideDecay, sustain: 0.04, release: 0.3 },
@@ -229,7 +296,8 @@ export function makeSynthKit(
       volume: -20,
     }))
     r.frequency.value = 520
-    r.connect(cymbalHP)
+    r.connect(pan)
+    metalPanners.set(r, pan)
     return r
   })
 
@@ -237,7 +305,7 @@ export function makeSynthKit(
   const nextTom = makePool(() => keep(new Tone.MembraneSynth({
     context,
     pitchDecay: 0.08, octaves: 3,
-    oscillator: { type: 'sine' },
+    oscillator: { type: p.tomOscType },
     envelope: { attack: 0.001, decay: 0.4, sustain: 0, release: 0.05 },
     volume: -8,
   })).connect(kitOut))
@@ -267,6 +335,7 @@ export function makeSynthKit(
   const KICK_SUB_GAP = 0.004 + p.subDecay
   const KICK_CLICK_GAP = 0.001 + 0.02
   const SNARE_NOISE_GAP = 0.001 + p.snareNoiseDecay
+  const SNARE_BUZZ_GAP = 0.001 + p.snareNoiseDecay * 1.6
   const SNARE_TONE_GAP = 0.001 + 0.12
   const CLAP_GAP = 0.001 + 0.14
   const CLOSED_HAT_GAP = 0.001 + p.hatDecay
@@ -275,15 +344,39 @@ export function makeSynthKit(
   const RIDE_GAP = 0.001 + p.rideDecay
   const TOM_GAP = 0.001 + 0.4
 
+  // Velocity → timbre: real drums get BRIGHTER as well as louder when hit harder, not
+  // just louder — a kit that only scales gain with velocity reads as sequenced/static.
+  // Applied to hats' FM brightness and the kick-click/snare-noise transient level.
+  const bright = (v: number) => 0.8 + v * 0.5   // 0.8x .. 1.3x
+
+  // Per-hit micro-variation ("humanize" — see DrumKitPatch.humanize): real kits never
+  // hit identically twice. A no-op (returns the input/does nothing) when humanize is 0,
+  // so a kit with humanize:0 renders exactly as before this feature existed.
+  const jitterVelocity = (v: number): number =>
+    p.humanize > 0 ? clamp(v * (1 + (Math.random() * 2 - 1) * p.humanize * 0.15)) : v
+  const jitterDetune = (voice: { detune: Tone.Signal<'cents'> }): void => {
+    if (p.humanize > 0) voice.detune.value = (Math.random() * 2 - 1) * p.humanize * 15
+  }
+  const jitterPan = (voice: Tone.MetalSynth): void => {
+    if (p.humanize <= 0) return
+    const pan = metalPanners.get(voice)
+    if (pan) pan.pan.value = (Math.random() * 2 - 1) * p.humanize * 0.3
+  }
+
   const trigger = (pitch: number, velocity: number, time: number): void => {
-    const v = clamp(velocity)
+    const v = jitterVelocity(clamp(velocity))
     if (KICK.has(pitch)) {
-      const kick = nextKick(); kick.triggerAttackRelease(p.kickNote, p.kickDecay, scheduleVoice(kick, time, KICK_GAP), v)
+      const kick = nextKick(); jitterDetune(kick)
+      kick.triggerAttackRelease(p.kickNote, p.kickDecay, scheduleVoice(kick, time, KICK_GAP), v)
       const kickSub = nextKickSub(); kickSub.triggerAttackRelease(p.subNote, p.subDecay, scheduleVoice(kickSub, time, KICK_SUB_GAP), v)
-      const kickClick = nextKickClick(); kickClick.triggerAttackRelease(0.02, scheduleVoice(kickClick, time, KICK_CLICK_GAP), v)
+      const kickClick = nextKickClick(); kickClick.volume.value = -22 + (bright(v) - 1) * 12
+      kickClick.triggerAttackRelease(0.02, scheduleVoice(kickClick, time, KICK_CLICK_GAP), v)
     } else if (SNARE.has(pitch)) {
-      const snareNoise = nextSnareNoise(); snareNoise.triggerAttackRelease(p.snareNoiseDecay, scheduleVoice(snareNoise, time, SNARE_NOISE_GAP), v)
-      const snareTone = nextSnareTone(); snareTone.triggerAttackRelease(p.snareToneFreq, 0.1, scheduleVoice(snareTone, time, SNARE_TONE_GAP), v * p.snareToneMix)
+      const snareNoise = nextSnareNoise(); snareNoise.volume.value = -8 + (bright(v) - 1) * 10
+      snareNoise.triggerAttackRelease(p.snareNoiseDecay, scheduleVoice(snareNoise, time, SNARE_NOISE_GAP), v)
+      const snareBuzz = nextSnareBuzz(); snareBuzz.triggerAttackRelease(p.snareNoiseDecay * 1.6, scheduleVoice(snareBuzz, time, SNARE_BUZZ_GAP), v * p.snareBuzzMix)
+      const snareTone = nextSnareTone(); jitterDetune(snareTone)
+      snareTone.triggerAttackRelease(p.snareToneFreq, 0.1, scheduleVoice(snareTone, time, SNARE_TONE_GAP), v * p.snareToneMix)
     } else if (pitch === CLAP) {
       const clap1 = nextClap(); clap1.triggerAttackRelease(0.14, scheduleVoice(clap1, time, CLAP_GAP), v)
       const clap2 = nextClap(); clap2.triggerAttackRelease(0.1, scheduleVoice(clap2, time + 0.012, CLAP_GAP), v * 0.7)   // second slap
@@ -291,15 +384,24 @@ export function makeSynthKit(
       // MetalSynth has no dedicated triggerAttackRelease override, so it takes the
       // generic Instrument signature (note, duration, time, velocity) — the note arg
       // must be passed explicitly or every argument after it shifts by one slot.
-      const hat = nextClosedHat(); hat.triggerAttackRelease(p.hatFreq, p.hatDecay, scheduleVoice(hat, time, CLOSED_HAT_GAP), v * 0.9)
+      const hat = nextClosedHat()
+      hat.harmonicity = p.hatHarmonicity * bright(v); hat.modulationIndex = p.hatModIndex * bright(v)
+      jitterPan(hat)
+      hat.triggerAttackRelease(p.hatFreq, p.hatDecay, scheduleVoice(hat, time, CLOSED_HAT_GAP), v * 0.9)
     } else if (pitch === OPEN_HAT) {
-      const hat = nextOpenHat(); hat.triggerAttackRelease(p.hatFreq * 0.85, p.hatDecay * 7, scheduleVoice(hat, time, OPEN_HAT_GAP), v * 0.85)
+      const hat = nextOpenHat()
+      hat.harmonicity = p.hatHarmonicity * 0.7 * bright(v); hat.modulationIndex = p.hatModIndex * 0.6 * bright(v)
+      jitterPan(hat)
+      hat.triggerAttackRelease(p.hatFreq * 0.85, p.hatDecay * 7, scheduleVoice(hat, time, OPEN_HAT_GAP), v * 0.85)
     } else if (CRASH.has(pitch)) {
-      const c = nextCrash(); c.triggerAttackRelease(300, p.cymbalDecay, scheduleVoice(c, time, CRASH_GAP), v * 0.8)
+      const c = nextCrash(); jitterPan(c)
+      c.triggerAttackRelease(300, p.cymbalDecay, scheduleVoice(c, time, CRASH_GAP), v * 0.8)
     } else if (RIDE.has(pitch)) {
-      const r = nextRide(); r.triggerAttackRelease(520, p.rideDecay, scheduleVoice(r, time, RIDE_GAP), v * 0.85)
+      const r = nextRide(); jitterPan(r)
+      r.triggerAttackRelease(520, p.rideDecay, scheduleVoice(r, time, RIDE_GAP), v * 0.85)
     } else if (TOM_NOTE[pitch]) {
-      const tom = nextTom(); tom.triggerAttackRelease(TOM_NOTE[pitch], 0.35, scheduleVoice(tom, time, TOM_GAP), v)
+      const tom = nextTom(); jitterDetune(tom)
+      tom.triggerAttackRelease(TOM_NOTE[pitch], 0.35, scheduleVoice(tom, time, TOM_GAP), v)
     } else {
       const hat = nextClosedHat(); hat.triggerAttackRelease(p.hatFreq, p.hatDecay, scheduleVoice(hat, time, CLOSED_HAT_GAP), v * 0.7)   // unknown perc → tick
     }
