@@ -150,6 +150,42 @@ describe('SongResult — timeline rearrange (roadmap 9.2, slice A)', () => {
     expect(inserted.source_index == null).toBe(true)
   })
 
+  it('resizes a section by dragging its right edge, reusing its source_index', async () => {
+    const wrapper = mountResult()
+    const blocks = tlBlocks(wrapper)
+    vi.spyOn(blocks[0].element, 'getBoundingClientRect').mockReturnValue({ width: 80 } as DOMRect)
+    const handle = blocks[0].find('.sr-tl-resize-handle')
+    expect(handle.exists()).toBe(true)
+
+    await handle.trigger('mousedown', { clientX: 0 })
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 25 }))   // 80px / 8 bars = 10px/bar → +2.5 → +3 bars
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 25 }))
+    await flushPromises()
+
+    expect(rearrangeSongSections).toHaveBeenCalledTimes(1)
+    const payload = rearrangeSongSections.mock.calls[0][0]
+    expect(payload.sections[0].section_type).toBe('verse')
+    expect(payload.sections[0].bars).toBe(11)
+    expect(payload.sections[0].source_index).toBe(0)
+  })
+
+  it('a resize drag does not also trigger seek-to-section on release', async () => {
+    const wrapper = mountResult()
+    const blocks = tlBlocks(wrapper)
+    vi.spyOn(blocks[0].element, 'getBoundingClientRect').mockReturnValue({ width: 80 } as DOMRect)
+    const handle = blocks[0].find('.sr-tl-resize-handle')
+
+    await handle.trigger('mousedown', { clientX: 0 })
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 25 }))
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 25 }))
+    await blocks[0].trigger('click')
+    await flushPromises()
+
+    // The resize itself calls rearrangeSongSections once; the swallowed click
+    // must not have also started playback-seek (no second API call, no throw).
+    expect(rearrangeSongSections).toHaveBeenCalledTimes(1)
+  })
+
   it('blocks every structural edit while a part is locked, with no API call', async () => {
     const wrapper = mountResult()
     const partCard = wrapper.findComponent({ name: 'PartCard' })
@@ -161,6 +197,13 @@ describe('SongResult — timeline rearrange (roadmap 9.2, slice A)', () => {
 
     const blocks = tlBlocks(wrapper)
     expect(blocks[0].attributes('draggable')).toBe('false')
+
+    vi.spyOn(blocks[0].element, 'getBoundingClientRect').mockReturnValue({ width: 80 } as DOMRect)
+    await blocks[0].find('.sr-tl-resize-handle').trigger('mousedown', { clientX: 0 })
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 25 }))
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 25 }))
+    await flushPromises()
+    expect(rearrangeSongSections).not.toHaveBeenCalled()
 
     const delBtn = wrapper.findAll('.sr-tl-controls button').find(b => b.text() === '✕')!
     expect((delBtn.element as HTMLButtonElement).disabled).toBe(true)

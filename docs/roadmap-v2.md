@@ -559,13 +559,76 @@ Recorded/performed MIDI is **captured user data** (like an imported melody) — 
   unified (9.0) and quantize on save.
 
 ### 9.2 Free arrangement / clip timeline
-- Beyond generated sections: a **track × time** canvas where MIDI clips (generated, recorded,
-  edited) are placed, moved, looped, split, duplicated. Supersets 8.4 (post-gen arrangement
-  editing) — the DAW timeline proper. **Effort:** L.
+- ✅ **First slice shipped 2026-08-01** (PR #140, `feat/song-timeline-rearrange`): the post-gen
+  section timeline on [`SongResult.vue`](../frontend/src/components/SongResult.vue) gained
+  **drag-to-reorder**, **insert** (a `+ section` picker), **duplicate** (⧉), and **delete** (✕),
+  backed by a new `POST /rearrange-song-sections` ([`routes_song.py`](../backend/app/api/routes_song.py))
+  that rebuilds the whole song from a new section template — reusing each surviving section's
+  original seed via `source_index` (`RearrangeSectionDef`, [`schemas.py`](../backend/app/models/schemas.py))
+  for content stability, with fresh quality-searched seeds for new/duplicated sections. Ripple
+  effects (a moved verse reshaping a later chorus, first-of-type re-anchoring the motif) fall out
+  naturally since the whole song replays. Blocked (400) while any part is locked. Snapshotted via
+  the existing `_snapshot_song` History path — undoable like any other structural edit. Tests:
+  `test_song_features.py` "9.2" block (reorder/insert/delete/duplicate/resize/lock-block/undo,
+  8 tests) + `SongResult.test.ts`; real-shell proof `scenarios/rearrange-timeline.mjs` +
+  `scenarios/insert-picker.mjs`.
+- ✅ **Resize-UI gap closed 2026-08-01.** A drag handle on each section block's right edge
+  (`.sr-tl-resize-handle`, mirroring the piano-roll's own note-resize interaction in 5.1) live-
+  previews the bar count as you drag (a local `resizePreviewBars` flex override, no request in
+  flight) and commits one `rearrangeSongSections` call on release with the final bar count,
+  reusing the section's `source_index` for content stability like every other structural edit. A
+  resize-ending click is swallowed so it doesn't also seek playback. Tests: `SongResult.test.ts`
+  (+3: handle drag → correct bars + source_index, swallowed post-resize click, blocked while
+  locked); real-shell proof `scenarios/resize-section.mjs` — dragging Intro's handle +4 bars
+  worth of pixels resized it 4→8 bars exactly (`total_bars` 57→61), with drag-reorder still
+  working immediately after.
+- **Remaining scope beyond the first slice:** this is still section-block granularity (bars +
+  section identity), not a true **track × time clip canvas** — no per-part clips, no placing
+  *recorded* MIDI (9.1) as an independent movable/loopable region distinct from its section, no
+  split. Whether that fuller clip model is worth building beyond what the section timeline already
+  covers is an open call — the section timeline may cover most of the real workflow need.
+  **Effort (full clip model):** L.
 
 ### 9.3 Automation lanes
-- Draw volume / pan / send / **synth-patch params** over time (the mixer, FX chain, and
-  `SynthPatch` already exist; this adds time-varying control + a lane UI). **Effort:** M–L.
+- Draw volume / pan / send / **synth-patch params** over time. Scoping this (2026-08-01) found
+  the four params aren't equally ready: **send** has no functional playback path at all (CC91 is
+  written into stems but never read back — decorative, DAW-export-only) and **synth-patch
+  params** are fully static once built (no live-modulation hook) — both real new architecture,
+  not just a UI. **Volume** and **pan** were chosen for v1 since both have (or can cheaply get) a
+  real per-part audio-graph hook.
+- ✅ **Slice 1 shipped 2026-08-01 — uniform per-part output insert (prerequisite plumbing, not yet
+  automation itself).** Before this, pan only existed for the 5 melodic parts (chords/melody/
+  arp/pads/counter_melody) via a per-channel `Tone.Panner`; bass, drums, piano/sampler, and
+  custom-instrument voices had **no** panner at all in live playback (offline export panned
+  custom instruments but live didn't — a real live/export inconsistency, fixed as a side effect).
+  Every part now gets one persistent `Gain` → `Panner` insert
+  (new [`soundfonts/partInsert.ts`](../frontend/src/soundfonts/partInsert.ts), live-side;
+  a local per-render equivalent in
+  [`useOfflineRender.ts`](../frontend/src/composables/useOfflineRender.ts)) sitting between that
+  part's voice(s) and its shared family bus — whichever voice the part happens to use (synth,
+  sampled, the piano fallback, or a custom instrument) connects through the same insert, so a
+  future automation curve applies uniformly regardless of underlying voice. Getting there also
+  required de-sharing two caches that used to serve two different parts from ONE instance
+  (`getPianoSampler` in [`loader.ts`](../frontend/src/soundfonts/loader.ts) and
+  `getMelodicSamplerById` in [`melodic.ts`](../frontend/src/soundfonts/melodic.ts) are now keyed
+  per part, not just per voice id) — otherwise two parts sharing a fallback voice couldn't carry
+  independent automation. **Gated byte-identical**: a literal WAV-byte diff turned out to be the
+  wrong tool (even identical code with a pinned seed produces tiny sample-level jitter run-to-run
+  — humanize/Web-Audio floating-point summation order, already an accepted "inaudible" tolerance
+  per `sumPartBuffers`'s own comment in that file); verified instead via direct runtime
+  introspection of the live graph — gain stays 1.0 and pan matches the backend's `_PART_PAN`
+  table to 15+ decimal places for melodic parts, 0 for bass/drums, exactly reproducing prior
+  behavior. Full frontend suite (308 tests), typecheck, and eslint all clean.
+- **Still to build:** backend `AutomationPoint`/`PartAutomation` schema + baking a drawn curve
+  into CC7 (volume, unused today)/CC10 (pan) events via the existing `/edit-part` seam (an
+  automation-bearing part auto-locks exactly like a note edit, so it survives every other regen
+  path via the already-proven lock mechanism — no other backend endpoint needs to change); live
+  scheduling via `Tone.getTransport().schedule()` (Transport-relative, tempo-nudge-safe) vs.
+  offline scheduling via the raw-second path `useOfflineRender.ts` already uses for notes (the
+  two engines don't share a scheduling mechanism today — parity comes from both reading the same
+  CC data, matching how `SynthPatch` already achieves live/export parity); and a lane-editor UI in
+  `PianoRollEditor.vue` (reusing its existing pixel/time viewport math, sibling to the velocity
+  lane). **Effort remaining:** M.
 
 ### 9.4 Audio recording + audio clips
 - Mic/line-in via `getUserMedia`; record audio clips alongside MIDI (waveform UI, an audio-clip
@@ -581,8 +644,10 @@ _Plugin / VST hosting is intentionally **not** on this roadmap — it needs a na
 (a second product) and doesn't fit the web-audio core. Removed 2026-07-30._
 
 **Sequencing:** ✅ 7.4 (metronome/count-in) → ✅ 9.1 (recording: loop-record + song-mode, shipped
-2026-08-01) → **9.2 (clip timeline) is next** → 9.3 (automation) → 9.4 (audio) by demand; 9.5
-(MIDI-OUT) opportunistically.
+2026-08-01) → ✅ **9.2 first slice, including resize (reorder/insert/delete/duplicate/resize
+section timeline, all shipped 2026-08-01)** → **9.3 in progress** (✅ Slice 1 — uniform per-part
+output insert, shipped 2026-08-01; backend persistence + scheduling + lane UI still to build) →
+9.4 (audio) by demand; 9.5 (MIDI-OUT) opportunistically.
 
 ---
 
@@ -609,11 +674,15 @@ _Plugin / VST hosting is intentionally **not** on this roadmap — it needs a na
    the workflow wins land. **8.1 audition SHIPPED** (low-latency Web MIDI in); its capture half is
    now the anchor of Phase 9.
 9. **Phase 9 (DAW direction)** — ✅ **7.4 metronome → 9.1 MIDI recording** shipped (loop-record +
-   song-mode section recording, 2026-08-01, on the unified `/edit-part` note model). **Next: 9.2
-   clip timeline** → 9.3 automation → 9.4 audio. The 9.0 model decisions held (one note model,
-   record against transport ticks, renderer-captures/backend-persists). Stays web-audio-native —
-   **plugin/VST hosting is out of scope** (removed 2026-07-30); MIDI-OUT (9.5) is an optional
-   interop nicety.
+   song-mode section recording, 2026-08-01, on the unified `/edit-part` note model). ✅ **9.2 first
+   slice, including resize** (section-timeline reorder/insert/delete/duplicate/resize, all shipped
+   2026-08-01) — whether the fuller track×time clip model is worth building beyond the section
+   timeline is still an open call. **9.3 automation lanes (volume + pan) in progress** — ✅ Slice
+   1 (uniform per-part output insert, both live + offline, shipped 2026-08-01); remaining:
+   backend CC persistence, live/offline scheduling, lane UI → then 9.4 audio. The 9.0 model
+   decisions held (one note model, record against transport ticks, renderer-captures/backend-persists).
+   Stays web-audio-native — **plugin/VST hosting is out of scope** (removed 2026-07-30); MIDI-OUT
+   (9.5) is an optional interop nicety.
 
 ## Measurement
 

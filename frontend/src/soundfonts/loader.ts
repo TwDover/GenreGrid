@@ -32,9 +32,6 @@ const SAMPLE_MAP: Record<string, string> = {
 // Module-level singletons — created once, reused across all plays
 let masterOut: Tone.Gain | null = null
 let masterLimiter: Tone.WaveShaper | null = null
-let reverb: Tone.Reverb | null = null
-let piano: LayeredSampler | null = null
-let loadPromise: Promise<LayeredSampler> | null = null
 
 // ── Master soft-clip limiter ─────────────────────────────────────────────────
 // A safety limiter on the master so a dense full arrangement can't peak past the
@@ -172,26 +169,37 @@ export function resetBusLevels(): void {
   if (bassBus)    { bassBus.gain.cancelScheduledValues(0);    bassBus.gain.value = BASS_BUS_DB }
 }
 
-// Decay the shared reverb's IR is currently generated for. Regenerating an IR is
+// Decay every piano reverb's IR is currently generated for. Regenerating an IR is
 // relatively costly, so applyMelodicFxPreset only does it when the decay changes.
 let reverbDecay = 1.6
 
-async function getSharedReverb(): Promise<Tone.Reverb> {
-  if (reverb) return reverb
+// Piano's reverb, and the piano sampler itself, are cached PER PART (keyed by
+// whatever key the caller passes — a part name) rather than as one instance
+// shared by every part that falls back to piano. Two different parts (e.g.
+// chords AND melody) can both resolve to the piano voice in the same song;
+// each needs its own independent reverb send + sampler so a per-part volume/
+// pan insert (roadmap 9.3) upstream of it actually isolates that part's audio
+// instead of mixing it with another part's inside a shared reverb tail.
+const pianoReverbs = new Map<string, Tone.Reverb>()
+const pianoSamplers = new Map<string, Promise<LayeredSampler>>()
+
+async function getPianoReverb(key: string, out: Tone.ToneAudioNode): Promise<Tone.Reverb> {
+  const existing = pianoReverbs.get(key)
+  if (existing) return existing
   const r = new Tone.Reverb({ decay: reverbDecay, wet: 0.22 })
   await r.generate()
-  r.connect(getMelodicBus())      // piano is a melodic voice — route through its bus
-  reverb = r
+  r.connect(out)
+  pianoReverbs.set(key, r)
   return r
 }
 
-// Retune the shared melodic FX chain (chorus + delay) and reverb to a style's
-// preset. Chorus/delay/reverb-wet are live parameter writes (no graph rebuild, no
-// audible glitch); the reverb IR is only regenerated when the target decay differs
-// from what's loaded. Call before scheduling a style's parts. See fxPresets.ts.
+// Retune the shared melodic FX chain (chorus + delay) and every piano reverb to a
+// style's preset. Chorus/delay/reverb-wet are live parameter writes (no graph
+// rebuild, no audible glitch); each reverb's IR is only regenerated when the
+// target decay differs from what's loaded. Call before scheduling a style's parts.
+// See fxPresets.ts.
 export async function applyMelodicFxPreset(p: MelodicFxPreset): Promise<void> {
   getMelodicBus()                 // ensure the shared chorus + delay exist
-  const rv = await getSharedReverb()
 
   if (melodicChorus) {
     melodicChorus.frequency.value = p.chorus.frequency
@@ -204,29 +212,35 @@ export async function applyMelodicFxPreset(p: MelodicFxPreset): Promise<void> {
     melodicDelay.wet.value = p.delay.wet
   }
 
-  rv.wet.value = p.reverb.wet
-  if (Math.abs(reverbDecay - p.reverb.decay) > 0.01) {
-    reverbDecay = p.reverb.decay
-    rv.decay = p.reverb.decay
-    await rv.generate()           // rebuild the IR only when the room size changed
-  }
+  const decayChanged = Math.abs(reverbDecay - p.reverb.decay) > 0.01
+  if (decayChanged) reverbDecay = p.reverb.decay
+  await Promise.all([...pianoReverbs.values()].map(async (rv) => {
+    rv.wet.value = p.reverb.wet
+    if (decayChanged) {
+      rv.decay = p.reverb.decay
+      await rv.generate()          // rebuild the IR only when the room size changed
+    }
+  }))
 }
 
 /**
- * Load the Salamander piano sampler once and cache it.
- * Subsequent calls return the cached instance immediately.
+ * Load the Salamander piano sampler for a given part and cache it. Subsequent
+ * calls with the same `key` return the cached instance immediately; a
+ * different key (a different part falling back to piano in the same song)
+ * gets its own sampler + reverb, connected to its own `out` — see the
+ * per-part caching note above.
  */
-export async function getPianoSampler(): Promise<LayeredSampler> {
-  if (piano) return piano
-  if (loadPromise) return loadPromise
+export async function getPianoSampler(key: string, out: Tone.ToneAudioNode): Promise<LayeredSampler> {
+  const cached = pianoSamplers.get(key)
+  if (cached) return cached
 
-  loadPromise = getSharedReverb().then(async (rv) => {
+  const promise = getPianoReverb(key, out).then(async (rv) => {
     const sampler = await loadLayeredSampler({ baseUrl: BASE_URL, legacyUrls: SAMPLE_MAP, volume: -6 })
-    sampler.connect(rv)   // piano is a melodic voice — route through its bus (via reverb)
-    piano = sampler
-    console.log(`[audio] piano loaded — ${layerCount(sampler)} velocity layer(s)`)
+    sampler.connect(rv)
+    console.log(`[audio] piano loaded (${key}) — ${layerCount(sampler)} velocity layer(s)`)
     return sampler
   })
 
-  return loadPromise
+  pianoSamplers.set(key, promise)
+  return promise
 }

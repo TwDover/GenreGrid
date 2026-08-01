@@ -50,7 +50,7 @@
       </div>
 
       <!-- Section timeline — click a block to play from there, ⟳ to re-roll it,
-           drag to reorder, ⧉/✕ to duplicate/delete a section -->
+           drag to reorder, drag the right edge to resize, ⧉/✕ to duplicate/delete -->
       <div class="sr-timeline">
         <div
           v-for="(sec, i) in result.sections"
@@ -62,11 +62,12 @@
             'sr-tl-drop-before': dragOverIndex === i && dragOverSide === 'before',
             'sr-tl-drop-after': dragOverIndex === i && dragOverSide === 'after',
             'sr-tl-dragging': draggingIndex === i,
+            'sr-tl-resizing': resizingIndex === i,
           }]"
-          :style="{ flex: sec.bars }"
-          :title="`${sec.name} · ${sec.bars} bars${sec.quality != null ? ` · quality ${(sec.quality * 100).toFixed(0)}%` : ''} — click to play from here${sec.section_type !== 'ending' ? ', drag to reorder' : ''}`"
-          :draggable="sec.section_type !== 'ending' && !rearrangeBlocked"
-          @click="seekToSection(sec)"
+          :style="{ flex: displayBars(i, sec) }"
+          :title="`${sec.name} · ${displayBars(i, sec)} bars${sec.quality != null ? ` · quality ${(sec.quality * 100).toFixed(0)}%` : ''} — click to play from here${sec.section_type !== 'ending' ? ', drag to reorder, drag the right edge to resize' : ''}`"
+          :draggable="sec.section_type !== 'ending' && !rearrangeBlocked && resizingIndex === null"
+          @click="onBlockClick(sec)"
           @dragstart="onDragStart(i, $event)"
           @dragover.prevent="onDragOver(i, $event)"
           @dragleave="onDragLeave(i)"
@@ -99,6 +100,14 @@
               @click.stop="onDeleteSection(i)"
             >✕</button>
           </span>
+          <div
+            v-if="sec.section_type !== 'ending'"
+            class="sr-tl-resize-handle"
+            title="Drag to resize (bars)"
+            :draggable="false"
+            @mousedown="onResizeStart(i, sec, $event)"
+            @click.stop
+          />
         </div>
         <select
           class="sr-tl-insert"
@@ -694,6 +703,64 @@ async function onDrop(dropIndex: number) {
   await commitRearrange(defs, `Reordered ${moved.name ?? moved.section_type}`)
 }
 
+// Resize: drag a block's right edge to change its bar count. Live-previews
+// via resizePreviewBars (a plain flex-value swap, no request in flight) and
+// only commits — one rearrange call with the final bar count — on mouseup,
+// mirroring the piano-roll's own edge-drag note resize (5.1).
+const resizingIndex = ref<number | null>(null)
+const resizePreviewBars = ref<number | null>(null)
+let resizeStartX = 0
+let resizeStartBars = 8
+let resizePxPerBar = 1
+let resizeMoved = false
+
+function displayBars(i: number, sec: { bars: number }): number {
+  return resizingIndex.value === i && resizePreviewBars.value !== null ? resizePreviewBars.value : sec.bars
+}
+
+function onResizeStart(i: number, sec: { bars: number }, e: MouseEvent) {
+  if (rearrangeBlocked.value || rearrangeLoading.value || draggingIndex.value !== null) return
+  e.preventDefault()
+  e.stopPropagation()
+  const block = (e.currentTarget as HTMLElement).closest('.sr-tl-block') as HTMLElement | null
+  const width = block?.getBoundingClientRect().width ?? 0
+  if (width <= 0 || sec.bars <= 0) return
+  resizingIndex.value = i
+  resizeStartX = e.clientX
+  resizeStartBars = sec.bars
+  resizePreviewBars.value = sec.bars
+  resizePxPerBar = width / sec.bars
+  resizeMoved = false
+  window.addEventListener('mousemove', onResizeMove)
+  window.addEventListener('mouseup', onResizeEnd)
+}
+function onResizeMove(e: MouseEvent) {
+  if (resizingIndex.value === null) return
+  const deltaX = e.clientX - resizeStartX
+  if (Math.abs(deltaX) > 3) resizeMoved = true
+  const deltaBars = Math.round(deltaX / resizePxPerBar)
+  resizePreviewBars.value = Math.max(1, Math.min(32, resizeStartBars + deltaBars))
+}
+async function onResizeEnd() {
+  window.removeEventListener('mousemove', onResizeMove)
+  window.removeEventListener('mouseup', onResizeEnd)
+  const i = resizingIndex.value
+  const newBars = resizePreviewBars.value
+  resizingIndex.value = null
+  resizePreviewBars.value = null
+  if (i === null || newBars === null || newBars === resizeStartBars) return
+  const defs = currentSectionDefs()
+  defs[i] = { ...defs[i], bars: newBars }
+  await commitRearrange(defs, `Resized ${defs[i].name ?? defs[i].section_type} to ${newBars} bars`)
+}
+// A resize drag ends with a native click on the block (mouseup and mousedown
+// land on/near the same element) — swallow that one click so it doesn't also
+// seek playback to the section that was just resized.
+function onBlockClick(sec: { start_bar: number }) {
+  if (resizeMoved) { resizeMoved = false; return }
+  seekToSection(sec)
+}
+
 async function onDeleteSection(i: number) {
   if (realSectionCount.value <= 1) return
   const defs = currentSectionDefs()
@@ -932,6 +999,7 @@ async function exportSongWav() {
   pointer-events: none; z-index: 2;
 }
 .sr-tl-block {
+  position: relative;
   display: flex; align-items: flex-start; justify-content: space-between;
   padding: var(--s2) var(--s3); overflow: hidden; min-width: 0; gap: 0.2rem;
   transition: filter 0.15s;
@@ -943,6 +1011,18 @@ async function exportSongWav() {
 .sr-tl-block.sr-tl-dragging { opacity: 0.4; }
 .sr-tl-block.sr-tl-drop-before { box-shadow: inset 2px 0 0 var(--accent); }
 .sr-tl-block.sr-tl-drop-after { box-shadow: inset -2px 0 0 var(--accent); }
+.sr-tl-block.sr-tl-resizing { filter: brightness(1.15); z-index: 3; }
+.sr-tl-resize-handle {
+  position: absolute; top: 0; bottom: 0; right: 0; width: 8px;
+  cursor: ew-resize; background: transparent;
+}
+.sr-tl-resize-handle::after {
+  content: ''; position: absolute; top: 25%; bottom: 25%; right: 2px; width: 2px;
+  border-radius: 1px; background: var(--seg-text); opacity: 0; transition: opacity 0.15s;
+}
+.sr-tl-block:hover .sr-tl-resize-handle::after,
+.sr-tl-block.sr-tl-resizing .sr-tl-resize-handle::after { opacity: 0.55; }
+.sr-tl-resize-handle:hover::after { opacity: 0.9 !important; }
 .sr-tl-name { font-size: var(--t-meta); font-weight: 600; color: var(--seg-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; letter-spacing: -.005em; }
 .sr-tl-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
 .q-good { background: var(--success); }

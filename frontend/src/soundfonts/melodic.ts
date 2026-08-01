@@ -9,7 +9,6 @@
  * <https://www.gnu.org/licenses/> for details.
  */
 import * as Tone from 'tone'
-import { getMelodicBus } from './loader'
 import { LayeredSampler, loadLayeredSampler } from './layeredSampler'
 
 // Per-part melodic voices come from the instrument registry (served via
@@ -98,9 +97,12 @@ async function buildFxChain(inst: string, out: Tone.ToneAudioNode): Promise<Tone
   }
 }
 
-// Cache: instrument name → promise resolving to the loaded sampler
+// Cache key: "<part>:<voice id>" → promise resolving to the loaded sampler/fx
+// chain. Keyed per PART, not just voice id: two different parts (e.g. chords
+// and melody) can independently resolve to the same sampled voice, and each
+// needs its own instance + fx chain so a per-part volume/pan insert (roadmap
+// 9.3) upstream of it actually isolates that part's audio.
 const melodicCache = new Map<string, Promise<LayeredSampler>>()
-// Cache: instrument name → promise resolving to the fx input node
 const fxCache = new Map<string, Promise<Tone.ToneAudioNode>>()
 
 // Voice ids that have real sample sets on disk (keys of INSTRUMENT_VOLUME).
@@ -108,17 +110,19 @@ const fxCache = new Map<string, Promise<Tone.ToneAudioNode>>()
 // else ("melody_lead", "pad_synth"…) is a synth family built in useMidiPlayer.
 export const SAMPLED_VOICES = new Set(Object.keys(INSTRUMENT_VOLUME))
 
-/** Load a melodic sampler by voice id (instrument-registry playback_voice).
- *  Returns null for non-sampled voices — callers fall back to synth voices. */
-export function getMelodicSamplerById(inst: string): Promise<LayeredSampler> | null {
+/** Load a melodic sampler by voice id (instrument-registry playback_voice) for
+ *  a given part, connecting its fx chain to `out`. Returns null for non-sampled
+ *  voices — callers fall back to synth voices. */
+export function getMelodicSamplerById(inst: string, part: string, out: Tone.ToneAudioNode): Promise<LayeredSampler> | null {
   if (!SAMPLED_VOICES.has(inst)) return null
 
-  if (melodicCache.has(inst)) return melodicCache.get(inst)!
+  const key = `${part}:${inst}`
+  if (melodicCache.has(key)) return melodicCache.get(key)!
 
-  if (!fxCache.has(inst)) {
-    fxCache.set(inst, buildFxChain(inst, getMelodicBus()))
+  if (!fxCache.has(key)) {
+    fxCache.set(key, buildFxChain(inst, out))
   }
-  const fxPromise = fxCache.get(inst)!
+  const fxPromise = fxCache.get(key)!
 
   const promise = fxPromise.then(async (fxInput) => {
     const sampler = await loadLayeredSampler({
@@ -130,7 +134,7 @@ export function getMelodicSamplerById(inst: string): Promise<LayeredSampler> | n
     return sampler
   })
 
-  melodicCache.set(inst, promise)
+  melodicCache.set(key, promise)
   return promise
 }
 
