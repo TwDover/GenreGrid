@@ -52,6 +52,17 @@ describe('drumTriggerCallback', () => {
     expect(duck).not.toHaveBeenCalled()
   })
 
+  it('scales velocity by the live level, re-read per hit, and skips at zero', () => {
+    const kit = { trigger: vi.fn() }
+    let level = 0.5
+    const cb = drumTriggerCallback(kit, () => false, false, vi.fn(), () => level)
+    cb(0, { midi: 38, velocity: 0.8 })
+    expect(kit.trigger).toHaveBeenCalledWith(38, 0.8 * 0.5, 0)
+    level = 0
+    cb(1, { midi: 38, velocity: 0.8 })
+    expect(kit.trigger).toHaveBeenCalledTimes(1)
+  })
+
   it('re-reads mute state per call (mute mid-playback stops later hits)', () => {
     const kit = { trigger: vi.fn() }
     let muted = false
@@ -76,5 +87,16 @@ describe('voiceTriggerCallback', () => {
     const voice = { triggerAttackRelease: vi.fn() }
     voiceTriggerCallback(voice, () => true, m => `N${m}`)(0, { midi: 60, duration: 1, velocity: 1 })
     expect(voice.triggerAttackRelease).not.toHaveBeenCalled()
+  })
+
+  it('scales velocity by the live level and skips at zero', () => {
+    const voice = { triggerAttackRelease: vi.fn() }
+    let level = 0.25
+    const cb = voiceTriggerCallback(voice, () => false, m => `N${m}`, () => level)
+    cb(1, { midi: 60, duration: 0.5, velocity: 0.8 })
+    expect(voice.triggerAttackRelease).toHaveBeenCalledWith('N60', 0.5, 1, 0.8 * 0.25)
+    level = 0
+    cb(2, { midi: 60, duration: 0.5, velocity: 0.8 })
+    expect(voice.triggerAttackRelease).toHaveBeenCalledTimes(1)
   })
 })

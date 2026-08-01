@@ -68,6 +68,12 @@ const isRecording = ref(false)
 const _allUnmuted = (): Record<PlayerPart, boolean> =>
   ({ drums: false, bass: false, chords: false, melody: false, arpeggio: false, pads: false, counter_melody: false })
 const channelMuted = ref<Record<PlayerPart, boolean>>(_allUnmuted())
+// Per-part live level (0..1, default 1) — the control-surface fader mixer. Applied
+// as velocity scaling at trigger time (see scheduler.ts), so it shapes live
+// playback only; exports and offline renders stay at the written velocities.
+const _allFull = (): Record<PlayerPart, number> =>
+  ({ drums: 1, bass: 1, chords: 1, melody: 1, arpeggio: 1, pads: 1, counter_melody: 1 })
+const partLevel = ref<Record<PlayerPart, number>>(_allFull())
 
 
 // Cached single-note preview instruments for the piano-roll editor, keyed by
@@ -444,7 +450,8 @@ export function useMidiPlayer() {
           // melodic and bass buses so the mix breathes around the four-on-the-floor.
           const notes = track.notes.map(n => ({ time: n.time, midi: n.midi, velocity: n.velocity }))
           const part = new Tone.Part<{ time: number; midi: number; velocity: number }>(
-            drumTriggerCallback(drumKit, () => channelMuted.value.drums, isSynth, duckOnKick), notes)
+            drumTriggerCallback(drumKit, () => channelMuted.value.drums, isSynth, duckOnKick,
+              () => partLevel.value.drums), notes)
           part.start(0)
           scheduledParts.push(part)
 
@@ -457,7 +464,8 @@ export function useMidiPlayer() {
             time: n.time, midi: n.midi, duration: n.duration, velocity: n.velocity,
           }))
           const part = new Tone.Part<{ time: number; midi: number; duration: number; velocity: number }>(
-            voiceTriggerCallback(bassInst, () => channelMuted.value.bass, midiToNote), notes)
+            voiceTriggerCallback(bassInst, () => channelMuted.value.bass, midiToNote,
+              () => partLevel.value.bass), notes)
           part.start(0)
           scheduledParts.push(part)
 
@@ -470,7 +478,8 @@ export function useMidiPlayer() {
           }))
           const mutePart = CHANNEL_PART[channel] ?? 'chords'
           const part = new Tone.Part<{ time: number; midi: number; duration: number; velocity: number }>(
-            voiceTriggerCallback(instrument, () => channelMuted.value[mutePart], midiToNote), notes)
+            voiceTriggerCallback(instrument, () => channelMuted.value[mutePart], midiToNote,
+              () => partLevel.value[mutePart]), notes)
           part.start(0)
           scheduledParts.push(part)
         }
@@ -760,6 +769,11 @@ export function useMidiPlayer() {
     channelMuted.value = { ...channelMuted.value, [ch]: !channelMuted.value[ch] }
   }
 
+  /** Live per-part level (0..1) — driven by control-surface faders. */
+  function setPartLevel(ch: PlayerPart, v: number) {
+    partLevel.value = { ...partLevel.value, [ch]: Math.max(0, Math.min(1, v)) }
+  }
+
   function soloPart(ch: PlayerPart) {
     // Solo = mute everything else. Soloing an already-soloed part unmutes all.
     const isSolo = !channelMuted.value[ch] && PLAYER_PARTS.every(p => p === ch || channelMuted.value[p])
@@ -861,5 +875,5 @@ export function useMidiPlayer() {
     ]).catch(() => { /* best-effort, ignore network errors */ })
   }
 
-  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, sampleMode, setSampleMode, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause, cue, playCued, playPause, cuedLabel, prepareAudition, audition, scheduleAudition, auditionOn, auditionOff, setMidiData, generatedBpm, playbackBpm, tempoRatio, isTempoNudged, setPlaybackBpm, resetPlaybackBpm }
+  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, sampleMode, setSampleMode, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, partLevel, setPartLevel, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause, cue, playCued, playPause, cuedLabel, prepareAudition, audition, scheduleAudition, auditionOn, auditionOff, setMidiData, generatedBpm, playbackBpm, tempoRatio, isTempoNudged, setPlaybackBpm, resetPlaybackBpm }
 }

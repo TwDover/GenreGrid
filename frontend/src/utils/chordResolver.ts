@@ -25,6 +25,15 @@ const SCALE_INTERVALS: Record<string, number[]> = {
   pentatonic: [0, 2, 4, 7, 9, 9, 9],
 }
 
+/** Ordered semitone intervals of a scale (7 degrees; falls back to major). */
+export function scaleIntervals(scale: string): number[] {
+  return SCALE_INTERVALS[scale.toLowerCase()] ?? SCALE_INTERVALS.major
+}
+/** Pitch-class (0–11) of a key root name; falls back to C. */
+export function keyIndex(keyRoot: string): number {
+  return NOTE_INDEX[keyRoot] ?? 0
+}
+
 const FLAT_KEYS = new Set(['F', 'Bb', 'Eb', 'Ab', 'Db', 'Gb'])
 const SHARP_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const FLAT_NAMES  = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B']

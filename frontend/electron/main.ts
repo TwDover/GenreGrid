@@ -147,6 +147,9 @@ const RENDERER_MIME: Record<string, string> = {
   '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.map': 'application/json',
 }
 
+// Fixed local port for the renderer's static server (see origin note below).
+const RENDERER_PORT = 38517
+
 function startRendererServer(): Promise<string> {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
@@ -165,11 +168,24 @@ function startRendererServer(): Promise<string> {
         res.end('Internal error')
       }
     })
-    server.on('error', reject)
-    server.listen(0, '127.0.0.1', () => {
+    const onListening = () => {
       const port = (server.address() as nodeNet.AddressInfo).port
       resolve(`http://127.0.0.1:${port}/index.html`)
+    }
+    // A stable port keeps the renderer's ORIGIN stable, and with it localStorage —
+    // volume, theme, MIDI-on, sample mode all key off the origin. An ephemeral
+    // port (listen(0)) gave every launch a fresh origin, silently resetting all
+    // persisted settings. Fall back to ephemeral only if the port is taken
+    // (e.g. a second instance); that launch just starts with default settings.
+    server.once('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        server.once('error', reject)
+        server.listen(0, '127.0.0.1', onListening)
+      } else {
+        reject(err)
+      }
     })
+    server.listen(RENDERER_PORT, '127.0.0.1', onListening)
   })
 }
 

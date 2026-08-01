@@ -55,6 +55,28 @@
         </label>
       </template>
 
+      <div v-if="enabled" class="ms-apc">
+        <div class="ms-apc-row">
+          <span class="ms-label">APC mini mk2</span>
+          <span class="ms-apc-status" :class="{ 'is-live': apc.connected.value }">
+            {{ apc.connected.value ? 'Connected — lights on' : 'Not detected' }}
+          </span>
+        </div>
+        <p v-if="apc.mk1Detected.value && !apc.connected.value" class="ms-hint">
+          An original APC mini was found — the light show needs the mk2.
+        </p>
+        <details v-if="apc.connected.value" class="ms-apc-map">
+          <summary>Control mapping</summary>
+          <ul>
+            <li><b>Pads</b> — play &amp; record the selected voice: drums = a 4×4 drum rack (bottom-left, lit by piece); chords = a chord grid (columns = scale degrees, one pad = one triad); other voices = a note grid in fourths. With a stem's editor open, the grid lights in that stem's key (roots cyan, in-scale dim, out-of-key dark)</li>
+            <li><b>Grid (drum editor open)</b> — scene button 8 switches to a step sequencer: rows = kit lanes, columns = 1/16 steps, track buttons page</li>
+            <li><b>Scene buttons</b> — 1 play/pause · 2 stop · 3 loop · 4 record · 5/6 octave up/down · 7 metronome</li>
+            <li><b>Track buttons</b> — mute parts 1–7 (drums, bass, chords, melody, arp, pads, counter); hold <b>Shift</b> for solo</li>
+            <li><b>Faders</b> — 1–7 part levels · 8 pad velocity · 9 master volume</li>
+          </ul>
+        </details>
+      </div>
+
       <p v-if="error" class="ms-error">{{ error }}</p>
     </template>
   </section>
@@ -62,12 +84,14 @@
 
 <script setup lang="ts">
 import { useMidiInput } from '../composables/useMidiInput'
+import { useApcMini } from '../composables/useApcMini'
 import type { PlayerPart } from '../composables/useMidiPlayer'
 
 const {
   supported, enabled, requesting, error, devices, selectedId, part, activeNotes,
   toggle, setPart,
 } = useMidiInput()
+const apc = useApcMini()
 
 const MIDI_PARTS = ['melody', 'chords', 'bass', 'pads', 'arpeggio', 'counter_melody', 'drums'] as const
 function onPart(e: Event) { setPart((e.target as HTMLSelectElement).value as PlayerPart) }
@@ -112,4 +136,13 @@ function onDevice(e: Event) { selectedId.value = (e.target as HTMLSelectElement)
 }
 .ms-hint { flex: 1; font-size: var(--t-meta); color: var(--ink-faint); font-style: italic; }
 .ms-error { font-size: var(--t-meta); color: var(--bad); margin: 0; }
+
+.ms-apc { display: flex; flex-direction: column; gap: var(--s2); }
+.ms-apc-row { display: flex; align-items: center; gap: var(--s3); }
+.ms-apc-status { font-size: var(--t-meta); color: var(--ink-faint); }
+.ms-apc-status.is-live { color: var(--accent); }
+.ms-apc-map { font-size: var(--t-meta); color: var(--ink-dim); }
+.ms-apc-map summary { cursor: pointer; color: var(--ink-faint); }
+.ms-apc-map ul { margin: var(--s2) 0 0; padding-left: var(--s5); display: flex; flex-direction: column; gap: 2px; }
+.ms-apc-map b { color: var(--ink-dim); font-weight: 600; }
 </style>

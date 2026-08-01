@@ -26,28 +26,38 @@ export interface VoiceNote { midi: number; duration: number; velocity: number }
 
 // Drum part: skip when the drums part is muted; trigger the kit; and on electronic
 // styles (`pump`) briefly duck the other buses on each kick (GM kick = midi 36).
+// `level` (0..1, re-read per hit) scales velocity — the live fader mixer. Velocity
+// scaling isn't a true dB gain (layered samplers pick softer layers) but it needs
+// no per-part audio nodes and leaves exports/offline renders untouched.
 export function drumTriggerCallback(
   kit: DrumKitLike,
   isMuted: () => boolean,
   pump: boolean,
   duckOnKick: (time: number) => void,
+  level: () => number = () => 1,
 ): (time: number, note: DrumNote) => void {
   return (time, note) => {
     if (isMuted()) return
-    kit.trigger(note.midi, note.velocity, time)
+    const lv = level()
+    if (lv <= 0) return
+    kit.trigger(note.midi, note.velocity * lv, time)
     if (pump && note.midi === 36) duckOnKick(time)
   }
 }
 
 // Pitched part (bass / chords / melody / arp / pads / counter): skip when muted,
-// else play the note (midi -> note name) for its duration at its time/velocity.
+// else play the note (midi -> note name) for its duration at its time/velocity
+// (velocity scaled by the part's live `level`, as above).
 export function voiceTriggerCallback(
   voice: VoiceLike,
   isMuted: () => boolean,
   midiToNote: (midi: number) => string,
+  level: () => number = () => 1,
 ): (time: number, note: VoiceNote) => void {
   return (time, note) => {
     if (isMuted()) return
-    voice.triggerAttackRelease(midiToNote(note.midi), note.duration, time, note.velocity)
+    const lv = level()
+    if (lv <= 0) return
+    voice.triggerAttackRelease(midiToNote(note.midi), note.duration, time, note.velocity * lv)
   }
 }
