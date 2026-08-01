@@ -24,7 +24,7 @@ import { useTheme, themeColor } from '../composables/useTheme'
 import * as Tone from 'tone'
 import type { ParsedNote } from '../composables/useMidiPlayer'
 import { scaleNotes } from '../utils/chordResolver'
-import { timeAtX, pitchAtY, buildInsertedNote, nearRightEdge, resizedDuration } from '../utils/pianoRollEdit'
+import { timeAtX, pitchAtY, buildInsertedNote, nearRightEdge, resizedDuration, drumPieceName } from '../utils/pianoRollEdit'
 
 const props = withDefaults(defineProps<{
   notes: ParsedNote[]
@@ -65,6 +65,14 @@ const isDrumPart = computed(() => displayNotes.value.some(n => n.isPercussion))
 const displayNotes = computed<ParsedNote[]>(() =>
   props.editable ? localNotes.value : props.notes)
 
+// Drum parts render as a compact grid: one equal-height lane per distinct GM piece
+// present (kick/snare/hat…), sorted low→high, ignoring the sparse pitch gaps between
+// them. Empty when the part isn't percussion (melodic parts keep the pitch layout).
+const drumRows = computed<number[]>(() =>
+  isDrumPart.value
+    ? [...new Set(displayNotes.value.filter(n => n.isPercussion).map(n => n.midi))].sort((a, b) => a - b)
+    : [])
+
 const inScaleSet = computed<Set<number>>(() => {
   if (!props.keyRoot || !props.scale) return new Set()
   return scaleNotes(props.keyRoot, props.scale)
@@ -84,7 +92,13 @@ function noteRect(note: ParsedNote, w: number, h: number, minP: number, pitchRan
   const x = (note.time / dur) * w
   const noteW = Math.max(2, (note.duration / dur) * w - 1)
   if (note.isPercussion) {
-    return { x, y: h - 6, w: Math.max(2, noteW * 0.3), h: 6 }
+    // One lane per distinct piece; the hit is a short tick on its lane.
+    const rows = drumRows.value
+    const n = Math.max(1, rows.length)
+    const laneH = h / n
+    const idx = Math.max(0, rows.indexOf(note.midi))
+    const y = h - (idx + 1) * laneH
+    return { x, y: y + laneH * 0.12, w: Math.max(2, noteW * 0.5), h: Math.max(2, laneH * 0.76) }
   }
   const y = h - ((note.midi - minP + 1) / pitchRange) * h
   return { x, y, w: noteW, h: Math.max(2, (h / pitchRange) * 0.85) }
@@ -119,25 +133,28 @@ function draw(playheadTime = 0) {
   ctx.fillStyle = cBg
   ctx.fillRect(0, 0, w, h)
 
-  const noteH = Math.max(2, (h / pitchRange) * 0.85)
-  const inScale = inScaleSet.value
+  if (isDrumPart.value) {
+    drawDrumLanes(ctx, w, h)
+  } else {
+    const noteH = Math.max(2, (h / pitchRange) * 0.85)
+    const inScale = inScaleSet.value
+    for (let p = minP; p <= maxP; p++) {
+      const y = h - ((p - minP + 1) / pitchRange) * h
 
-  for (let p = minP; p <= maxP; p++) {
-    const y = h - ((p - minP + 1) / pitchRange) * h
+      // Scale row highlight
+      if (inScale.size > 0 && inScale.has(p % 12)) {
+        ctx.fillStyle = _rgba('--accent', 0.05, '#00c8ff')
+        ctx.fillRect(0, y, w, noteH + 1)
+      }
 
-    // Scale row highlight
-    if (inScale.size > 0 && inScale.has(p % 12)) {
-      ctx.fillStyle = _rgba('--accent', 0.05, '#00c8ff')
-      ctx.fillRect(0, y, w, noteH + 1)
+      // Pitch grid line
+      ctx.strokeStyle = _rgba('--text-dim', 0.16, '#4a7080')
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(0, y + noteH)
+      ctx.lineTo(w, y + noteH)
+      ctx.stroke()
     }
-
-    // Pitch grid line
-    ctx.strokeStyle = _rgba('--text-dim', 0.16, '#4a7080')
-    ctx.lineWidth = 1
-    ctx.beginPath()
-    ctx.moveTo(0, y + noteH)
-    ctx.lineTo(w, y + noteH)
-    ctx.stroke()
   }
 
   for (const note of displayNotes.value) {
@@ -178,6 +195,35 @@ function draw(playheadTime = 0) {
     grad.addColorStop(1, _rgba('--text', 0, '#e0e0e8'))
     ctx.fillStyle = grad
     ctx.fillRect(px - 4, 0, 8, h)
+  }
+}
+
+// Compact drum grid: an equal-height lane per distinct piece (low→high, bottom-up),
+// with a small piece label when the lane is tall enough to read (skipped when many
+// pieces squeeze the lanes below legibility in the mini preview).
+function drawDrumLanes(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  const rows = drumRows.value
+  const n = Math.max(1, rows.length)
+  const laneH = h / n
+  ctx.font = '8px system-ui, sans-serif'
+  ctx.textBaseline = 'middle'
+  for (let i = 0; i < rows.length; i++) {
+    const y = h - (i + 1) * laneH
+    if (i % 2 === 1) {
+      ctx.fillStyle = _rgba('--text-dim', 0.05, '#4a7080')
+      ctx.fillRect(0, y, w, laneH)
+    }
+    ctx.strokeStyle = _rgba('--text-dim', 0.16, '#4a7080')
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke()
+    if (laneH >= 8) {
+      const label = drumPieceName(rows[i])
+      const tw = ctx.measureText(label).width
+      ctx.fillStyle = _rgba('--bg-deepest', 0.66, '#020608')
+      ctx.fillRect(1, y + laneH / 2 - 5, tw + 4, 10)
+      ctx.fillStyle = _rgba('--gold', 0.95, '#fbbf24')
+      ctx.fillText(label, 3, y + laneH / 2)
+    }
   }
 }
 

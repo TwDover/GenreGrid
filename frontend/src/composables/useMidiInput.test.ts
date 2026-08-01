@@ -73,6 +73,28 @@ describe('useMidiInput — routing', () => {
     expect(player.auditionOn).toHaveBeenCalledWith('lofi', 'bass', 40, 90 / 127)
   })
 
+  it('ignores drum inputs outside the GM percussion range (35–81)', async () => {
+    const midi = useMidiInput()
+    midi.setPart('drums')
+    await midi.enable()
+    const input = access.inputs.get('dev1')!
+    // In range → plays; out of range (too low / too high) → dropped.
+    input.onmidimessage!({ data: new Uint8Array([0x90, 38, 100]) })   // snare
+    expect(player.auditionOn).toHaveBeenCalledWith(undefined, 'drums', 38, 100 / 127)
+    player.auditionOn.mockClear()
+    input.onmidimessage!({ data: new Uint8Array([0x90, 24, 100]) })   // below 35
+    input.onmidimessage!({ data: new Uint8Array([0x90, 96, 100]) })   // above 81
+    expect(player.auditionOn).not.toHaveBeenCalled()
+  })
+
+  it('does not range-filter melodic parts (any pitch plays)', async () => {
+    const midi = useMidiInput()
+    midi.setPart('bass')
+    await midi.enable()
+    access.inputs.get('dev1')!.onmidimessage!({ data: new Uint8Array([0x90, 24, 100]) })
+    expect(player.auditionOn).toHaveBeenCalledWith(undefined, 'bass', 24, 100 / 127)
+  })
+
   it('honors the device filter (ignores messages from other inputs)', async () => {
     const midi = useMidiInput()
     await midi.enable()

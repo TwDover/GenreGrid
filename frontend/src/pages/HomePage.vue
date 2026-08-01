@@ -93,6 +93,10 @@
           </div>
         </div>
 
+        <!-- Global input config — MIDI is a shared resource any surface can use.
+             Kept above the form's build button so it can't be scrolled out of sight. -->
+        <MidiSettings />
+
         <GenerateForm
           v-if="mode !== 'song'"
           :styles="styles"
@@ -216,6 +220,7 @@ import LibraryPanel from '../components/LibraryPanel.vue'
 import TransportBar from '../components/TransportBar.vue'
 import SongForm from '../components/SongForm.vue'
 import SongResult from '../components/SongResult.vue'
+import MidiSettings from '../components/MidiSettings.vue'
 import HelpPanel from '../components/HelpPanel.vue'
 import ToastHost from '../components/ToastHost.vue'
 import DownloadNamePrompt from '../components/DownloadNamePrompt.vue'

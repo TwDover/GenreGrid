@@ -509,7 +509,7 @@ Recorded/performed MIDI is **captured user data** (like an imported melody) — 
 - **Renderer captures, backend persists** — same ownership split as edits today.
 - **Record modes:** overdub (add) vs. replace (punch). Ship overdub first.
 
-### 9.1 MIDI recording — record what you play  ★ next, builds directly on 8.1
+### 9.1 MIDI recording — record what you play  ✅ shipped 2026-08-01 (loop + song mode), builds on 8.1
 - **Why:** you can *play* a controller (8.1 audition); the missing half is *capturing* it. This is
   the 8.1 "capture" surface, now the anchor of the DAW direction.
 - **Approach:** a **record-arm** on a part + the transport captures live MIDI-in to a note list
@@ -529,10 +529,31 @@ Recorded/performed MIDI is **captured user data** (like an imported melody) — 
   auto-saves** on stop; an **undo/redo** stack (Ctrl/Cmd+Z · Shift+Z, toolbar ↶/↷) snapshots each
   committed change; and a real **persistence bug** was fixed — after `/edit-part` the piano-roll
   cache is now refreshed (`setMidiData`), since `prefetchMidi` no-ops on an already-cached URL and
-  a reopened editor was showing pre-edit notes. **Still v1-limited:** overdubbed notes bake in on
-  the next replay (the looping blob isn't rebuilt mid-take); replace/punch mode is future.
-- **Record in song mode into a specific instrument/section (next):** arm a song part, loop a
-  section (or play through), record into it, persist via section rebuild + History.
+  a reopened editor was showing pre-edit notes. (The 2026-07-30 auto-save-on-stop was later
+  changed to **review-before-save**, see below.)
+- ✅ **Song-mode recording + editor overhaul (shipped 2026-08-01):**
+  - **Section-aware editor** — the editor takes the song's section layout (`sections` prop threaded
+    `SongResult` → `PartCard` → `PianoRollEditor`): colored section dividers + name tabs in the grid,
+    and a **"Loop a section"** selector that snaps the loop region to a section's bars. Arm a song
+    part, loop the chorus, overdub into just that section; persisted via the existing `/edit-part`
+    → `rebuild_combined_from_parts` + `_snapshot_song` (History) path — no new backend endpoint.
+  - **Overdub loop-replay** — captured notes now sound on *every* loop pass (a looping `Tone.Part`
+    re-triggers the prepared voice via new `player.scheduleAudition`), so a take builds up audibly.
+    Fixes the old "overdubbed notes bake in only on the next replay" v1 limitation.
+  - **Review-before-save** — stopping a take commits it as an **unsaved** (dirty) edit and enables
+    *Save edits*; the user saves it or Undo (Ctrl/Cmd+Z) discards it. No more auto-save clobbering
+    the stem with a bad take.
+  - **Drums fully editable** — recording, click-to-audition, and Draw/Select all enabled for drum
+    parts (previously guarded off); named per-piece lanes (GM drum-name map) + a **kit label** on
+    the card; drum inputs outside the GM range (35–81) are ignored at the input boundary.
+  - **Live-MIDI takes control** — opening a stem's editor auto-engages MIDI routed to the edited
+    part; MIDI config moved out of the transport into a `MidiSettings` block in Setup; per-part
+    **mute/solo moved onto each instrument row** (DAW-style).
+  - **Backend fix** — `edit_part` referenced `style` before assignment for drums
+    (`UnboundLocalError` → 500, surfaced as a CORS-stripped "Failed to fetch"); fixed + regression
+    test (`test_edit_part_drums_rewrites_stem`).
+  - **Still future:** replace/punch mode; honoring drum note *length* in playback (crash/ride are
+    byte-identical-safe, closed-hat/kick would change existing songs — deferred).
 - **Effort:** M (audition + transport + edit-part all exist; the new work is capture→ticks→quantize
   and the record-arm UX). **Risk:** timing accuracy + overdub/loop semantics — keep the note model
   unified (9.0) and quantize on save.
@@ -559,9 +580,9 @@ Recorded/performed MIDI is **captured user data** (like an imported melody) — 
 _Plugin / VST hosting is intentionally **not** on this roadmap — it needs a native audio engine
 (a second product) and doesn't fit the web-audio core. Removed 2026-07-30._
 
-**Sequencing:** 7.4 (metronome/count-in) → 9.1 (recording: loop-record then song-mode) → 9.2 (clip
-timeline) → 9.3 (automation) → 9.4 (audio) by demand; 9.5 (MIDI-OUT) opportunistically. 9.1 is the
-next concrete build and reuses everything already in place.
+**Sequencing:** ✅ 7.4 (metronome/count-in) → ✅ 9.1 (recording: loop-record + song-mode, shipped
+2026-08-01) → **9.2 (clip timeline) is next** → 9.3 (automation) → 9.4 (audio) by demand; 9.5
+(MIDI-OUT) opportunistically.
 
 ---
 
@@ -587,11 +608,12 @@ next concrete build and reuses everything already in place.
 8. **Phase 8** — now planned in detail below; spike the one with the strongest signal after
    the workflow wins land. **8.1 audition SHIPPED** (low-latency Web MIDI in); its capture half is
    now the anchor of Phase 9.
-9. **Phase 9 (DAW direction)** — the current thrust: **7.4 metronome → 9.1 MIDI recording**
-   (loop-record in the editor, then song-mode into a specific instrument) → clip timeline →
-   automation. Lock the **9.0 model decisions** first (one note model, record against transport
-   ticks, renderer-captures/backend-persists). Stays web-audio-native — **plugin/VST hosting is out
-   of scope** (removed 2026-07-30); MIDI-OUT (9.5) is an optional interop nicety.
+9. **Phase 9 (DAW direction)** — ✅ **7.4 metronome → 9.1 MIDI recording** shipped (loop-record +
+   song-mode section recording, 2026-08-01, on the unified `/edit-part` note model). **Next: 9.2
+   clip timeline** → 9.3 automation → 9.4 audio. The 9.0 model decisions held (one note model,
+   record against transport ticks, renderer-captures/backend-persists). Stays web-audio-native —
+   **plugin/VST hosting is out of scope** (removed 2026-07-30); MIDI-OUT (9.5) is an optional
+   interop nicety.
 
 ## Measurement
 

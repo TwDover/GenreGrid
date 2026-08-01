@@ -745,13 +745,15 @@ def edit_part(req: EditPartRequest):
     events = [NoteEvent(n.pitch, n.start, n.duration, n.velocity, channel) for n in req.notes]
 
     # Same CC treatment as regenerate_song_part — pan/reverb per part, plus
-    # expression swells re-derived from the edited melody line.
+    # expression swells re-derived from the edited melody line. The style is loaded
+    # unconditionally: drums skip the CC pass but still need it for the GM program +
+    # track name below (part_midi_meta), so `style` must always be bound.
+    try:
+        style = load_style(meta["style_id"])
+    except (ValueError, KeyError):
+        style = None
     part_cc = None
     if req.part != "drums":
-        try:
-            style = load_style(meta["style_id"])
-        except (ValueError, KeyError):
-            style = None
         part_cc = _generate_part_cc(req.part, total_bars, channel, style=style)
         if req.part == "melody":
             part_cc = part_cc + _generate_melody_expression_cc(events, channel)

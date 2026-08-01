@@ -11,6 +11,7 @@
 import { ref } from 'vue'
 import { useMidiPlayer, type PlayerPart } from './useMidiPlayer'
 import { activeStyleId } from './useStyleCatalog'
+import { isDrumPitch } from '../utils/pianoRollEdit'
 
 // ── Pure MIDI message parsing (unit-tested) ──────────────────────────────────
 export interface MidiNoteEvent { type: 'noteon' | 'noteoff' | 'other'; note: number; velocity: number }
@@ -77,6 +78,10 @@ export function useMidiInput() {
     // The override (the edited instrument) wins over the global now-playing voice.
     const style = auditionOverride ? auditionOverride.style : (activeStyleId.value ?? undefined)
     const prt = auditionOverride ? auditionOverride.part : part.value
+    // On the drums voice, ignore notes outside the GM percussion range: a keyboard
+    // played as drums sends chromatic notes that map to no kit piece — dropping them
+    // here keeps them out of both monitoring and recording (no unused lanes).
+    if (prt === 'drums' && (ev.type === 'noteon' || ev.type === 'noteoff') && !isDrumPitch(ev.note)) return
     if (ev.type === 'noteon') {
       activeNotes.value++
       player.auditionOn(style, prt, ev.note, ev.velocity / 127)

@@ -610,6 +610,18 @@ export function useMidiPlayer() {
     }
   }
 
+  /** Schedule a one-shot on the already-prepared (cached) audition voice at an
+   *  absolute transport/context time. Used by the piano-roll editor to replay
+   *  loop-recorded overdubs on each pass without reloading the player. No-ops if the
+   *  voice isn't built yet — callers prepareAudition() first (the editor does on open). */
+  function scheduleAudition(styleId: string | undefined, part: PlayerPart, midi: number,
+                            time: number, durationSec = 0.4, velocity = 0.9) {
+    const entry = _auditionCache.get(_auditionKey(styleId, part, false))
+    if (!entry) return
+    if (entry.kind === 'drums') entry.kit.trigger(midi, velocity, time)
+    else entry.inst.triggerAttackRelease(Tone.Frequency(midi, 'midi').toNote(), durationSec, time, velocity)
+  }
+
   /** Note-on for a sustained audition (a live MIDI controller): the note rings until
    *  auditionOff. Drums are one-shot, so a note-on triggers the hit and note-off no-ops. */
   async function auditionOn(styleId: string | undefined, part: PlayerPart, midi: number, velocity = 0.9) {
@@ -849,5 +861,5 @@ export function useMidiPlayer() {
     ]).catch(() => { /* best-effort, ignore network errors */ })
   }
 
-  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, sampleMode, setSampleMode, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause, cue, playCued, playPause, cuedLabel, prepareAudition, audition, auditionOn, auditionOff, setMidiData, generatedBpm, playbackBpm, tempoRatio, isTempoNudged, setPlaybackBpm, resetPlaybackBpm }
+  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, sampleMode, setSampleMode, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause, cue, playCued, playPause, cuedLabel, prepareAudition, audition, scheduleAudition, auditionOn, auditionOff, setMidiData, generatedBpm, playbackBpm, tempoRatio, isTempoNudged, setPlaybackBpm, resetPlaybackBpm }
 }
