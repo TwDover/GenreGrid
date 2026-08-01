@@ -134,6 +134,13 @@ export interface SongSectionDef {
   style_id?: string   // per-section style override (custom templates)
 }
 
+export interface RearrangeSectionDef extends SongSectionDef {
+  // Index into the song's CURRENT (pre-edit) section list whose original seed
+  // this entry reuses (content stability across move/resize/duplicate).
+  // undefined/null = brand-new content, freshly seeded and quality-searched.
+  source_index?: number | null
+}
+
 export interface BuildSongRequest {
   style_id: string
   key: string
@@ -165,6 +172,10 @@ export interface SongSectionResult {
   start_bar: number
   key: string
   quality?: number | null
+  parts_mode?: string
+  chorus_key?: boolean
+  bridge_key?: boolean
+  style_id?: string | null
 }
 
 export interface BuildSongResponse {

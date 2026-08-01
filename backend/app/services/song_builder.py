@@ -105,10 +105,13 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
     uses (`_MAX_QUALITY_ATTEMPTS`, best-of scoring) instead of a single unscreened
     attempt — sections used to ship whatever the first random roll produced.
 
-    `fixed_section_seeds` — when given (regenerate_song_part), replays the exact
-    winning attempt seed chosen for each section by the original build_song call
-    instead of re-deriving and re-searching, so non-regenerated parts come out
-    byte-identical to what's already on disk.
+    `fixed_section_seeds` — a list of per-section seeds (or `None` per-entry).
+    An entry with a definite seed replays that exact winning attempt instead of
+    re-deriving and re-searching, so non-regenerated sections come out
+    byte-identical to what's already on disk (regenerate_song_part,
+    regenerate_song_section). An entry that is `None` (or the whole list is
+    `None`) runs the normal quality-gated search — used for brand-new sections
+    in a rearrange that have no prior seed to replay.
 
     `final_chorus_lift` — extra semitones added to the LAST chorus's key (the
     classic gear-change); the cached chorus theme is transposed to match.
@@ -296,10 +299,16 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
         else:
             sec_motif = verse_motif if sec_type == "chorus" else None
 
-        if fixed_section_seeds is not None:
+        # Per-section fixed-vs-search: an entry can be None inside an otherwise
+        # fixed list (a rearrange mixing carried-over sections that replay their
+        # original seed with brand-new/duplicated sections that need a fresh
+        # quality-searched seed, like a normal build).
+        use_fixed = (fixed_section_seeds is not None and sec_i < len(fixed_section_seeds)
+                     and fixed_section_seeds[sec_i] is not None)
+        if use_fixed:
             # Replay: reuse the exact seed the original build_song call landed on
             # for this section — no re-search, so untouched parts stay identical.
-            winning_seed = fixed_section_seeds[sec_i] if sec_i < len(fixed_section_seeds) else sec_seed
+            winning_seed = fixed_section_seeds[sec_i]
             _qraw = None
             try:
                 evts, _cc, _pb, _prog, _qraw, _patterns, _secs = _run_attempt(
@@ -315,7 +324,8 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
         else:
             # Quality-gated multi-attempt search, mirroring plain /generate's
             # _run_best_attempt — song sections previously ran once with no
-            # quality check at all.
+            # quality check at all. Also the path for brand-new/duplicated
+            # sections in a rearrange (no prior seed to replay).
             best_evts, best_total, winning_seed = None, -1.0, sec_seed
             for attempt in range(_MAX_QUALITY_ATTEMPTS):
                 attempt_seed = sec_seed if attempt == 0 else _part_seed(sec_seed, attempt, "retry")
@@ -350,8 +360,8 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
                                     e.duration, e.velocity, e.channel) for e in fitted]
             evts["melody"] = fitted
 
-        sec_quality = best_total if (fixed_section_seeds is None and best_total >= 0) else (
-            _qraw.get("total") if fixed_section_seeds is not None and _qraw else None)
+        sec_quality = best_total if (not use_fixed and best_total >= 0) else (
+            _qraw.get("total") if use_fixed and _qraw else None)
 
         # Cross-section motif reuse: the first section of each type sets the theme
         # (melody + harmony); later sections of that type reuse it, keeping fresh
@@ -425,6 +435,10 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
             "name": sec_name, "section_type": sec_type,
             "bars": sec_bars, "start_bar": total_bars, "key": sec_key,
             "quality": round(sec_quality, 3) if sec_quality is not None else None,
+            "parts_mode": parts_mode,
+            "chorus_key": bool(sec_def.get("chorus_key", False)),
+            "bridge_key": bool(sec_def.get("bridge_key", False)),
+            "style_id": sec_def.get("style_id"),
         })
         ramp_sections.append({
             "offset": beat_offset, "bars": sec_bars,
