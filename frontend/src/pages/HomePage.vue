@@ -208,6 +208,7 @@
     <RenderQueuePanel />
     <InstrumentsPanel />
     <SynthDesigner />
+    <DrumDesigner />
   </div>
 </template>
 
@@ -228,6 +229,7 @@ import ErrorLogPanel from '../components/ErrorLogPanel.vue'
 import RenderQueuePanel from '../components/RenderQueuePanel.vue'
 import InstrumentsPanel from '../components/InstrumentsPanel.vue'
 import SynthDesigner from '../components/SynthDesigner.vue'
+import DrumDesigner from '../components/DrumDesigner.vue'
 import { useErrorLog } from '../composables/useErrorLog'
 import { setStyleCatalog } from '../composables/useStyleCatalog'
 import { useRenderQueue } from '../composables/useRenderQueue'

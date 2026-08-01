@@ -15,15 +15,15 @@ import { downloadUrl } from '../services/api'
 import { getPianoSampler, getMasterLimiterNode, duckOnKick, resetBusLevels, applyMelodicFxPreset, setMasterTrimDb } from '../soundfonts/loader'
 import { getPartInsert, resetPartInsert } from '../soundfonts/partInsert'
 import { MELODIC_FX_PRESETS, MASTER_TRIM_DB, fxFamilyFor } from '../soundfonts/fxPresets'
-import { drumCharacterForStyle } from '../soundfonts/drums'
 import { makeSynthKit } from '../soundfonts/synthDrums'
-import { makeHybridKit, type KitSamplers } from '../soundfonts/customDrumKit'
+import { makeHybridKit, makeBlendedKit, materializeSampleLayer, type KitSamplers } from '../soundfonts/customDrumKit'
 import { getBassSampler, SAMPLED_BASS_VOICES } from '../soundfonts/bass'
 import { getMelodicSamplerById, SAMPLED_VOICES } from '../soundfonts/melodic'
 import { LayeredSampler } from '../soundfonts/layeredSampler'
 import { resolvePartInstrument } from '../soundfonts/customInstruments'
 import { useCustomInstruments } from './useCustomInstruments'
 import { useSynthPatches } from './useSynthPatches'
+import { useDrumKitPatches } from './useDrumKitPatches'
 import { buildSynthFromPatch, type SynthPatch } from '../soundfonts/synthPatch'
 import { voiceFor, setActiveStyle } from './useStyleCatalog'
 import { startTicking as metroStart, stopTicking as metroStop, setMeter as metroSetMeter, countIn as metroCountIn } from './useMetronome'
@@ -382,11 +382,18 @@ export function useMidiPlayer() {
       // character. Replaces the old thin/fake-cymbal samples for every genre.
       // A user kit assigned to the drums part layers over this per piece (below).
       // Routed through the drums part insert (roadmap 9.3), not the bus directly.
-      const synthDrumKit = makeSynthKit(drumCharacterForStyle(styleId), getPartInsert('drums').gain)
+      const resolvedDrumPatch = useDrumKitPatches().resolveKitForStyle(styleId)
+      const synthDrumKit = makeSynthKit(resolvedDrumPatch, getPartInsert('drums').gain)
       disposables.push(...synthDrumKit.nodes)
-      // User kit pieces (loaded above) take over the pitches they cover; the rest
-      // stay synthesized, so a two-piece kit is usable without filling every slot.
-      const drumKit = makeHybridKit(synthDrumKit, customKit)
+      // The kit's own "sample base" (Drum Designer) blends UNDER the synth first —
+      // then a style-assigned sample kit (loaded above) still wins per piece outright,
+      // so a two-piece kit is usable without filling every slot.
+      const patchSamplers = await materializeSampleLayer(
+        useCustomInstruments(), resolvedDrumPatch.sampleKitId, getPartInsert('drums').gain,
+      )
+      customSamplers.push(...patchSamplers.values())
+      const blendedDrumKit = makeBlendedKit(synthDrumKit, patchSamplers, resolvedDrumPatch.sampleBlend)
+      const drumKit = makeHybridKit(blendedDrumKit, customKit)
       let _synthBass: Tone.MonoSynth | null = null
       const getSynthBass = () => { if (!_synthBass) _synthBass = makeSynthBass(disposables, getPartInsert('bass').gain); return _synthBass }
 
@@ -565,7 +572,7 @@ export function useMidiPlayer() {
     let entry: AuditionEntry
 
     if (part === 'drums') {
-      const synthKit = makeSynthKit(drumCharacterForStyle(styleId), getPartInsert('drums').gain)
+      const synthKit = makeSynthKit(useDrumKitPatches().resolveKitForStyle(styleId), getPartInsert('drums').gain)
       entry = { kind: 'drums', kit: makeHybridKit(synthKit, new Map()) }
     } else if (part === 'bass') {
       const bassVoice = voiceFor(styleId, 'bass')

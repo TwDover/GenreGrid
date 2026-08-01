@@ -18,14 +18,14 @@ import * as Tone from 'tone'
 import { Midi } from '@tonejs/midi'
 import { downloadUrl } from '../services/api'
 import { makeMasterLimiter, softClipCurve } from '../soundfonts/loader'
-import { drumCharacterForStyle } from '../soundfonts/drums'
 import { makeSynthKit } from '../soundfonts/synthDrums'
-import { makeHybridKit, type KitSamplers } from '../soundfonts/customDrumKit'
+import { makeHybridKit, makeBlendedKit, materializeSampleLayer, type KitSamplers } from '../soundfonts/customDrumKit'
 import { LayeredSampler } from '../soundfonts/layeredSampler'
 import { resolvePartInstrument } from '../soundfonts/customInstruments'
 import { buildSynthFromPatch, type SynthPatch } from '../soundfonts/synthPatch'
 import { useSynthPatches } from './useSynthPatches'
 import { useCustomInstruments } from './useCustomInstruments'
+import { useDrumKitPatches } from './useDrumKitPatches'
 import { voiceFor } from './useStyleCatalog'
 import { encodeAudio, type AudioFormat } from '../utils/audioEncoder'
 import { PLAYER_PARTS, type PlayerPart, CHANNEL_PART, SYNTH_STYLES, PAD_STYLES, LOFI_STYLES } from './playerConstants'
@@ -277,11 +277,18 @@ export async function offlineRenderRaw(
       }
 
       // ── Drum kit ─────────────────────────────────────────────────────
-      // Synthesized engine + any custom kit pieces (hybrid), routed to the offline
-      // compressor so the export matches what the user auditions.
-      const drumKit = wants('drums')
-        ? makeHybridKit(makeSynthKit(drumCharacterForStyle(styleId), partInsert('drums', 0), context), customKit)
-        : null
+      // Synthesized engine + the kit's own "sample base" (Drum Designer) blended in,
+      // then any style-assigned custom kit piece (hybrid) still wins outright — routed
+      // to the offline compressor so the export matches what the user auditions.
+      let drumKit = null
+      if (wants('drums')) {
+        const resolvedDrumPatch = useDrumKitPatches().resolveKitForStyle(styleId)
+        const synthDrumKit = makeSynthKit(resolvedDrumPatch, partInsert('drums', 0), context)
+        const patchSamplers = await materializeSampleLayer(
+          ci, resolvedDrumPatch.sampleKitId, partInsert('drums', 0), context,
+        )
+        drumKit = makeHybridKit(makeBlendedKit(synthDrumKit, patchSamplers, resolvedDrumPatch.sampleBlend), customKit)
+      }
 
       // ── Bass ─────────────────────────────────────────────────────────
       // Patch > custom instrument > built-in synth bass.

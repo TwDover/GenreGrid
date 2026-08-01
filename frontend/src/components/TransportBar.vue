@@ -98,6 +98,11 @@
       title="Design a synth voice"
       @click="openDesigner"
     >🎛</button>
+    <button
+      class="tb-instr-btn"
+      title="Design a drum kit"
+      @click="openDrumDesigner"
+    >🥁</button>
 
     <!-- Metronome + count-in: a click to play/record against (meter-accented). -->
     <div v-if="!isRecording" class="tb-metro">
@@ -136,6 +141,7 @@ import { computed } from 'vue'
 import { useMidiPlayer } from '../composables/useMidiPlayer'
 import { useCustomInstruments } from '../composables/useCustomInstruments'
 import { useSynthDesigner } from '../composables/useSynthDesigner'
+import { useDrumDesigner } from '../composables/useDrumDesigner'
 import { useMetronome } from '../composables/useMetronome'
 
 const {
@@ -148,6 +154,7 @@ const {
 
 const { panelOpen: instrumentsPanelOpen, supported: instrumentsSupported } = useCustomInstruments()
 const { openDesigner } = useSynthDesigner()
+const { openDesigner: openDrumDesigner } = useDrumDesigner()
 
 const {
   enabled: metroEnabled, countInBars, setEnabled: setMetroEnabled, setCountInBars,

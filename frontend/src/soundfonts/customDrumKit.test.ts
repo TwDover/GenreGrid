@@ -9,7 +9,7 @@
  * <https://www.gnu.org/licenses/> for details.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { makeHybridKit, type KitSamplers } from './customDrumKit'
+import { makeHybridKit, makeBlendedKit, type KitSamplers } from './customDrumKit'
 import { KIT_ROOT } from './customInstruments'
 import type { SynthKit } from './synthDrums'
 import type { LayeredSampler } from './layeredSampler'
@@ -79,5 +79,39 @@ describe('makeHybridKit', () => {
     const synth = fakeSynth()
     const hybrid = makeHybridKit(synth, new Map([[36, fakeSampler()]]))
     expect(hybrid.nodes).toBe(synth.nodes)
+  })
+})
+
+describe('makeBlendedKit', () => {
+  it('returns the synth kit untouched when nothing is mapped, or blend is zero', () => {
+    const synth = fakeSynth()
+    expect(makeBlendedKit(synth, new Map(), 0.5)).toBe(synth)
+    expect(makeBlendedKit(synth, new Map([[36, fakeSampler()]]), 0)).toBe(synth)
+  })
+
+  it('at blend=1, only the sample fires for a mapped piece, at full velocity', () => {
+    const synth = fakeSynth()
+    const kick = fakeSampler()
+    makeBlendedKit(synth, new Map([[36, kick]]), 1).trigger(36, 0.8, 1.5)
+
+    expect(kick.triggerAttack).toHaveBeenCalledWith(KIT_ROOT, 1.5, 0.8)
+    expect(synth.calls).toEqual([])
+  })
+
+  it('at a partial blend, both synth and sample fire, scaled by the ratio', () => {
+    const synth = fakeSynth()
+    const kick = fakeSampler()
+    makeBlendedKit(synth, new Map([[36, kick]]), 0.3).trigger(36, 1, 2)
+
+    expect(synth.calls).toEqual([[36, 0.7, 2]])
+    expect(kick.triggerAttack).toHaveBeenCalledWith(KIT_ROOT, 2, 0.3)
+  })
+
+  it('falls through to the synth, untouched, for pieces the sample kit does not cover', () => {
+    const synth = fakeSynth()
+    const kit = makeBlendedKit(synth, new Map([[36, fakeSampler()]]), 0.6)
+    kit.trigger(38, 0.5, 1)   // snare — not in the map
+
+    expect(synth.calls).toEqual([[38, 0.5, 1]])
   })
 })
