@@ -18,6 +18,7 @@ const player = {
   toggle: vi.fn().mockResolvedValue(undefined),
   stop: vi.fn(),
   audition: vi.fn(),
+  scheduleAudition: vi.fn(),
   prepareAudition: vi.fn(),
   isPlayingUrl: vi.fn().mockReturnValue(true),
   playbackBpm,
@@ -31,7 +32,7 @@ vi.mock('../composables/useMidiPlayer', () => ({ useMidiPlayer: () => player }))
 // Mock live MIDI-in + metronome so recording is drivable without Web MIDI / audio.
 // `recNoteCb` captures the recorder's note-stream handler so tests can inject notes.
 let recNoteCb: ((ev: { type: 'on' | 'off'; note: number; velocity: number }) => void) | null = null
-const midiIn = { enabled: ref(false), part: ref('melody'), enable: vi.fn().mockResolvedValue(undefined), setPart: vi.fn() }
+const midiIn = { supported: true, enabled: ref(false), part: ref('melody'), enable: vi.fn().mockResolvedValue(undefined), setPart: vi.fn() }
 vi.mock('../composables/useMidiInput', () => ({
   useMidiInput: () => midiIn,
   onMidiNote: (cb: (ev: { type: 'on' | 'off'; note: number; velocity: number }) => void) => { recNoteCb = cb; return () => { recNoteCb = null } },
@@ -55,6 +56,7 @@ beforeEach(() => {
   player.audition.mockClear(); player.prepareAudition.mockClear()
   player.setPlaybackBpm.mockClear(); player.resetPlaybackBpm.mockClear()
   player.isPlayingUrl.mockReturnValue(true)
+  midiIn.enable.mockClear(); midiIn.enabled.value = false
   playbackBpm.value = 120; isTempoNudged.value = false
   // jsdom has no object-URL support; the editor encodes its buffer to one for playback.
   URL.createObjectURL = vi.fn(() => 'blob:mock')
@@ -118,12 +120,15 @@ describe('PianoRollEditor — insert', () => {
     expect(added.duration).toBeCloseTo(0.25)              // one 1/8 grid minimum
   })
 
-  it('does not insert on a percussion part', async () => {
+  it('inserts a percussion hit on a drum part (Draw tool)', async () => {
     const wrapper = mountEditor([{ midi: 36, time: 0, duration: 0.1, velocity: 0.8, isPercussion: true }])
     await clickFit(wrapper)
     await wrapper.find('canvas').trigger('mousedown', { clientX: 300, clientY: 220 })
     window.dispatchEvent(new MouseEvent('mouseup', { clientX: 300, clientY: 220 }))
-    expect(wrapper.emitted('notes-changed')).toBeFalsy()
+    const [notes, dirty] = lastEmit(wrapper)!
+    expect(dirty).toBe(true)
+    expect(notes.length).toBe(2)                             // original + drawn hit
+    expect(notes[notes.length - 1].isPercussion).toBe(true)  // drawn as a drum hit
   })
 })
 
@@ -336,6 +341,11 @@ describe('PianoRollEditor — audition', () => {
     window.dispatchEvent(new MouseEvent('mouseup', { clientX: 300, clientY: 220 }))
     expect(player.audition).toHaveBeenCalled()
   })
+  it('takes control of MIDI input on open so a controller sounds the edited part', async () => {
+    mountEditor([melodic(60, 0)])
+    await flushPromises()
+    expect(midiIn.enable).toHaveBeenCalled()   // auto-engaged — no separate enable step needed
+  })
 })
 
 describe('PianoRollEditor — loop flags', () => {
@@ -408,20 +418,146 @@ describe('PianoRollEditor — MIDI recording', () => {
     recNoteCb!({ type: 'on', note: 67, velocity: 0.8 }); recNoteCb!({ type: 'off', note: 67, velocity: 0 })
     recNoteCb!({ type: 'on', note: 72, velocity: 0.6 }); recNoteCb!({ type: 'off', note: 72, velocity: 0 })
 
-    await recBtn(wrapper).trigger('click')     // stop → quantize + commit + auto-save
+    await recBtn(wrapper).trigger('click')     // stop → quantize + commit (unsaved)
     const [notes, dirty] = lastEmit(wrapper)!
     expect(dirty).toBe(true)
     expect(notes).toHaveLength(3)              // original + two overdubbed
     expect(notes.map(n => n.midi)).toEqual(expect.arrayContaining([60, 67, 72]))
     expect(recNoteCb).toBeNull()               // unsubscribed on stop
-    expect(wrapper.emitted('save')).toBeTruthy()   // a take auto-saves so it can't vanish
+    // The take is committed as a DIRTY edit, not auto-saved — the user reviews it and
+    // hits Save edits (which is now enabled) or undoes it if the take didn't land.
+    expect(wrapper.emitted('save')).toBeFalsy()
+    expect((wrapper.findAll('button').find(b => b.text() === 'Save edits')!.element as HTMLButtonElement).disabled).toBe(false)
     wrapper.unmount()
   })
 
-  it('has no Record button on a drum part', async () => {
+  it('records drum pads as percussion hits into the part', async () => {
     const wrapper = mountEditor([{ midi: 36, time: 0, duration: 0.25, velocity: 0.9, isPercussion: true }])
     await clickFit(wrapper)
-    expect(wrapper.findAll('button').some(b => /rec/i.test(b.text()))).toBe(false)
+    const btn = recBtn(wrapper)
+    expect(btn).toBeTruthy()   // drums can loop-record too
+    await btn.trigger('click')
+    await flushPromises()
+    recNoteCb!({ type: 'on', note: 38, velocity: 0.8 }); recNoteCb!({ type: 'off', note: 38, velocity: 0 })
+    await btn.trigger('click')     // stop → quantize + commit
+    const [notes] = lastEmit(wrapper)!
+    const added = notes.find(n => n.midi === 38)
+    expect(added).toBeTruthy()
+    expect(added!.isPercussion).toBe(true)   // captured as a drum hit, not a melodic note
+    wrapper.unmount()
+  })
+})
+
+describe('PianoRollEditor — drum lane', () => {
+  const drum = (midi: number, time: number): ParsedNote =>
+    ({ midi, time, duration: 0.25, velocity: 0.8, isPercussion: true })
+  function mountDrums(notes: ParsedNote[]) {
+    const wrapper = mount(PianoRollEditor, {
+      props: { notes, duration: 2.0, secondsPerBeat: 0.5, keyRoot: 'C', scale: 'minor', partName: 'drums', styleId: 'lofi' },
+      attachTo: document.body,
+    })
+    const el = wrapper.find('canvas').element as HTMLCanvasElement
+    el.width = 800; el.height = 500
+    el.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 800, bottom: 500, width: 800, height: 500, x: 0, y: 0, toJSON() {} }) as DOMRect
+    return wrapper
+  }
+
+  it('auditions a drum piece when its gutter row is clicked', async () => {
+    const wrapper = mountDrums([drum(38, 0), drum(42, 0.5)])   // snare + hat lanes
+    await clickFit(wrapper)
+    await wrapper.find('canvas').trigger('mousedown', { clientX: 20, clientY: 200 })   // in the gutter
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 20, clientY: 200 }))
+    expect(player.audition).toHaveBeenCalledTimes(1)
+    const [styleId, part] = player.audition.mock.calls[0]
+    expect(styleId).toBe('lofi'); expect(part).toBe('drums')
+    wrapper.unmount()
+  })
+
+  it('exposes the Draw/Select tools and draws a hit as percussion', async () => {
+    const wrapper = mountDrums([drum(38, 0)])
+    await clickFit(wrapper)
+    // The tool toggle is available on drum parts too.
+    expect(wrapper.findAll('button').some(b => b.text().includes('Draw'))).toBe(true)
+    expect(wrapper.findAll('button').some(b => b.text().includes('Select'))).toBe(true)
+    // Draw is the default tool — clicking an empty lane adds a hit flagged percussion.
+    await wrapper.find('canvas').trigger('mousedown', { clientX: 300, clientY: 200 })
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 300, clientY: 200 }))
+    const [notes, dirty] = lastEmit(wrapper)!
+    expect(dirty).toBe(true)
+    expect(notes.length).toBe(2)                             // original + drawn hit
+    expect(notes[notes.length - 1].isPercussion).toBe(true)  // drawn as a drum hit
+    wrapper.unmount()
+  })
+})
+
+// ── Song-mode sections (loop a section, record into it) ──────────────────────
+describe('PianoRollEditor — sections', () => {
+  // 4/4 editor: bar = 4 beats = 2.0s @ 120bpm (secondsPerBeat 0.5).
+  const SECTIONS = [
+    { name: 'Intro', section_type: 'intro', start_bar: 0, bars: 4 },
+    { name: 'Verse 1', section_type: 'verse', start_bar: 4, bars: 8 },
+    { name: 'Chorus', section_type: 'chorus', start_bar: 12, bars: 8 },
+  ]
+  const recBtn = (w: VueWrapper) => w.findAll('button').find(b => /rec/i.test(b.text()))!
+  function mountWithSections() {
+    const wrapper = mount(PianoRollEditor, {
+      props: {
+        notes: [melodic(60, 0.5)], duration: 40, secondsPerBeat: 0.5,
+        keyRoot: 'C', scale: 'minor', partName: 'melody', styleId: 'lofi', sections: SECTIONS,
+      },
+      attachTo: document.body,
+    })
+    const el = wrapper.find('canvas').element as HTMLCanvasElement
+    el.width = 800; el.height = 500
+    el.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 800, bottom: 500, width: 800, height: 500, x: 0, y: 0, toJSON() {} }) as DOMRect
+    return wrapper
+  }
+  const sectionSelect = (w: VueWrapper) => w.findAll('select').find(s => s.text().includes('Verse 1'))
+
+  it('shows a section selector in song mode but not in loop mode', async () => {
+    const song = mountWithSections()
+    await clickFit(song)
+    expect(sectionSelect(song)).toBeTruthy()
+    song.unmount()
+
+    const loop = mountEditor([melodic(60, 0.5)])   // no sections
+    await clickFit(loop)
+    expect(loop.findAll('select').some(s => s.text().includes('Loop a section'))).toBe(false)
+    loop.unmount()
+  })
+
+  it('selecting a section loops exactly its bar span in playback', async () => {
+    const wrapper = mountWithSections()
+    await clickFit(wrapper)
+    // Verse 1: start_bar 4, 8 bars → beats 16..48 → 8.0s..24.0s.
+    await sectionSelect(wrapper)!.setValue('1')
+    await playBtn(wrapper).trigger('click')
+    await flushPromises()
+    const region = player.toggle.mock.calls[0][4]
+    expect(region.start).toBeCloseTo(8.0)
+    expect(region.end).toBeCloseTo(24.0)
+    wrapper.unmount()
+  })
+
+  it('records an overdub into the selected section span', async () => {
+    const wrapper = mountWithSections()
+    await clickFit(wrapper)
+    await sectionSelect(wrapper)!.setValue('2')   // Chorus: bars 12..20 → 24.0s..40.0s
+
+    await recBtn(wrapper).trigger('click')        // arm — loops the chosen section
+    await flushPromises()
+    const region = player.toggle.mock.calls[0][4]
+    expect(region.start).toBeCloseTo(24.0)
+    expect(region.end).toBeCloseTo(40.0)
+
+    recNoteCb!({ type: 'on', note: 64, velocity: 0.7 }); recNoteCb!({ type: 'off', note: 64, velocity: 0 })
+    await recBtn(wrapper).trigger('click')        // stop → quantize + commit (unsaved)
+    const [notes, dirty] = lastEmit(wrapper)!
+    expect(notes.map(n => n.midi)).toContain(64)   // overdubbed note captured
+    expect(dirty).toBe(true)
+    expect(wrapper.emitted('save')).toBeFalsy()     // committed but left for the user to save
     wrapper.unmount()
   })
 })

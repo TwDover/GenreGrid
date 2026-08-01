@@ -149,6 +149,7 @@
             :locked="locked.has(file.part)"
             :editable="true"
             :loop="false"
+            :sections="result.sections"
             :gain="partGains[file.part] ?? 1.0"
             @regen="onRegen"
             @roll="onRoll"

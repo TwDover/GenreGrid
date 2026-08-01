@@ -32,6 +32,13 @@
       </button>
       <button v-if="rollable" class="icon-btn roll-btn" :disabled="regenLoading || locked" @click="$emit('roll', file.part)" :title="locked ? 'Locked — unlock to roll' : 'Roll 3 variations to compare and keep one'">×3</button>
       <button v-if="hasUndo" class="icon-btn" @click="$emit('undo')" title="Undo last regeneration">↩</button>
+      <button
+        v-if="isMutablePart"
+        class="icon-btn mute-btn"
+        :class="{ muted: isMuted }"
+        @click="onMute"
+        :title="isMuted ? `Unmute ${file.part.replace('_', ' ')} — shift-click to solo` : `Mute ${file.part.replace('_', ' ')} — shift-click to solo`"
+      >M</button>
       <button v-if="editable && midiData" class="icon-btn" @click="showEditor = true" title="Open the full piano-roll editor (zoom, keyboard, grid)">✎</button>
       <button v-if="!simple || lockable" class="icon-btn lock-btn" :class="{ locked }" @click="$emit('toggle-lock', file.part)" :title="locked ? 'Unlock part' : 'Lock part (keeps it when re-rolling sections)'">
         {{ locked ? '🔒' : '🔓' }}
@@ -113,6 +120,7 @@
       :scale="scale"
       :partName="file.part"
       :styleId="styleId"
+      :sections="sections"
       @notes-changed="onNotesChanged"
       @save="saveEdits"
       @close="showEditor = false"
@@ -127,7 +135,7 @@ import type { Header } from '@tonejs/midi'
 import type { FileInfo } from '../types/midi'
 import { errorMessage } from '../utils/errors'
 import { downloadUrl, editPart } from '../services/api'
-import { useMidiPlayer, type ParsedNote, type PlayerPart } from '../composables/useMidiPlayer'
+import { useMidiPlayer, PLAYER_PARTS, type ParsedNote, type PlayerPart } from '../composables/useMidiPlayer'
 import { useDownloadPrompt } from '../composables/useDownloadPrompt'
 import { useExportFormat } from '../composables/useExportFormat'
 import { FORMAT_EXT } from '../utils/audioEncoder'
@@ -135,8 +143,9 @@ import { useToasts } from '../composables/useToasts'
 import { useRenderQueue } from '../composables/useRenderQueue'
 import { logError } from '../composables/useErrorLog'
 import { instrumentLabel } from '../composables/useStyleCatalog'
+import { drumCharacterForStyle } from '../soundfonts/drums'
 import PianoRoll from './PianoRoll.vue'
-import PianoRollEditor from './PianoRollEditor.vue'
+import PianoRollEditor, { type EditorSection } from './PianoRollEditor.vue'
 
 const props = defineProps<{
   file: FileInfo
@@ -152,6 +161,7 @@ const props = defineProps<{
   gain?: number   // mixer gain (1.0 = generated balance); undefined hides the slider
   editable?: boolean   // enable piano-roll note editing (song stems only)
   loop?: boolean   // loop this clip on play (loop-mode generations; full songs play through)
+  sections?: EditorSection[]   // song-mode section layout — enables section-aware loop-record in the editor
 }>()
 
 const emit = defineEmits<{
@@ -173,16 +183,38 @@ const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 // File System Access API — available in Chrome/Edge, not in Firefox/Safari
 const hasPicker = typeof window !== 'undefined' && 'showSaveFilePicker' in window
 
-const { toggle, currentlyPlaying, isLoading, getMidiData, setMidiData, prefetchMidi, offlineRender } = useMidiPlayer()
+const { toggle, currentlyPlaying, isLoading, getMidiData, setMidiData, prefetchMidi, offlineRender, channelMuted, toggleMute, soloPart } = useMidiPlayer()
+
+// Per-part mute/solo, on the instrument row (DAW-style). Only real voices are
+// mutable — the combined/song mixdown has no channel of its own.
+const isMutablePart = computed(() => (PLAYER_PARTS as readonly string[]).includes(props.file.part))
+const isMuted = computed(() => !!channelMuted.value[props.file.part as PlayerPart])
+function onMute(e: MouseEvent) {
+  const part = props.file.part as PlayerPart
+  if (e.shiftKey) soloPart(part)
+  else toggleMute(part)
+}
 const { promptFilename } = useDownloadPrompt()
 const { audioFormat } = useExportFormat()
 const { toast } = useToasts()
 const { startJob, updateProgress, completeJob, failJob } = useRenderQueue()
 // Instrument identity: label the part by what plays it ("Alto Sax"), falling
 // back to the role name for styles without instrumentation (custom styles).
-const instLabel = computed(() => instrumentLabel(props.styleId, props.file.part))
+// A drum part has no single GM instrument; label it with its kit character
+// (Acoustic Kit / Techno Kit / …) so it reads like the melodic parts do.
+const DRUM_KIT_LABELS: Record<string, string> = {
+  acoustic: 'Acoustic Kit', punchy: 'Punchy Kit', lofi: 'Lo-Fi Kit', vintage: 'Vintage Kit',
+  digital: 'Digital Kit', techno: 'Techno Kit', breakbeat: 'Breakbeat Kit',
+}
+const instLabel = computed(() => {
+  const label = instrumentLabel(props.styleId, props.file.part)
+  if (label) return label
+  if (props.file.part === 'drums') return DRUM_KIT_LABELS[drumCharacterForStyle(props.styleId)] ?? 'Drum Kit'
+  return null
+})
 // Roles whose instrument name alone doesn't say what the line IS in the song
-const showRole = computed(() => props.file.part === 'chords' || props.file.part === 'melody')
+const showRole = computed(() =>
+  props.file.part === 'chords' || props.file.part === 'melody' || props.file.part === 'drums')
 const playing = computed(() => currentlyPlaying.value === props.file.url)
 const midiData = computed(() => getMidiData(props.file.url))
 
@@ -479,6 +511,13 @@ async function exportWav() {
 .playing .icon-btn:first-child { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .lock-btn { font-size: 0.75rem; }
 .roll-btn { font-size: 0.68rem; font-weight: 700; }
+.mute-btn { font-size: 0.7rem; font-weight: 700; }
+.mute-btn.muted {
+  background: var(--accent-wash);
+  border-color: var(--accent-edge);
+  color: var(--accent);
+  text-decoration: line-through;
+}
 .lock-btn.locked { background: var(--accent-wash); border-color: var(--accent-edge); color: var(--accent); }
 
 .drag-handle {

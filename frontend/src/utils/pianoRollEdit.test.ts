@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest'
 import {
   snapTime, timeAtX, pitchAtY, buildInsertedNote, gridSeconds, nearRightEdge, resizedDuration,
   beatToX, xToBeat, timeToX, xToTime, pitchToY, yToPitch, noteRectZoom,
-  midiToNoteName, isBlackKey, velocityFromLaneY, snapDelta, rectsOverlap, nearLoopFlag,
+  midiToNoteName, drumPieceName, isBlackKey, velocityFromLaneY, snapDelta, rectsOverlap, nearLoopFlag,
   sanitizeNotesForPlayback, type RollViewport,
 } from './pianoRollEdit'
 
@@ -144,6 +144,14 @@ describe('note-name helpers', () => {
     expect(isBlackKey(66)).toBe(true)   // F#
     expect(isBlackKey(60)).toBe(false)  // C
     expect(isBlackKey(64)).toBe(false)  // E
+  })
+  it('names GM drum pieces, falling back to #pitch', () => {
+    expect(drumPieceName(36)).toBe('Kick')
+    expect(drumPieceName(38)).toBe('Snare')
+    expect(drumPieceName(42)).toBe('HH')
+    expect(drumPieceName(46)).toBe('Open HH')
+    expect(drumPieceName(51)).toBe('Ride')
+    expect(drumPieceName(99)).toBe('#99')   // unmapped → raw pitch
   })
 })
 

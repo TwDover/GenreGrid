@@ -480,6 +480,33 @@ def test_edit_part_rewrites_stem_and_snapshots():
     assert len(list_song_versions(r.generation_id)) == versions_before + 1
 
 
+def test_edit_part_drums_rewrites_stem():
+    """Editing the drums part must succeed — it skips the melodic CC pass but still
+    needs the style loaded for its GM program/track name. A regression guard against
+    the UnboundLocalError ('style' unbound) that 500'd every drum-edit/record save."""
+    from app.models.schemas import EditPartRequest, EditedNote
+    from app.api.routes_song import edit_part
+
+    r = _song(seed=71)
+    d = EXPORTS_DIR / r.generation_id
+    # A tiny GM drum pattern: kick on 1 and 3, snare on 2 and 4.
+    notes = [
+        EditedNote(pitch=36, start=0.0, duration=0.25, velocity=110),
+        EditedNote(pitch=38, start=1.0, duration=0.25, velocity=95),
+        EditedNote(pitch=36, start=2.0, duration=0.25, velocity=110),
+        EditedNote(pitch=38, start=3.0, duration=0.25, velocity=95),
+    ]
+    fi = edit_part(EditPartRequest(generation_id=r.generation_id, part="drums", notes=notes))
+    assert fi.part == "drums" and fi.filename == "drums.mid"
+
+    # The stem was rewritten with our hits on the drum channel (9).
+    after = _read_stem_notes(d / "drums.mid")
+    assert {p for p, _, _, _ in after} == {36, 38}
+    song_channels = {msg.channel for tr in mido.MidiFile(str(d / "song.mid")).tracks
+                     for msg in tr if msg.type == "note_on"}
+    assert 9 in song_channels   # drums re-threaded into the rebuilt song
+
+
 def test_edit_part_404_on_missing_song_or_stem():
     import pytest
     from fastapi import HTTPException

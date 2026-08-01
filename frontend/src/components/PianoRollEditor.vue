@@ -28,11 +28,10 @@
           {{ playing ? '■' : '▶' }}
         </button>
         <button
-          v-if="!isDrumPart"
           class="pre-btn pre-rec"
           :class="{ armed: recording }"
           @click="toggleRecord"
-          :title="recording ? 'Stop recording' : 'Loop-record MIDI (overdub) — plays the loop and captures what you play; count-in if set'"
+          :title="recording ? 'Stop recording' : (isDrumPart ? 'Loop-record drums (overdub) — plays the loop and captures the pads you play; count-in if set' : 'Loop-record MIDI (overdub) — plays the loop and captures what you play; count-in if set')"
         >{{ recording ? '● REC' : '● Rec' }}</button>
         <button v-if="loopStartBeat !== null" class="pre-btn pre-loopclear" @click="clearLoop" title="Clear the loop region">Loop ✕</button>
         <div class="pre-group">
@@ -52,8 +51,8 @@
           <button class="pre-btn pre-tempo-step" @click="nudgeBpm(1)" title="Faster">+</button>
           <button v-if="isTempoNudged" class="pre-btn pre-tempo-reset" @click="resetPlaybackBpm" title="Reset to generated tempo">↺</button>
         </div>
-        <div class="pre-group" title="Tool — Draw adds notes, Select marquees a group" v-if="!isDrumPart">
-          <button class="pre-btn pre-tool" :class="{ active: tool === 'draw' }" @click="tool = 'draw'" title="Draw notes (drag empty grid to add)">✏ Draw</button>
+        <div class="pre-group" title="Tool — Draw adds notes, Select marquees a group">
+          <button class="pre-btn pre-tool" :class="{ active: tool === 'draw' }" @click="tool = 'draw'" :title="isDrumPart ? 'Draw hits (click a piece lane to add)' : 'Draw notes (drag empty grid to add)'">✏ Draw</button>
           <button class="pre-btn pre-tool" :class="{ active: tool === 'select' }" @click="tool = 'select'" title="Select (drag empty grid to marquee-select a group)">▭ Select</button>
         </div>
         <div class="pre-group">
@@ -66,6 +65,13 @@
           <button class="pre-btn" @click="zoomV(1.3)" :disabled="pxPerSemitone >= MAX_PXS" title="Zoom in — pitch (taller rows)">+</button>
         </div>
         <button class="pre-btn pre-fit" @click="fit" title="Fit the whole part in view">Fit</button>
+        <label v-if="hasSections" class="pre-snap" title="Loop a section — record or audition into just that part of the song">
+          Section
+          <select :value="activeSectionIdx" @change="loopSection(+($event.target as HTMLSelectElement).value)">
+            <option :value="-1" disabled>Loop a section…</option>
+            <option v-for="(s, i) in sections" :key="i" :value="i">{{ s.name }}</option>
+          </select>
+        </label>
         <label class="pre-snap" title="Snap notes to this grid">
           Snap
           <select v-model.number="division">
@@ -98,8 +104,8 @@
       </div>
 
       <div class="pre-hint">
-        <template v-if="isDrumPart">▶ plays this part · drag the ruler to set a loop region, drag a flag to move one edge · click a hit to select · arrows to nudge · ⌫ to delete · drag the velocity lane to shape dynamics · ⌘/Ctrl-scroll to zoom</template>
-        <template v-else>▶ plays what you hear · click a key (left) or place a note to preview its sound · drag the ruler to loop a span, drag a ⟑ flag to move one edge · Draw: drag empty grid to add, drag a note's right edge to resize · Select: marquee a group, Shift-click to extend, drag to move · arrows to nudge (Shift = octave / bar) · ⌫ to delete · drag the velocity lane · ⌘/Ctrl-scroll to zoom</template>
+        <template v-if="isDrumPart">▶ plays this part · click a piece row (left) to hear it · drag the ruler to loop a span<template v-if="hasSections">, or pick a Section</template>, drag a flag to move one edge · ● Rec overdubs the pads you play into the loop · Draw: click a piece lane to add a hit · Select: marquee a group · arrows to nudge · ⌫ to delete · drag the velocity lane · ⌘/Ctrl-scroll to zoom</template>
+        <template v-else>▶ plays what you hear · click a key (left) or place a note to preview its sound · drag the ruler to loop a span, drag a ⟑ flag to move one edge<template v-if="hasSections"> · pick a Section to loop it, then ● Rec to overdub into just that section</template> · Draw: drag empty grid to add, drag a note's right edge to resize · Select: marquee a group, Shift-click to extend, drag to move · arrows to nudge (Shift = octave / bar) · ⌫ to delete · drag the velocity lane · ⌘/Ctrl-scroll to zoom</template>
       </div>
     </div>
   </div>
@@ -116,10 +122,12 @@ import { countIn as metroCountIn, setMeter as metroSetMeter } from '../composabl
 import { CHANNEL_PART, type PlayerPart } from '../composables/playerConstants'
 import { scaleNotes } from '../utils/chordResolver'
 import {
-  buildInsertedNote, nearRightEdge, resizedDuration, midiToNoteName, isBlackKey,
+  buildInsertedNote, nearRightEdge, resizedDuration, midiToNoteName, drumPieceName, isBlackKey,
   noteRectZoom, beatToX, timeToX, xToTime, yToPitch, velocityFromLaneY, snapDelta, rectsOverlap,
   nearLoopFlag, sanitizeNotesForPlayback, type RollViewport,
 } from '../utils/pianoRollEdit'
+
+export interface EditorSection { name: string; section_type: string; start_bar: number; bars: number }
 
 const props = withDefaults(defineProps<{
   notes: ParsedNote[]
@@ -129,7 +137,10 @@ const props = withDefaults(defineProps<{
   scale?: string
   partName?: string
   styleId?: string
-}>(), { secondsPerBeat: 0.5, partName: 'part' })
+  // Song-mode section layout (empty in loop mode). Enables section markers in the
+  // grid and a "loop a section" control, so you can record/audition into one section.
+  sections?: EditorSection[]
+}>(), { secondsPerBeat: 0.5, partName: 'part', sections: () => [] })
 
 const emit = defineEmits<{
   (e: 'notes-changed', notes: ParsedNote[], dirty: boolean): void
@@ -185,6 +196,11 @@ let offMidiNote: (() => void) | null = null           // note-stream unsubscribe
 let recRegion: { start: number; end: number } | null = null   // loop region (sec) being recorded into
 const pendingRec = new Map<number, { start: number; velocity: number }>()   // held note-ons
 let capturedRec: ParsedNote[] = []                    // notes added this take (quantized on stop)
+// Overdub monitoring: a looping Tone.Part replays what you've played so far on each
+// pass, so a take audibly builds up instead of only sounding after you stop + replay.
+type OverdubEv = { midi: number; duration: number; velocity: number }
+let overdubPart: Tone.Part | null = null
+let recRatio = 1                                       // tempoRatio snapshot at record start (native↔transport)
 
 const isDrumPart = computed(() => localNotes.value.some(n => n.isPercussion))
 const secPerBeat = computed(() => props.secondsPerBeat || 0.5)
@@ -193,11 +209,21 @@ const BEATS_PER_BAR = 4
 const totalBeats = computed(() => {
   const byDur = props.duration / secPerBeat.value
   const byNotes = localNotes.value.reduce((m, n) => Math.max(m, (n.time + n.duration) / secPerBeat.value), 0)
-  const raw = Math.max(byDur, byNotes, BEATS_PER_BAR)
+  const bySections = props.sections.reduce((m, s) => Math.max(m, (s.start_bar + s.bars) * BEATS_PER_BAR), 0)
+  const raw = Math.max(byDur, byNotes, bySections, BEATS_PER_BAR)
   return Math.ceil(raw / BEATS_PER_BAR) * BEATS_PER_BAR + BEATS_PER_BAR
 })
 
 const pitchSpan = computed(() => {
+  // Drum lanes always expose the core GM kit (35–51: kick…ride) so any common piece
+  // can be drawn/auditioned, and extend to include any hits outside it (e.g. bongos
+  // or congas the generator used). The melodic default lives higher, at 48–84.
+  if (isDrumPart.value) {
+    const hits = localNotes.value.filter(n => n.isPercussion)
+    const hi = hits.length ? Math.max(...hits.map(n => n.midi)) : 51
+    const lo = hits.length ? Math.min(...hits.map(n => n.midi)) : 35
+    return { top: Math.min(127, Math.max(51, hi)), bottom: Math.max(0, Math.min(35, lo)) }
+  }
   const melodic = localNotes.value.filter(n => !n.isPercussion)
   if (melodic.length === 0) return { top: 84, bottom: 48 }
   const hi = Math.max(...melodic.map(n => n.midi))
@@ -276,11 +302,11 @@ function draw() {
   for (let p = pitchSpan.value.bottom; p <= pitchSpan.value.top; p++) {
     const y = RULER_H - scrollY.value + (pitchSpan.value.top - p) * pxPerSemitone.value
     if (y > gridBottom || y + pxPerSemitone.value < RULER_H) continue
-    if (isBlackKey(p)) {
+    if (!isDrumPart.value && isBlackKey(p)) {
       ctx.fillStyle = _rgba('--text-dim', 0.06, '#4a7080')
       ctx.fillRect(GUTTER_W, y, gw, pxPerSemitone.value)
     }
-    if (inScaleSet.value.size > 0 && inScaleSet.value.has(p % 12)) {
+    if (!isDrumPart.value && inScaleSet.value.size > 0 && inScaleSet.value.has(p % 12)) {
       ctx.fillStyle = _rgba('--accent', 0.05, '#00c8ff')
       ctx.fillRect(GUTTER_W, y, gw, pxPerSemitone.value)
     }
@@ -305,6 +331,16 @@ function draw() {
     ctx.beginPath(); ctx.moveTo(x, RULER_H); ctx.lineTo(x, gridBottom); ctx.stroke()
   }
 
+  // Section boundaries (song mode): a colored divider at each section start,
+  // behind the notes, so you can see where verse/chorus/etc. begin.
+  for (const s of props.sections) {
+    const x = beatToX(s.start_bar * BEATS_PER_BAR, vp)
+    if (x < GUTTER_W - 0.5 || x > gridRight) continue
+    ctx.strokeStyle = _rgba(`--seg-${s.section_type}`, 0.85, '#8899aa')
+    ctx.lineWidth = 2
+    ctx.beginPath(); ctx.moveTo(x, RULER_H); ctx.lineTo(x, gridBottom); ctx.stroke()
+  }
+
   // Loop region band (behind the notes)
   if (loopStartBeat.value !== null && loopEndBeat.value !== null) {
     const lx0 = beatToX(Math.min(loopStartBeat.value, loopEndBeat.value), vp)
@@ -325,6 +361,22 @@ function draw() {
     if (selected.value.has(note)) {
       ctx.strokeStyle = cAccent; ctx.lineWidth = 2
       ctx.strokeRect(r.x - 1, r.y - 1, r.w + 2, r.h + 2)
+    }
+  }
+
+  // Section name tabs, pinned to the grid top so they stay readable over notes.
+  if (hasSections.value) {
+    ctx.font = '10px system-ui, sans-serif'
+    ctx.textBaseline = 'middle'
+    for (const s of props.sections) {
+      const x = beatToX(s.start_bar * BEATS_PER_BAR, vp)
+      if (x > gridRight || x + 60 < GUTTER_W) continue
+      const tabX = Math.max(GUTTER_W, x)
+      const w = ctx.measureText(s.name).width + 10
+      ctx.fillStyle = _rgba(`--seg-${s.section_type}`, 0.92, '#8899aa')
+      ctx.fillRect(tabX, RULER_H, w, 14)
+      ctx.fillStyle = themeColor('--bg-deepest', '#020608')
+      ctx.fillText(s.name, tabX + 5, RULER_H + 8)
     }
   }
 
@@ -365,14 +417,17 @@ function draw() {
   ctx.beginPath(); ctx.rect(0, RULER_H, GUTTER_W, gh); ctx.clip()
   ctx.font = '10px system-ui, sans-serif'
   ctx.textBaseline = 'middle'
+  const drumLane = isDrumPart.value
   for (let p = pitchSpan.value.bottom; p <= pitchSpan.value.top; p++) {
     const y = RULER_H - scrollY.value + (pitchSpan.value.top - p) * pxPerSemitone.value
     if (y > gridBottom || y + pxPerSemitone.value < RULER_H) continue
-    ctx.fillStyle = isBlackKey(p) ? _rgba('--text-dim', 0.5, '#4a7080') : _rgba('--text', 0.9, '#e0e0e8')
+    const black = !drumLane && isBlackKey(p)
+    ctx.fillStyle = black ? _rgba('--text-dim', 0.5, '#4a7080') : _rgba('--text', 0.9, '#e0e0e8')
     ctx.fillRect(1, y + 0.5, GUTTER_W - 2, pxPerSemitone.value - 1)
-    if (p % 12 === 0 || pxPerSemitone.value >= 12) {
-      ctx.fillStyle = isBlackKey(p) ? _rgba('--text', 0.85, '#e0e0e8') : themeColor('--bg-deepest', '#020608')
-      ctx.fillText(midiToNoteName(p), 4, y + pxPerSemitone.value / 2)
+    // Drum lanes label every row with its piece name; pitch rows label octaves.
+    if (drumLane || p % 12 === 0 || pxPerSemitone.value >= 12) {
+      ctx.fillStyle = black ? _rgba('--text', 0.85, '#e0e0e8') : themeColor('--bg-deepest', '#020608')
+      ctx.fillText(drumLane ? drumPieceName(p) : midiToNoteName(p), 4, y + pxPerSemitone.value / 2)
     }
   }
   ctx.restore()
@@ -607,8 +662,9 @@ function onPointerDown(e: MouseEvent) {
     redraw(); return
   }
 
-  // Keyboard gutter → audition the pitch of the clicked key (no edit).
-  if (pt.px < GUTTER_W && pt.py >= RULER_H && pt.py <= veloTop() && !isDrumPart.value) {
+  // Keyboard gutter → audition the pitch (melodic) or drum piece of the clicked
+  // row (no edit). Drums map the row to a GM piece, so the gutter is playable too.
+  if (pt.px < GUTTER_W && pt.py >= RULER_H && pt.py <= veloTop()) {
     audition(yToPitch(pt.py, viewport()))
     return
   }
@@ -647,8 +703,9 @@ function onPointerDown(e: MouseEvent) {
     redraw(); return
   }
 
-  // Empty grid: marquee (Select tool or drums) or insert (Draw tool, melodic).
-  if (tool.value === 'select' || isDrumPart.value) {
+  // Empty grid: marquee (Select tool) or insert (Draw tool). Drums draw too — a
+  // hit lands on the piece lane under the cursor (pitch → GM drum piece).
+  if (tool.value === 'select') {
     if (!e.shiftKey) selected.value = new Set()
     marquee.value = { x0: pt.px, y0: pt.py, x1: pt.px, y1: pt.py }
     e.preventDefault()
@@ -656,12 +713,12 @@ function onPointerDown(e: MouseEvent) {
     redraw(); return
   }
 
-  // Draw tool, empty grid → insert.
+  // Draw tool, empty grid → insert (percussion flag set for drum lanes).
   e.preventDefault()
   const vp = viewport()
   insertAnchorSec = xToTime(pt.px, vp)
   insertMidi = yToPitch(pt.py, vp)
-  draftNote.value = buildInsertedNote(insertAnchorSec, insertAnchorSec, insertMidi, secPerBeat.value, 0.7, division.value)
+  draftNote.value = buildInsertedNote(insertAnchorSec, insertAnchorSec, insertMidi, secPerBeat.value, 0.7, division.value, isDrumPart.value)
   selected.value = new Set()
   window.addEventListener('mousemove', onInsertMove); window.addEventListener('mouseup', onInsertUp)
   redraw()
@@ -671,7 +728,7 @@ function onPointerDown(e: MouseEvent) {
 function onInsertMove(e: MouseEvent) {
   if (!draftNote.value) return
   const pt = pointerBufferXY(e); if (!pt) return
-  draftNote.value = buildInsertedNote(insertAnchorSec, xToTime(pt.px, viewport()), insertMidi, secPerBeat.value, 0.7, division.value)
+  draftNote.value = buildInsertedNote(insertAnchorSec, xToTime(pt.px, viewport()), insertMidi, secPerBeat.value, 0.7, division.value, isDrumPart.value)
   redraw()
 }
 function onInsertUp() {
@@ -995,14 +1052,49 @@ function pushCaptured(midi: number, start: number, end: number, velocity: number
   const region = recRegion ?? recordRegionSec()
   // A note held across the loop wrap ends before it started — clamp to the region tail.
   const dur = end > start ? end - start : Math.max(0.05, region.end - start)
-  const note: ParsedNote = { midi: Math.round(midi), time: Math.max(0, start), duration: Math.max(0.05, dur), velocity, isPercussion: false }
+  const note: ParsedNote = { midi: Math.round(midi), time: Math.max(0, start), duration: Math.max(0.05, dur), velocity, isPercussion: isDrumPart.value }
   localNotes.value.push(note)
   capturedRec.push(note)
+  // Feed the looping monitor so this note sounds on the next pass. Wrap its start
+  // into the loop window (native→transport via the ratio) so Tone.Part repeats it.
+  if (overdubPart && recRegion) {
+    const winStart = recRegion.start / recRatio
+    const winLen = (recRegion.end - recRegion.start) / recRatio
+    let tt = note.time / recRatio
+    if (winLen > 0) tt = winStart + (((tt - winStart) % winLen) + winLen) % winLen
+    overdubPart.add(tt, { midi: note.midi, duration: Math.max(0.05, note.duration), velocity: note.velocity })
+  }
   redraw()   // notes appear as you play them (overdub)
 }
 
+/** A looping Tone.Part that re-triggers captured overdubs on the prepared audition
+ *  voice each pass — layered over the original blob so the take builds up audibly. */
+function setupOverdubPart() {
+  disposeOverdubPart()
+  if (!recRegion) return
+  // Overdub monitoring is a bonus — if Tone can't build the Part (e.g. no audio
+  // context), recording still works, just without loop-back playback of the take.
+  try {
+    const p = new Tone.Part((time: number, ev: OverdubEv) => {
+      player.scheduleAudition(props.styleId, partForAudio.value, ev.midi, time, ev.duration, ev.velocity)
+    }, [] as OverdubEv[])
+    p.loop = true
+    p.loopStart = recRegion.start / recRatio
+    p.loopEnd = recRegion.end / recRatio
+    p.start(0)
+    overdubPart = p
+  } catch (e) {
+    console.warn('[editor] overdub monitor unavailable', e)
+    overdubPart = null
+  }
+}
+function disposeOverdubPart() {
+  overdubPart?.dispose()
+  overdubPart = null
+}
+
 async function startRecord(): Promise<void> {
-  if (recording.value || isDrumPart.value) return
+  if (recording.value) return
   if (playing.value) stopPlayback()
   // Recording needs live MIDI-in flowing; monitoring routes through this part's
   // voice via the audition target set on open (setAuditionTarget in onMounted).
@@ -1022,11 +1114,16 @@ async function startRecord(): Promise<void> {
   playing.value = true
   await player.toggle(url, props.styleId, `Rec: ${props.partName}`, false, recRegion)
   startPlayhead()
+  // Snapshot the tempo ratio now (playback may be nudged) and start the overdub
+  // monitor so each loop pass plays back what's been captured so far.
+  recRatio = player.tempoRatio.value || 1
+  setupOverdubPart()
 }
 
 function stopRecord(): void {
   if (!recording.value) return
   offMidiNote?.(); offMidiNote = null
+  disposeOverdubPart()
   // Close any still-held notes at the current position.
   for (const [midi, p] of pendingRec) pushCaptured(midi, p.start, transportNativeSec(), p.velocity)
   pendingRec.clear()
@@ -1037,12 +1134,48 @@ function stopRecord(): void {
   recording.value = false
   recRegion = null
   stopPlayback()
-  // A take is a deliberate capture — commit AND auto-save so it can't vanish on close.
-  if (captured > 0) { commit(); emit('save') }
+  // Commit the take as an *unsaved* edit (dirty) — the user reviews it and hits
+  // Save edits if they like it, or Undo (Ctrl+Z) to discard a take that didn't land.
+  // We deliberately don't auto-save, so a bad take never overwrites the stem.
+  if (captured > 0) commit()
 }
 
 function toggleRecord(): void {
   if (recording.value) stopRecord(); else startRecord()
+}
+
+// ── Sections (song mode) ─────────────────────────────────────────────────────
+const hasSections = computed(() => props.sections.length > 0)
+
+/** Beat span of a section (editor is 4/4, so bars → beats via BEATS_PER_BAR). */
+function sectionBeats(s: EditorSection): { start: number; end: number } {
+  return { start: s.start_bar * BEATS_PER_BAR, end: (s.start_bar + s.bars) * BEATS_PER_BAR }
+}
+
+/** Which section (if any) the current loop region exactly covers — drives the select. */
+const activeSectionIdx = computed(() => {
+  if (loopStartBeat.value === null || loopEndBeat.value === null) return -1
+  const a = Math.min(loopStartBeat.value, loopEndBeat.value)
+  const b = Math.max(loopStartBeat.value, loopEndBeat.value)
+  return props.sections.findIndex(s => {
+    const sb = sectionBeats(s)
+    return Math.abs(a - sb.start) < 1e-6 && Math.abs(b - sb.end) < 1e-6
+  })
+})
+
+/** Set the loop region to a section's span and scroll to it — the "loop a section
+ *  to record/audition into it" action. */
+function loopSection(idx: number) {
+  const s = props.sections[idx]
+  if (!s) return
+  const { start, end } = sectionBeats(s)
+  loopStartBeat.value = start
+  loopEndBeat.value = end
+  loopAnchorBeat = start
+  const { gw } = gridSize()
+  scrollX.value = Math.max(0, start * pxPerBeat.value - gw * 0.15)
+  syncLoopToTransport()
+  redraw()
 }
 
 function clearLoop() {
@@ -1113,8 +1246,13 @@ watch([division, tool, theme], () => redraw())
 
 onMounted(async () => {
   snapshotHistory()   // baseline state for undo — before any await so it precedes edits
-  // While the editor is open, route live MIDI-in monitoring through THIS part's voice.
+  // While the editor is open, route live MIDI-in monitoring through THIS part's voice,
+  // and take control of MIDI by auto-engaging it — the editor is a thing that "needs
+  // MIDI", so playing a connected controller sounds the instrument being edited without
+  // the user having to enable input from somewhere else first. Idempotent + a no-op if
+  // MIDI is unsupported or no device is connected; input stays on (shared) after close.
   setAuditionTarget(props.styleId, partForAudio.value)
+  if (midiIn.supported) midiIn.enable()
   await nextTick()
   syncCanvasSize()
   fit()
@@ -1127,6 +1265,7 @@ onMounted(async () => {
 onUnmounted(() => {
   ro?.disconnect()
   offMidiNote?.()   // drop the recording note-stream subscription
+  disposeOverdubPart()
   clearAuditionTarget()   // stop routing MIDI-in through this part
   if (playing.value) player.stop()
   stopPlayhead()

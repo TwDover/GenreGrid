@@ -69,6 +69,7 @@ export function buildInsertedNote(
   secondsPerBeat: number,
   velocity = 0.7,
   division = 0.25,
+  isPercussion = false,
 ): ParsedNote {
   const g = gridSeconds(secondsPerBeat, division)
   const start = snapTime(Math.min(aSec, bSec), secondsPerBeat, division)
@@ -79,7 +80,7 @@ export function buildInsertedNote(
     time: start,
     duration,
     velocity: Math.max(0.01, Math.min(1, velocity)),
-    isPercussion: false,
+    isPercussion,
   }
 }
 
@@ -155,6 +156,35 @@ export function midiToNoteName(midi: number): string {
 /** True for the five black keys of the octave — used to shade the keyboard gutter. */
 export function isBlackKey(midi: number): boolean {
   return [1, 3, 6, 8, 10].includes(((midi % 12) + 12) % 12)
+}
+
+// GM percussion pitch → short piece name (the KICK/SNARE/HAT/… voice map in
+// synthDrums.ts, extended across the full GM range). Short so it fits the editor's
+// 54px keyboard gutter; falls back to the raw pitch for anything unmapped.
+const _DRUM_NAMES: Record<number, string> = {
+  35: 'Kick', 36: 'Kick', 37: 'Rim', 38: 'Snare', 39: 'Clap', 40: 'Snare',
+  41: 'Tom', 42: 'HH', 43: 'Tom', 44: 'HH', 45: 'Tom', 46: 'Open HH',
+  47: 'Tom', 48: 'Tom', 49: 'Crash', 50: 'Tom', 51: 'Ride', 52: 'Crash',
+  53: 'Ride', 54: 'Tamb', 55: 'Crash', 56: 'Cowbell', 57: 'Crash', 58: 'Vibra',
+  59: 'Ride', 60: 'Bongo', 61: 'Bongo', 62: 'Conga', 63: 'Conga', 64: 'Conga',
+  65: 'Timbale', 66: 'Timbale', 67: 'Agogo', 68: 'Agogo', 69: 'Cabasa',
+  70: 'Maracas', 71: 'Whistle', 72: 'Whistle', 73: 'Guiro', 74: 'Guiro',
+  75: 'Claves', 76: 'Woodblk', 77: 'Woodblk', 78: 'Cuica', 79: 'Cuica',
+  80: 'Triangle', 81: 'Triangle',
+}
+/** GM drum pitch → a short piece label for the drum-lane gutter (e.g. 36 → "Kick"). */
+export function drumPieceName(midi: number): string {
+  return _DRUM_NAMES[midi] ?? `#${midi}`
+}
+
+// GM percussion occupies MIDI notes 35–81 (Acoustic Bass Drum … Open Triangle).
+// Anything outside maps to no kit piece — a keyboard played as drums would send
+// chromatic notes that just clutter the roll with unused lanes.
+export const GM_DRUM_MIN = 35
+export const GM_DRUM_MAX = 81
+/** True when a pitch is within the GM percussion range (a real drum-kit note). */
+export function isDrumPitch(midi: number): boolean {
+  return midi >= GM_DRUM_MIN && midi <= GM_DRUM_MAX
 }
 
 /** Velocity lane y (canvas px) → velocity 0..1. The lane fills bottom-up: a hit at the
