@@ -550,3 +550,236 @@ def test_song_tempo_map_intensity():
     expr = {round(b, 4) for _, b in _song_tempo_map(sections, bpm, ending_bars=1, intensity=1.0)}
     assert round(120 * 1.024, 4) in expr      # chorus push doubled
     assert round(120 * 0.52, 4) in expr       # deepest ritardando doubled (1 - 0.48)
+
+
+# ── 9.2 — section timeline rearrange (reorder/insert/delete/duplicate/resize) ─
+
+def _rearrange_song(seed=91):
+    """A 3-section custom-template song to rearrange."""
+    custom = [
+        SongSectionDef(section_type="verse", bars=4, parts_mode="no_arp"),
+        SongSectionDef(section_type="chorus", bars=4, parts_mode="full", chorus_key=True),
+        SongSectionDef(section_type="bridge", bars=4, parts_mode="full", bridge_key=True),
+    ]
+    return build_song(BuildSongRequest(style_id="lofi", key="C", scale="major", bpm=110,
+                                       template="custom", custom_template=custom,
+                                       parts=["chords", "bass", "melody", "drums"],
+                                       seed=seed, use_priors=False))
+
+
+def _def_from_result(sec, source_index):
+    from app.models.schemas import RearrangeSectionDef
+    return RearrangeSectionDef(section_type=sec.section_type, bars=sec.bars, name=sec.name,
+                               parts_mode=sec.parts_mode, chorus_key=sec.chorus_key,
+                               bridge_key=sec.bridge_key, style_id=sec.style_id,
+                               source_index=source_index)
+
+
+def test_rearrange_reorders_sections_and_updates_layout():
+    import json
+    from app.models.schemas import RearrangeSongSectionsRequest
+    from app.api.routes_song import rearrange_song_sections
+
+    r = _rearrange_song(seed=101)
+    d = EXPORTS_DIR / r.generation_id
+    real = [s for s in r.sections if s.section_type != "ending"]
+    assert [s.section_type for s in real] == ["verse", "chorus", "bridge"]
+
+    reversed_defs = [_def_from_result(s, i) for s, i in zip(reversed(real), [2, 1, 0])]
+    result = rearrange_song_sections(RearrangeSongSectionsRequest(
+        generation_id=r.generation_id, sections=reversed_defs))
+
+    new_real = [s for s in result.sections if s.section_type != "ending"]
+    assert [s.section_type for s in new_real] == ["bridge", "chorus", "verse"]
+    assert [s.start_bar for s in new_real] == [0, 4, 8]
+    assert result.total_bars == r.total_bars
+
+    meta = json.loads((d / "song_meta.json").read_text())
+    assert [sd["section_type"] for sd in meta["custom_template"]] == ["bridge", "chorus", "verse"]
+    structure = json.loads((d / "song_structure.json").read_text())
+    assert [s["section_type"] for s in structure if s["section_type"] != "ending"] == ["bridge", "chorus", "verse"]
+
+
+def test_rearrange_round_trip_is_byte_identical():
+    """Reversing and reversing back reuses every section's original seed, so the
+    stems should reproduce the pre-rearrange bytes exactly (roadmap 9.2's core
+    'content stability via source_index' contract)."""
+    import hashlib
+    from app.models.schemas import RearrangeSongSectionsRequest
+    from app.api.routes_song import rearrange_song_sections
+
+    r = _rearrange_song(seed=102)
+    d = EXPORTS_DIR / r.generation_id
+
+    def hashes():
+        return {p: hashlib.md5((d / f"{p}.mid").read_bytes()).hexdigest()
+                for p in ("chords", "bass", "melody", "drums")}
+
+    before = hashes()
+    real = [s for s in r.sections if s.section_type != "ending"]
+
+    reversed_defs = [_def_from_result(s, i) for s, i in zip(reversed(real), [2, 1, 0])]
+    result1 = rearrange_song_sections(RearrangeSongSectionsRequest(
+        generation_id=r.generation_id, sections=reversed_defs))
+    assert hashes() != before   # actually changed order → different bytes
+
+    # Reverse again: back to the original verse/chorus/bridge order, each
+    # section still reusing its ORIGINAL build seed via source_index.
+    real1 = [s for s in result1.sections if s.section_type != "ending"]
+    back_defs = [_def_from_result(s, i) for s, i in zip(reversed(real1), [2, 1, 0])]
+    rearrange_song_sections(RearrangeSongSectionsRequest(
+        generation_id=r.generation_id, sections=back_defs))
+
+    assert hashes() == before   # byte-identical round trip
+
+
+def test_rearrange_insert_generates_fresh_content():
+    from app.models.schemas import RearrangeSongSectionsRequest, RearrangeSectionDef
+    from app.api.routes_song import rearrange_song_sections
+
+    r = _rearrange_song(seed=103)
+    real = [s for s in r.sections if s.section_type != "ending"]
+    defs = [_def_from_result(s, i) for i, s in enumerate(real)]
+    defs.append(RearrangeSectionDef(section_type="verse", bars=4, parts_mode="no_arp"))
+
+    result = rearrange_song_sections(RearrangeSongSectionsRequest(
+        generation_id=r.generation_id, sections=defs))
+    new_real = [s for s in result.sections if s.section_type != "ending"]
+    assert len(new_real) == 4
+    assert result.total_bars == r.total_bars + 4
+    inserted = new_real[-1]
+    assert inserted.section_type == "verse"
+    assert inserted.quality is not None   # went through the quality-search path
+
+
+def test_rearrange_delete_reduces_bar_count():
+    from app.models.schemas import RearrangeSongSectionsRequest
+    from app.api.routes_song import rearrange_song_sections
+
+    r = _rearrange_song(seed=104)
+    real = [s for s in r.sections if s.section_type != "ending"]
+    defs = [_def_from_result(s, i) for i, s in enumerate(real)][:-1]   # drop the bridge
+
+    result = rearrange_song_sections(RearrangeSongSectionsRequest(
+        generation_id=r.generation_id, sections=defs))
+    new_real = [s for s in result.sections if s.section_type != "ending"]
+    assert [s.section_type for s in new_real] == ["verse", "chorus"]
+    assert result.total_bars == r.total_bars - 4
+
+
+def test_rearrange_duplicate_reuses_seed_for_both_copies():
+    from app.models.schemas import RearrangeSongSectionsRequest
+    from app.api.routes_song import rearrange_song_sections
+
+    r = _rearrange_song(seed=105)
+    real = [s for s in r.sections if s.section_type != "ending"]
+    defs = [_def_from_result(s, i) for i, s in enumerate(real)]
+    defs.insert(1, _def_from_result(real[0], 0))   # duplicate the verse right after itself
+
+    result = rearrange_song_sections(RearrangeSongSectionsRequest(
+        generation_id=r.generation_id, sections=defs))
+    new_real = [s for s in result.sections if s.section_type != "ending"]
+    assert [s.section_type for s in new_real] == ["verse", "verse", "chorus", "bridge"]
+    assert result.total_bars == r.total_bars + 4
+
+
+def test_rearrange_resize_changes_bars_same_seed():
+    from app.models.schemas import RearrangeSongSectionsRequest
+    from app.api.routes_song import rearrange_song_sections
+
+    r = _rearrange_song(seed=106)
+    real = [s for s in r.sections if s.section_type != "ending"]
+    defs = [_def_from_result(s, i) for i, s in enumerate(real)]
+    defs[1] = defs[1].model_copy(update={"bars": 8})   # double the chorus
+
+    result = rearrange_song_sections(RearrangeSongSectionsRequest(
+        generation_id=r.generation_id, sections=defs))
+    new_real = [s for s in result.sections if s.section_type != "ending"]
+    assert new_real[1].bars == 8
+    assert result.total_bars == r.total_bars + 4
+
+
+def test_rearrange_blocked_when_parts_locked():
+    import json
+    from fastapi import HTTPException
+    import pytest
+    from app.models.schemas import RearrangeSongSectionsRequest
+    from app.api.routes_song import rearrange_song_sections
+
+    r = _rearrange_song(seed=107)
+    d = EXPORTS_DIR / r.generation_id
+    meta_before = (d / "song_meta.json").read_text()
+    versions_before = list((d / "versions").glob("*")) if (d / "versions").exists() else []
+
+    real = [s for s in r.sections if s.section_type != "ending"]
+    defs = [_def_from_result(s, i) for i, s in enumerate(reversed(real))]
+    with pytest.raises(HTTPException) as exc:
+        rearrange_song_sections(RearrangeSongSectionsRequest(
+            generation_id=r.generation_id, sections=defs, locked_parts=["melody"]))
+    assert exc.value.status_code == 400
+
+    # Nothing mutated: no snapshot taken, meta untouched.
+    versions_after = list((d / "versions").glob("*")) if (d / "versions").exists() else []
+    assert len(versions_after) == len(versions_before)
+    assert (d / "song_meta.json").read_text() == meta_before
+
+
+def test_rearrange_is_undoable_via_history():
+    import json
+    from app.models.schemas import RearrangeSongSectionsRequest
+    from app.api.routes_song import rearrange_song_sections, list_song_versions, restore_song_version
+    from app.models.schemas import RestoreSongVersionRequest
+
+    r = _rearrange_song(seed=108)
+    d = EXPORTS_DIR / r.generation_id
+    original_structure = json.loads((d / "song_structure.json").read_text())
+
+    real = [s for s in r.sections if s.section_type != "ending"]
+    defs = [_def_from_result(s, i) for i, s in enumerate(reversed(real))]
+    rearrange_song_sections(RearrangeSongSectionsRequest(
+        generation_id=r.generation_id, sections=defs))
+    assert json.loads((d / "song_structure.json").read_text()) != original_structure
+
+    versions = list_song_versions(r.generation_id)
+    assert versions   # the pre-rearrange snapshot
+    restore_song_version(RestoreSongVersionRequest(generation_id=r.generation_id, version_id=versions[0]["id"]))
+
+    restored_structure = json.loads((d / "song_structure.json").read_text())
+    restored_meta = json.loads((d / "song_meta.json").read_text())
+    assert [s["section_type"] for s in restored_structure] == [s["section_type"] for s in original_structure]
+    assert [sd["section_type"] for sd in restored_meta["custom_template"]] == ["verse", "chorus", "bridge"]
+
+
+def test_generate_song_sections_mixed_fixed_and_search_seeds():
+    """Unit-level check of the per-section fixed-vs-search seeding (roadmap 9.2
+    §0.1): a None entry inside an otherwise-fixed list still runs the
+    quality-gated search for just that section."""
+    from app.services.song_builder import _generate_song_sections
+    from app.services.style_loader import load_style
+
+    r = _rearrange_song(seed=109)
+    style = load_style("lofi")
+    d = EXPORTS_DIR / r.generation_id
+    import json
+    meta = json.loads((d / "song_meta.json").read_text())
+    seeds = meta["section_seeds"]
+    assert len(seeds) == 3
+
+    song_req = BuildSongRequest.model_construct(
+        style_id="lofi", key="C", scale="major", bpm=110, time_signature="4/4",
+        complexity=0.6, variation=0.4, humanize=0.5, dynamics=0.5,
+        parts=["chords", "bass", "melody", "drums"], template="custom", use_priors=False,
+        seed=meta["base_seed"], chorus_key_shift=meta["chorus_key_shift"],
+    )
+    mixed_seeds = [seeds[0], None, seeds[2]]
+    _events, section_results, _total, out_seeds, _prog = _generate_song_sections(
+        song_req, style, 110, meta["base_seed"], meta["chorus_key_shift"],
+        False, False, 0.0, fixed_section_seeds=mixed_seeds,
+        custom_template=meta["custom_template"],
+        user_progression=meta.get("song_progression"),
+    )
+    assert out_seeds[0] == seeds[0]
+    assert out_seeds[2] == seeds[2]
+    # The searched section still gets a quality score; the two replayed
+    # sections keep whatever quality they scored on the original build.
+    assert section_results[1]["quality"] is not None

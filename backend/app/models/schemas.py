@@ -184,6 +184,21 @@ class RegenerateSongSectionRequest(BaseModel):
     locked_parts: List[str] = []  # parts to leave byte-identical — the section re-roll regenerates only the rest
 
 
+class RearrangeSectionDef(SongSectionDef):
+    """One section of a rearranged timeline. `source_index` points back into the
+    song's CURRENT (pre-edit) section list to reuse that section's original seed
+    (content stability across move/resize/duplicate); None = brand-new content,
+    freshly seeded and quality-searched like a normal build."""
+    source_index: Optional[int] = Field(default=None, ge=0)
+
+
+class RearrangeSongSectionsRequest(BaseModel):
+    generation_id: str
+    sections: List[RearrangeSectionDef] = Field(..., min_length=1, max_length=20)
+    locked_parts: List[str] = []  # any non-empty value blocks the request — a structural
+                                   # edit invalidates locked bar positions, so unlock first
+
+
 class RollSongPartRequest(BaseModel):
     generation_id: str
     part: str
@@ -240,6 +255,10 @@ class SongSectionResult(BaseModel):
     start_bar: int
     key: str
     quality: Optional[float] = None  # composite quality score (0-1) of the section's winning attempt
+    parts_mode: str = "full"
+    chorus_key: bool = False
+    bridge_key: bool = False
+    style_id: Optional[str] = None
 
 
 class BuildSongResponse(BaseModel):

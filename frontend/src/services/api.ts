@@ -8,7 +8,7 @@
  * version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
  * <https://www.gnu.org/licenses/> for details.
  */
-import type { StyleInfo, StyleConfig, GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, LibraryEntry, BatchGenerateRequest, BuildSongRequest, BuildSongResponse } from '../types/midi'
+import type { StyleInfo, StyleConfig, GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, LibraryEntry, BatchGenerateRequest, BuildSongRequest, BuildSongResponse, RearrangeSectionDef } from '../types/midi'
 
 const BASE_URL = (() => {
   if (typeof window !== 'undefined' && window.electronAPI?.apiPort) {
@@ -138,6 +138,19 @@ export async function regenerateSongSection(req: { generation_id: string; sectio
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.detail ?? 'Section regeneration failed')
+  }
+  return res.json()
+}
+
+export async function rearrangeSongSections(req: { generation_id: string; sections: RearrangeSectionDef[]; locked_parts?: string[] }): Promise<BuildSongResponse> {
+  const res = await fetch(`${BASE_URL}/rearrange-song-sections`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Rearranging the timeline failed')
   }
   return res.json()
 }

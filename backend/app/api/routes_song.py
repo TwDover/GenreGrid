@@ -28,7 +28,7 @@ from app.models.schemas import (FileInfo, BuildSongRequest, BuildSongResponse,
                                 RegenerateSongSectionRequest, RestoreSongVersionRequest,
                                 SetPartGainRequest, EditPartRequest, SongSectionDef,
                                 RollSongPartRequest, SongPartCandidate, KeepSongPartCandidateRequest,
-                                RebuildSongProgressionRequest)
+                                RebuildSongProgressionRequest, RearrangeSongSectionsRequest)
 from app.services.style_loader import load_style
 from app.services.progression_import import parse_progression, ROMAN_TOKEN_RE
 from app.services.midi_writer import (NoteEvent, write_midi, rebuild_combined_from_parts, mido_key_signature)
@@ -1123,3 +1123,111 @@ def regenerate_song_section(req: RegenerateSongSectionRequest):
     meta_path.write_text(_json_module.dumps(meta))
     (output_dir / "song_structure.json").write_text(_json_module.dumps(section_results, indent=2))
     return files
+
+
+@router.post("/rearrange-song-sections", response_model=BuildSongResponse)
+def rearrange_song_sections(req: RearrangeSongSectionsRequest):
+    """Reorder / insert / delete / duplicate / resize a song's section timeline
+    (roadmap item 9.2, first slice).
+
+    Builds a new section template from `req.sections` and does a full in-place
+    regeneration of the song from it (same approach as /regenerate-song-section),
+    reusing each surviving section's ORIGINAL seed (via `source_index`) for
+    content stability — the same section content just plays in its new position/
+    length — while brand-new sections (no `source_index`) get a fresh quality-
+    searched seed. Ripple rules still apply naturally (a moved verse can still
+    reshape a later chorus that develops its motif, a section moved to be the
+    first-of-its-type now sets the theme for later repeats) because the whole
+    song replays in the new template order, same as a section re-roll.
+
+    Blocked (400) if any part is locked — a structural edit invalidates content
+    at fixed bar positions, so there's nothing sensible to preserve; unlock
+    first.
+    """
+    output_dir = EXPORTS_DIR / req.generation_id
+    meta_path = output_dir / "song_meta.json"
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail="Song not found or too old to rearrange")
+    meta = _json_module.loads(meta_path.read_text())
+
+    old_section_seeds = list(meta.get("section_seeds") or [])
+    old_template = meta.get("custom_template") or _SONG_TEMPLATES.get(
+        meta.get("template", ""), _SONG_TEMPLATES["verse_chorus"])
+    if not old_section_seeds:
+        raise HTTPException(status_code=400,
+                            detail="This song predates section editing — rebuild it once to enable")
+
+    locked = [p for p in (req.locked_parts or []) if p in meta.get("parts", [])]
+    if locked:
+        raise HTTPException(status_code=400,
+                            detail=f"Unlock {', '.join(locked)} before rearranging — a structural "
+                                   f"edit invalidates locked bar positions")
+
+    for sd in req.sections:
+        if sd.source_index is not None and not (0 <= sd.source_index < len(old_template)):
+            raise HTTPException(status_code=400, detail=f"source_index out of range: {sd.source_index}")
+
+    try:
+        style = load_style(meta["style_id"])
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    bpm_min, bpm_max = style.get("bpm_range", [40, 240])
+    bpm = max(bpm_min, min(bpm_max, meta["bpm"]))
+    secondary_dominants = style.get("secondary_dominants", False)
+    tritone_sub = style.get("tritone_substitution", False)
+    groove_push = style.get("groove_push", 0.0)
+    style = _blend_styles(style, meta.get("blend_style_id"), meta.get("blend_amount", 0.5))
+    style = {**style, "_humanize_scale": meta["humanize"]}
+    programs, track_names = part_midi_meta(style)
+
+    _snapshot_song(output_dir)   # version history: state before this mutation — makes this undoable
+
+    new_template, fixed_seeds = [], []
+    for sd in req.sections:
+        new_template.append(sd.model_dump(exclude={"source_index"}))
+        if sd.source_index is not None and sd.source_index < len(old_section_seeds):
+            fixed_seeds.append(old_section_seeds[sd.source_index])
+        else:
+            fixed_seeds.append(None)   # brand-new content: fresh quality-searched seed
+
+    song_req = BuildSongRequest.model_construct(
+        style_id=meta["style_id"], key=meta["key"], scale=meta["scale"], bpm=meta["bpm"],
+        time_signature=meta.get("time_signature", "4/4"),
+        complexity=meta["complexity"], variation=meta["variation"], humanize=meta["humanize"],
+        dynamics=meta.get("dynamics", 0.5),
+        parts=meta["parts"], template=meta["template"], use_priors=meta["use_priors"],
+        seed=meta["base_seed"], chorus_key_shift=meta["chorus_key_shift"],
+        dj_edit=meta.get("dj_edit", False),
+    )
+    song_events, section_results, total_bars, section_seeds, _prog = _generate_song_sections(
+        song_req, style, bpm, meta["base_seed"], meta["chorus_key_shift"],
+        secondary_dominants, tritone_sub, groove_push,
+        bridge_key_shift=meta.get("bridge_key_shift", 0),
+        fixed_section_seeds=fixed_seeds,
+        final_chorus_lift=meta.get("final_chorus_lift", 0),
+        custom_template=new_template,
+        # Pin the persisted progression so rearranging keeps the song's harmony.
+        user_progression=meta.get("song_progression") or meta.get("user_progression"),
+        hook_melody=_hook_from_meta(meta),
+    )
+
+    files = _write_song_output(song_events, output_dir, req.generation_id, bpm, style,
+                               programs, list(meta["parts"]), total_bars, section_results,
+                               key=meta.get("key", "C"), scale=meta.get("scale", "minor"),
+                               meter=parse_meter(meta.get("time_signature", "4/4")),
+                               tempo_automation=meta.get("tempo_automation", 0.5))
+
+    meta["custom_template"] = new_template
+    meta["template"] = "custom"   # the named template no longer describes this layout
+    meta["section_seeds"] = section_seeds
+    meta_path.write_text(_json_module.dumps(meta))
+    (output_dir / "song_structure.json").write_text(_json_module.dumps(section_results, indent=2))
+
+    return BuildSongResponse(
+        generation_id=req.generation_id, style=meta["style_id"], files=files,
+        seed=meta["base_seed"], template="custom", total_bars=total_bars,
+        sections=[SongSectionResult(**s) for s in section_results],
+        bpm=bpm, key=f"{meta.get('key', 'C')} {meta.get('scale', 'minor')}",
+        progression=meta.get("song_progression") or meta.get("user_progression"),
+    )

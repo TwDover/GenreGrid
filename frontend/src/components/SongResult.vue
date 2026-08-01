@@ -49,16 +49,29 @@
         </div>
       </div>
 
-      <!-- Section timeline — click a block to play from there, ⟳ to re-roll it -->
+      <!-- Section timeline — click a block to play from there, ⟳ to re-roll it,
+           drag to reorder, ⧉/✕ to duplicate/delete a section -->
       <div class="sr-timeline">
         <div
           v-for="(sec, i) in result.sections"
-          :key="sec.name"
+          :key="sec.name + i"
           class="sr-tl-block"
-          :class="[`seg-${sec.section_type}`, { 'sr-tl-busy': sectionRegenLoading === i, 'sr-tl-playing': playingSectionIndex === i }]"
+          :class="[`seg-${sec.section_type}`, {
+            'sr-tl-busy': sectionRegenLoading === i || rearrangeLoading,
+            'sr-tl-playing': playingSectionIndex === i,
+            'sr-tl-drop-before': dragOverIndex === i && dragOverSide === 'before',
+            'sr-tl-drop-after': dragOverIndex === i && dragOverSide === 'after',
+            'sr-tl-dragging': draggingIndex === i,
+          }]"
           :style="{ flex: sec.bars }"
-          :title="`${sec.name} · ${sec.bars} bars${sec.quality != null ? ` · quality ${(sec.quality * 100).toFixed(0)}%` : ''} — click to play from here`"
+          :title="`${sec.name} · ${sec.bars} bars${sec.quality != null ? ` · quality ${(sec.quality * 100).toFixed(0)}%` : ''} — click to play from here${sec.section_type !== 'ending' ? ', drag to reorder' : ''}`"
+          :draggable="sec.section_type !== 'ending' && !rearrangeBlocked"
           @click="seekToSection(sec)"
+          @dragstart="onDragStart(i, $event)"
+          @dragover.prevent="onDragOver(i, $event)"
+          @dragleave="onDragLeave(i)"
+          @drop.prevent="onDrop(i)"
+          @dragend="onDragEnd"
         >
           <span
             v-if="sec.quality != null"
@@ -66,16 +79,40 @@
             :class="sec.quality >= 0.82 ? 'q-good' : sec.quality >= 0.7 ? 'q-ok' : 'q-weak'"
           />
           <span class="sr-tl-name">{{ sec.name }}</span>
-          <button
-            v-if="sec.section_type !== 'ending'"
-            class="sr-tl-regen"
-            :disabled="sectionRegenLoading !== null"
-            :title="`Re-roll ${sec.name}`"
-            @click.stop="onRegenSection(i)"
-          >{{ sectionRegenLoading === i ? '…' : '⟳' }}</button>
+          <span v-if="sec.section_type !== 'ending'" class="sr-tl-controls">
+            <button
+              class="sr-tl-regen"
+              :disabled="sectionRegenLoading !== null"
+              :title="`Re-roll ${sec.name}`"
+              @click.stop="onRegenSection(i)"
+            >{{ sectionRegenLoading === i ? '…' : '⟳' }}</button>
+            <button
+              class="sr-tl-regen"
+              :disabled="rearrangeLoading || rearrangeBlocked"
+              :title="`Duplicate ${sec.name}`"
+              @click.stop="onDuplicateSection(i)"
+            >⧉</button>
+            <button
+              class="sr-tl-regen"
+              :disabled="rearrangeLoading || rearrangeBlocked || realSectionCount <= 1"
+              :title="`Delete ${sec.name}`"
+              @click.stop="onDeleteSection(i)"
+            >✕</button>
+          </span>
         </div>
+        <select
+          class="sr-tl-insert"
+          :disabled="rearrangeLoading || rearrangeBlocked"
+          title="Insert a new section at the end"
+          :value="''"
+          @change="onInsertPick($event)"
+        >
+          <option value="" disabled>+ section</option>
+          <option v-for="t in SECTION_TYPES" :key="t" :value="t">{{ t.replace('_', ' ') }}</option>
+        </select>
         <div v-if="playheadPct !== null" class="sr-playhead" :style="{ left: `${playheadPct}%` }" />
       </div>
+      <div v-if="rearrangeBlocked" class="sr-error">Unlock {{ [...locked].join(', ') }} to edit the arrangement — a structural change can't preserve locked bar positions</div>
 
       <!-- Progression strip: roman numerals + concrete chords per bar, pinned
            across section re-rolls. Doubles as a theory-learning surface. -->
@@ -193,9 +230,9 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onUnmounted } from 'vue'
-import type { BuildSongResponse, FileInfo } from '../types/midi'
+import type { BuildSongResponse, FileInfo, RearrangeSectionDef } from '../types/midi'
 import { errorMessage } from '../utils/errors'
-import { downloadUrl, exportProjectUrl, regenerateSongPart, regenerateSongSection, undoSongPart, listSongVersions, restoreSongVersion, setPartGain, rollSongPartCandidates, keepSongPartCandidate, rebuildSongProgression, type SongVersion, type SongPartCandidate } from '../services/api'
+import { downloadUrl, exportProjectUrl, regenerateSongPart, regenerateSongSection, rearrangeSongSections, undoSongPart, listSongVersions, restoreSongVersion, setPartGain, rollSongPartCandidates, keepSongPartCandidate, rebuildSongProgression, type SongVersion, type SongPartCandidate } from '../services/api'
 import { resolveProgression } from '../utils/chordResolver'
 import { FORMAT_EXT } from '../utils/audioEncoder'
 import { useExportFormat } from '../composables/useExportFormat'
@@ -571,6 +608,130 @@ async function onRegenSection(index: number) {
   }
 }
 
+// ── Timeline rearrange: reorder (drag), insert, duplicate, delete, resize ───
+// Every structural edit is a whole-song regen from a new section template,
+// reusing each surviving section's original seed for content stability
+// (source_index) — brand-new/duplicated sections get a fresh quality-searched
+// seed. Blocked while any part is locked: a locked part is protected at fixed
+// bar positions, which a structural edit invalidates by construction.
+const rearrangeLoading = ref(false)
+const rearrangeBlocked = computed(() => locked.size > 0)
+const realSectionCount = computed(() =>
+  (props.result?.sections ?? []).filter(s => s.section_type !== 'ending').length)
+
+function currentSectionDefs(): RearrangeSectionDef[] {
+  return (props.result?.sections ?? [])
+    .filter(s => s.section_type !== 'ending')
+    .map((s, i) => ({
+      section_type: s.section_type, bars: s.bars, name: s.name,
+      parts_mode: s.parts_mode, chorus_key: s.chorus_key,
+      bridge_key: s.bridge_key, style_id: s.style_id ?? undefined,
+      source_index: i,
+    }))
+}
+
+async function commitRearrange(sections: RearrangeSectionDef[], toastMsg: string) {
+  if (!props.result || rearrangeLoading.value) return
+  if (rearrangeBlocked.value) {
+    toast(`Unlock ${[...locked].join(', ')} before editing the timeline`, 'error')
+    return
+  }
+  rearrangeLoading.value = true
+  regenError.value = null
+  try {
+    const result = await rearrangeSongSections({
+      generation_id: props.result.generation_id, sections, locked_parts: [...locked],
+    })
+    const v = Date.now()
+    for (const f of result.files) versions[f.part] = v
+    versions.song = v
+    emit('rebuilt', result, props.label)
+    toast(toastMsg)
+  } catch (e) {
+    regenError.value = errorMessage(e) ?? 'Timeline edit failed'
+    logError('Rearrange song sections', e)
+    toast(regenError.value ?? 'Timeline edit failed', 'error')
+  } finally {
+    rearrangeLoading.value = false
+  }
+}
+
+const draggingIndex = ref<number | null>(null)
+const dragOverIndex = ref<number | null>(null)
+const dragOverSide = ref<'before' | 'after' | null>(null)
+
+function onDragStart(i: number, e: DragEvent) {
+  if (rearrangeBlocked.value) { e.preventDefault(); return }
+  draggingIndex.value = i
+  e.dataTransfer?.setData('text/plain', String(i))
+  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+}
+function onDragOver(i: number, e: DragEvent) {
+  if (draggingIndex.value === null) return
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  dragOverIndex.value = i
+  dragOverSide.value = e.clientX - rect.left < rect.width / 2 ? 'before' : 'after'
+}
+function onDragLeave(i: number) {
+  if (dragOverIndex.value === i) dragOverIndex.value = null
+}
+function onDragEnd() {
+  draggingIndex.value = null
+  dragOverIndex.value = null
+  dragOverSide.value = null
+}
+
+async function onDrop(dropIndex: number) {
+  const from = draggingIndex.value
+  const side = dragOverSide.value
+  onDragEnd()
+  if (from === null || !props.result || dropIndex >= realSectionCount.value) return
+  const defs = currentSectionDefs()
+  const [moved] = defs.splice(from, 1)
+  let to = dropIndex > from ? dropIndex - 1 : dropIndex
+  if (side === 'after') to += 1
+  defs.splice(Math.max(0, Math.min(defs.length, to)), 0, moved)
+  await commitRearrange(defs, `Reordered ${moved.name ?? moved.section_type}`)
+}
+
+async function onDeleteSection(i: number) {
+  if (realSectionCount.value <= 1) return
+  const defs = currentSectionDefs()
+  const [removed] = defs.splice(i, 1)
+  await commitRearrange(defs, `Removed ${removed.name ?? removed.section_type}`)
+}
+
+async function onDuplicateSection(i: number) {
+  const defs = currentSectionDefs()
+  defs.splice(i + 1, 0, { ...defs[i] })
+  await commitRearrange(defs, `Duplicated ${defs[i].name ?? defs[i].section_type}`)
+}
+
+const SECTION_TYPES = ['intro', 'verse', 'pre_chorus', 'chorus', 'post_chorus', 'bridge', 'instrumental_solo', 'outro']
+const INSERT_PARTS_MODE: Record<string, string> = {
+  intro: 'melodic', verse: 'no_arp', pre_chorus: 'sparse', chorus: 'full',
+  post_chorus: 'full', bridge: 'full', instrumental_solo: 'full', outro: 'melodic',
+}
+
+async function onInsertSection(atIndex: number, type: string) {
+  const defs = currentSectionDefs()
+  defs.splice(atIndex, 0, {
+    section_type: type, bars: 8, name: undefined,
+    parts_mode: INSERT_PARTS_MODE[type] ?? 'full',
+    chorus_key: type === 'chorus', bridge_key: type === 'bridge',
+    style_id: undefined, source_index: null,
+  })
+  await commitRearrange(defs, `Inserted a ${type.replace('_', ' ')}`)
+}
+
+async function onInsertPick(e: Event) {
+  const select = e.target as HTMLSelectElement
+  const type = select.value
+  select.value = ''   // reset to the placeholder immediately — this is a picker, not a persistent selection
+  if (!type || !props.result) return
+  await onInsertSection(props.result.sections.length - 1, type)
+}
+
 async function seekToSection(sec: { start_bar: number }) {
   if (!props.result) return
   // Piecewise beat→seconds mirroring the backend tempo map: choruses run 1.2%
@@ -779,11 +940,15 @@ async function exportSongWav() {
 .sr-tl-block:hover { filter: brightness(1.07) saturate(1.08); }
 .sr-tl-block.sr-tl-busy { filter: brightness(0.7); cursor: wait; }
 .sr-tl-block.sr-tl-playing { filter: brightness(1.3); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 53%, transparent); }
+.sr-tl-block.sr-tl-dragging { opacity: 0.4; }
+.sr-tl-block.sr-tl-drop-before { box-shadow: inset 2px 0 0 var(--accent); }
+.sr-tl-block.sr-tl-drop-after { box-shadow: inset -2px 0 0 var(--accent); }
 .sr-tl-name { font-size: var(--t-meta); font-weight: 600; color: var(--seg-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; letter-spacing: -.005em; }
 .sr-tl-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
 .q-good { background: var(--success); }
 .q-ok   { background: var(--gold); }
 .q-weak { background: var(--error); }
+.sr-tl-controls { display: flex; gap: 0.3rem; flex-shrink: 0; }
 .sr-tl-regen {
   background: none; border: none; padding: 0; flex-shrink: 0;
   font-size: 0.6rem; line-height: 1; color: var(--seg-text-faint); cursor: pointer;
@@ -791,7 +956,17 @@ async function exportSongWav() {
 }
 .sr-tl-block:hover .sr-tl-regen { opacity: 1; }
 .sr-tl-regen:hover:not(:disabled) { color: var(--seg-text); }
-.sr-tl-regen:disabled { cursor: wait; }
+.sr-tl-regen:disabled { cursor: wait; opacity: 0.4; }
+.sr-tl-insert {
+  flex: 0 0 auto; align-self: stretch; width: 72px;
+  font-size: 0.65rem; text-align: center; text-align-last: center;
+  background: transparent; border: 1px dashed var(--surface);
+  border-radius: var(--r-md); color: var(--text-dim); cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.sr-tl-insert option { background: var(--sunken); color: var(--text); }
+.sr-tl-insert:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent); }
+.sr-tl-insert:disabled { opacity: 0.5; cursor: wait; }
 
 /* Progression strip */
 .sr-prog { display: flex; flex-direction: column; gap: 0.3rem; }
