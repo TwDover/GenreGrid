@@ -775,7 +775,6 @@ def test_rearrange_resize_changes_bars_same_seed():
 
 
 def test_rearrange_blocked_when_parts_locked():
-    import json
     from fastapi import HTTPException
     import pytest
     from app.models.schemas import RearrangeSongSectionsRequest
