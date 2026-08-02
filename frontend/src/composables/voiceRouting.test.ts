@@ -9,7 +9,7 @@
  * <https://www.gnu.org/licenses/> for details.
  */
 import { describe, it, expect } from 'vitest'
-import { resolveMelodicVoiceKind, panFromCC10, type VoiceContext } from './voiceRouting'
+import { resolveMelodicVoiceKind, panFromCC10, curveFromCC, type VoiceContext } from './voiceRouting'
 
 const base: VoiceContext = {
   channel: 0, hasPatch: false, hasCustom: false, hasSampler: false, voiceId: null,
@@ -76,5 +76,20 @@ describe('panFromCC10', () => {
   it('clamps out-of-range values to the rails', () => {
     expect(panFromCC10([{ value: 5 }])).toBe(1)
     expect(panFromCC10([{ value: -5 }])).toBe(-1)
+  })
+})
+
+describe('curveFromCC', () => {
+  it('is empty for no CC events', () => {
+    expect(curveFromCC(undefined)).toEqual([])
+    expect(curveFromCC([])).toEqual([])
+  })
+  it('carries every breakpoint through (unlike panFromCC10, which only keeps the last)', () => {
+    expect(curveFromCC([{ time: 0, value: 1 }, { time: 2, value: 0.5 }]))
+      .toEqual([{ time: 0, value: 1 }, { time: 2, value: 0.5 }])
+  })
+  it('sorts by time, since a stem could in principle carry out-of-order events', () => {
+    expect(curveFromCC([{ time: 2, value: 0.5 }, { time: 0, value: 1 }]))
+      .toEqual([{ time: 0, value: 1 }, { time: 2, value: 0.5 }])
   })
 })

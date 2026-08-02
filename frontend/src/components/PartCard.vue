@@ -115,6 +115,7 @@
       ref="editorRef"
       :notes="midiData.notes"
       :duration="midiData.duration"
+      :automation="midiData.automation"
       :seconds-per-beat="secondsPerBeat"
       :keyRoot="keyRoot"
       :scale="scale"
@@ -122,6 +123,7 @@
       :styleId="styleId"
       :sections="sections"
       @notes-changed="onNotesChanged"
+      @automation-changed="onAutomationChanged"
       @save="saveEdits"
       @close="showEditor = false"
     />
@@ -135,7 +137,7 @@ import type { Header } from '@tonejs/midi'
 import type { FileInfo } from '../types/midi'
 import { errorMessage } from '../utils/errors'
 import { downloadUrl, editPart } from '../services/api'
-import { useMidiPlayer, PLAYER_PARTS, type ParsedNote, type PlayerPart } from '../composables/useMidiPlayer'
+import { useMidiPlayer, PLAYER_PARTS, type ParsedNote, type PlayerPart, type PartAutomation } from '../composables/useMidiPlayer'
 import { useDownloadPrompt } from '../composables/useDownloadPrompt'
 import { useExportFormat } from '../composables/useExportFormat'
 import { FORMAT_EXT } from '../utils/audioEncoder'
@@ -227,6 +229,7 @@ const rollRef = ref<InstanceType<typeof PianoRoll> | null>(null)
 const editorRef = ref<InstanceType<typeof PianoRollEditor> | null>(null)
 const showEditor = ref(false)
 const editedNotes = ref<ParsedNote[] | null>(null)
+const editedAutomation = ref<PartAutomation | null>(null)
 const editDirty = ref(false)
 const savingEdits = ref(false)
 const editError = ref('')
@@ -235,6 +238,12 @@ let midiHeader: Header | null = null   // tempo map of the current file (seconds
 
 function onNotesChanged(notes: ParsedNote[], dirty: boolean) {
   editedNotes.value = notes
+  editDirty.value = dirty
+  if (dirty) editError.value = ''
+}
+
+function onAutomationChanged(automation: PartAutomation, dirty: boolean) {
+  editedAutomation.value = automation
   editDirty.value = dirty
   if (dirty) editError.value = ''
 }
@@ -265,14 +274,25 @@ async function saveEdits() {
         velocity: Math.max(1, Math.min(127, Math.round(n.velocity * 127))),
       }
     })
+    // Automation breakpoints round-trip in seconds/0..1 (matching ParsedNote.time);
+    // the backend wants beats/0..1, same conversion as note times.
+    const automation = editedAutomation.value ?? midiData.value?.automation ?? { volume: [], pan: [] }
+    const automationPayload = {
+      volume: automation.volume.map(p => ({ beat: +Math.max(0, toBeats(p.time)).toFixed(4), value: p.value })),
+      pan: automation.pan.map(p => ({ beat: +Math.max(0, toBeats(p.time)).toFixed(4), value: p.value })),
+    }
 
-    await editPart({ generation_id: genId, part: props.file.part, notes: payload })
+    await editPart({ generation_id: genId, part: props.file.part, notes: payload, automation: automationPayload })
     // Refresh the piano-roll cache with what we just saved — otherwise prefetchMidi
     // no-ops on the already-cached URL and a reopened editor shows the pre-edit notes.
     const dur = notes.reduce((m, n) => Math.max(m, n.time + n.duration), midiData.value?.duration ?? 0)
-    setMidiData(props.file.url, { notes: notes.map(n => ({ ...n })), duration: dur })
+    setMidiData(props.file.url, {
+      notes: notes.map(n => ({ ...n })), duration: dur,
+      automation: { volume: automation.volume.map(p => ({ ...p })), pan: automation.pan.map(p => ({ ...p })) },
+    })
     editDirty.value = false
     editedNotes.value = null
+    editedAutomation.value = null
     rollRef.value?.markSaved()
     editorRef.value?.markSaved()
     emit('edited', props.file.part)   // hand-edited parts auto-lock so a section re-roll won't discard them

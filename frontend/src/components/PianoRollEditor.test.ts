@@ -261,6 +261,78 @@ describe('PianoRollEditor — velocity lane', () => {
   })
 })
 
+// ── Volume/Pan automation lane (roadmap 9.3) ──────────────────────────────────
+// Same lane geometry as velocity (y 420..488 after Fit) — the lane just draws/
+// hit-tests a curve of independent {time, value} points instead of per-note bars.
+import type { PartAutomation } from '../composables/useMidiPlayer'
+
+const laneBtn = (w: VueWrapper, label: 'Velocity' | 'Volume' | 'Pan') =>
+  w.findAll('button').find(b => b.text() === label)!
+const lastAutomationEmit = (w: VueWrapper) => {
+  const e = w.emitted('automation-changed')
+  return e ? e[e.length - 1] as [PartAutomation, boolean] : null
+}
+
+describe('PianoRollEditor — volume/pan automation lane', () => {
+  it('clicking empty lane space in Volume mode inserts a breakpoint', async () => {
+    const wrapper = mountEditor(twoNotes())
+    await clickFit(wrapper)
+    await laneBtn(wrapper, 'Volume').trigger('click')
+    // Near the lane's top (y 420..488) -> a high value.
+    await wrapper.find('canvas').trigger('mousedown', { clientX: 300, clientY: 428 })
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 300, clientY: 428 }))
+    const [automation, dirty] = lastAutomationEmit(wrapper)!
+    expect(dirty).toBe(true)
+    expect(automation.volume).toHaveLength(1)
+    expect(automation.volume[0].value).toBeGreaterThan(0.7)
+    expect(automation.pan).toHaveLength(0)   // untouched
+  })
+
+  it('dragging an existing point moves it instead of adding a second one', async () => {
+    const wrapper = mountEditor(twoNotes())
+    await clickFit(wrapper)
+    await laneBtn(wrapper, 'Volume').trigger('click')
+    await wrapper.find('canvas').trigger('mousedown', { clientX: 300, clientY: 460 })
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 300, clientY: 460 }))
+    const firstValue = lastAutomationEmit(wrapper)![0].volume[0].value
+
+    // Press again on the same point and drag it up (toward the lane top).
+    await wrapper.find('canvas').trigger('mousedown', { clientX: 300, clientY: 460 })
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 300, clientY: 425 }))
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 300, clientY: 425 }))
+    const [automation] = lastAutomationEmit(wrapper)!
+    expect(automation.volume).toHaveLength(1)              // moved, not duplicated
+    expect(automation.volume[0].value).toBeGreaterThan(firstValue)
+  })
+
+  it('double-clicking an existing point removes it', async () => {
+    const wrapper = mountEditor(twoNotes())
+    await clickFit(wrapper)
+    await laneBtn(wrapper, 'Pan').trigger('click')
+    await wrapper.find('canvas').trigger('mousedown', { clientX: 300, clientY: 450 })
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 300, clientY: 450 }))
+    expect(lastAutomationEmit(wrapper)![0].pan).toHaveLength(1)
+
+    await wrapper.find('canvas').trigger('dblclick', { clientX: 300, clientY: 450 })
+    expect(lastAutomationEmit(wrapper)![0].pan).toHaveLength(0)
+  })
+
+  it('Velocity mode is unaffected by drawn automation and vice versa', async () => {
+    const wrapper = mountEditor(twoNotes())
+    await clickFit(wrapper)
+    await laneBtn(wrapper, 'Pan').trigger('click')
+    await wrapper.find('canvas').trigger('mousedown', { clientX: 300, clientY: 450 })
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 300, clientY: 450 }))
+
+    await laneBtn(wrapper, 'Velocity').trigger('click')
+    await wrapper.find('canvas').trigger('mousedown', { clientX: 178, clientY: 428 })
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 178, clientY: 428 }))
+    const [notes] = lastEmit(wrapper)!
+    expect(notes.find(n => n.midi === 60)!.velocity).toBeGreaterThan(0.7)   // velocity drag still works
+    expect(lastAutomationEmit(wrapper)![0].pan).toHaveLength(1)             // pan point survived the mode switch
+  })
+})
+
 // ── Playback, loop region, audition (editor "hear what you're editing") ──────
 import { flushPromises } from '@vue/test-utils'
 

@@ -39,7 +39,7 @@ from app.core.arrangement import (
 )
 from app.services.mixdown import (
     _PART_CHANNELS, part_midi_meta,
-    _generate_part_cc, _generate_melody_expression_cc,
+    _generate_part_cc, _generate_melody_expression_cc, _apply_automation_cc,
     _generate_808_pitch_bends, _drop_quiet, _scale_velocity, generate_build_sweeps, generate_section_crescendo,
 )
 from app.api.routes_generate import _SAFE_PATH
@@ -761,6 +761,13 @@ def edit_part(req: EditPartRequest):
         for automation in (generate_build_sweeps(layout, [req.part]),
                            generate_section_crescendo(layout, [req.part])):
             part_cc = part_cc + automation.get(req.part, [])
+    # A hand-drawn volume/pan curve (roadmap 9.3) overlays on top of all of the above —
+    # including drums, which otherwise get no CC pass at all: every part now has its
+    # own output insert (Slice 1), so drums can carry automation too even though they
+    # skip the melodic pan/reverb/sweep treatment above. `[]` and `None` write
+    # identically (write_midi's cc_events check is falsy either way), so this stays
+    # byte-identical for drums when no automation is drawn.
+    part_cc = _apply_automation_cc(part_cc or [], req.automation, channel)
 
     programs, track_names = part_midi_meta(style if style else {"id": meta.get("style_id", "")})
     write_midi(events, part_path, bpm=bpm, program=programs.get(req.part),

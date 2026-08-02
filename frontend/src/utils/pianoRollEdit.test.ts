@@ -12,6 +12,8 @@ import {
   beatToX, xToBeat, timeToX, xToTime, pitchToY, yToPitch, noteRectZoom,
   midiToNoteName, drumPieceName, isBlackKey, velocityFromLaneY, snapDelta, rectsOverlap, nearLoopFlag,
   sanitizeNotesForPlayback, type RollViewport,
+  valueFromLaneY, automationPointX, automationPointY, nearestAutomationPoint,
+  insertAutomationPoint, removeAutomationPoint, clampAutomationPoint,
 } from './pianoRollEdit'
 
 describe('snapTime', () => {
@@ -199,6 +201,77 @@ describe('snapDelta', () => {
   })
   it('honors a coarser division', () => {
     expect(snapDelta(0.30, spb, 0.5)).toBeCloseTo(0.25)   // 1/8 grid = 0.25s
+  })
+})
+
+// ── Automation lane (roadmap 9.3) ────────────────────────────────────────────
+
+describe('valueFromLaneY', () => {
+  const top = 420, h = 68
+  it('maps the lane top to 1 and the bottom to 0 — no audible-floor clamp', () => {
+    expect(valueFromLaneY(top, top, h)).toBeCloseTo(1)
+    expect(valueFromLaneY(top + h, top, h)).toBeCloseTo(0)
+    expect(valueFromLaneY(top + h / 2, top, h)).toBeCloseTo(0.5)
+  })
+  it('clamps outside the lane', () => {
+    expect(valueFromLaneY(top - 50, top, h)).toBe(1)
+    expect(valueFromLaneY(top + h + 50, top, h)).toBe(0)
+  })
+})
+
+describe('automationPointX / automationPointY', () => {
+  const top = 420, h = 68
+  it('round-trips with timeToX / valueFromLaneY', () => {
+    const point = { time: 2, value: 0.75 }
+    const x = automationPointX(point, VP)
+    const y = automationPointY(point, top, h)
+    expect(x).toBeCloseTo(timeToX(2, VP))
+    expect(valueFromLaneY(y, top, h)).toBeCloseTo(0.75)
+  })
+})
+
+describe('nearestAutomationPoint', () => {
+  const top = 420, h = 68
+  const points = [{ time: 0, value: 1 }, { time: 4, value: 0.2 }]
+  it('finds the closest point within tolerance', () => {
+    const x = automationPointX(points[1], VP)
+    const y = automationPointY(points[1], top, h)
+    expect(nearestAutomationPoint(points, x, y, VP, top, h)).toBe(1)
+  })
+  it('returns -1 when nothing is close enough', () => {
+    expect(nearestAutomationPoint(points, 9999, 9999, VP, top, h)).toBe(-1)
+  })
+})
+
+describe('insertAutomationPoint', () => {
+  it('inserts and keeps the curve sorted by time', () => {
+    const points = [{ time: 0, value: 1 }, { time: 4, value: 0.5 }]
+    const out = insertAutomationPoint(points, 2, 0.8)
+    expect(out.map(p => p.time)).toEqual([0, 2, 4])
+  })
+  it('replaces a point already at ~the same time instead of duplicating it', () => {
+    const points = [{ time: 0, value: 1 }]
+    const out = insertAutomationPoint(points, 0.0000001, 0.3)
+    expect(out).toEqual([{ time: 0.0000001, value: 0.3 }])
+  })
+  it('clamps value to 0..1 and time to >= 0', () => {
+    expect(insertAutomationPoint([], -5, 5)).toEqual([{ time: 0, value: 1 }])
+    expect(insertAutomationPoint([], 1, -5)).toEqual([{ time: 1, value: 0 }])
+  })
+})
+
+describe('removeAutomationPoint', () => {
+  it('drops the point at the given index', () => {
+    const points = [{ time: 0, value: 1 }, { time: 4, value: 0.5 }]
+    expect(removeAutomationPoint(points, 0)).toEqual([{ time: 4, value: 0.5 }])
+  })
+})
+
+describe('clampAutomationPoint', () => {
+  it('clamps time to [0, maxTime] and value to [0, 1]', () => {
+    expect(clampAutomationPoint(-1, 2, 10)).toEqual({ time: 0, value: 1 })
+    expect(clampAutomationPoint(20, -1, 10)).toEqual({ time: 10, value: 0 })
+    expect(clampAutomationPoint(5, 0.5, 10)).toEqual({ time: 5, value: 0.5 })
   })
 })
 

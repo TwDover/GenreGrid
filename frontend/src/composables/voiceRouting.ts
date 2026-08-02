@@ -67,3 +67,13 @@ export function panFromCC10(cc: ReadonlyArray<{ value: number }> | undefined): n
   if (cc && cc.length) return Math.max(-1, Math.min(1, cc[cc.length - 1].value * 2 - 1))
   return 0
 }
+
+// A hand-drawn volume/pan automation breakpoint (roadmap 9.3): time in seconds
+// at the track's native tempo (matching ParsedNote.time), value normalized 0..1
+// (@tonejs/midi already normalises CC bytes this way). A single breakpoint is
+// the same as today's static CC10 read — the "curve" degenerates cleanly.
+export interface AutomationBreakpoint { time: number; value: number }
+
+export function curveFromCC(cc: ReadonlyArray<{ time: number; value: number }> | undefined): AutomationBreakpoint[] {
+  return cc ? cc.map(e => ({ time: e.time, value: e.value })).sort((a, b) => a.time - b.time) : []
+}

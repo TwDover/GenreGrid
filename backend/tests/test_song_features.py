@@ -524,6 +524,81 @@ def test_edit_part_404_on_missing_song_or_stem():
     assert exc.value.status_code == 404
 
 
+# ── 9.3 — automation lanes (volume/pan curves baked into CC7/CC10) ───────────
+
+def _read_stem_cc(path, control):
+    """(start_beats, value) for every control_change of `control` in a stem,
+    sorted by start_beats."""
+    mid = mido.MidiFile(str(path))
+    tpb = mid.ticks_per_beat
+    out = []
+    for tr in mid.tracks:
+        t = 0
+        for msg in tr:
+            t += msg.time
+            if msg.type == "control_change" and msg.control == control:
+                out.append((t / tpb, msg.value))
+    out.sort(key=lambda e: e[0])
+    return out
+
+
+def test_edit_part_no_automation_stays_byte_identical():
+    """Omitting `automation` on an edit must write exactly what edit_part writes
+    today: a single default CC10 pan point, no CC7 at all (the byte-identical
+    invariant for anyone who never opens the Volume/Pan lane)."""
+    from app.models.schemas import EditPartRequest, EditedNote
+    from app.api.routes_song import edit_part
+
+    r = _song(seed=81)
+    d = EXPORTS_DIR / r.generation_id
+    notes = [EditedNote(pitch=64, start=0.0, duration=1.0, velocity=90)]
+    edit_part(EditPartRequest(generation_id=r.generation_id, part="melody", notes=notes))
+
+    pan_cc = _read_stem_cc(d / "melody.mid", 10)
+    volume_cc = _read_stem_cc(d / "melody.mid", 7)
+    assert len(pan_cc) == 1 and pan_cc[0][0] == 0.0
+    assert volume_cc == []
+
+
+def test_edit_part_bakes_volume_and_pan_automation():
+    """A drawn volume+pan curve bakes into CC7/CC10 at the exact drawn beats/values,
+    replacing the single default CC10 point (not adding to it)."""
+    from app.models.schemas import EditPartRequest, EditedNote, PartAutomation, AutomationPoint
+    from app.api.routes_song import edit_part
+
+    r = _song(seed=82)
+    d = EXPORTS_DIR / r.generation_id
+    notes = [EditedNote(pitch=64, start=0.0, duration=1.0, velocity=90)]
+    automation = PartAutomation(
+        volume=[AutomationPoint(beat=0.0, value=1.0), AutomationPoint(beat=4.0, value=0.5)],
+        pan=[AutomationPoint(beat=0.0, value=0.0), AutomationPoint(beat=8.0, value=1.0)],
+    )
+    edit_part(EditPartRequest(generation_id=r.generation_id, part="melody", notes=notes,
+                              automation=automation))
+
+    pan_cc = _read_stem_cc(d / "melody.mid", 10)
+    volume_cc = _read_stem_cc(d / "melody.mid", 7)
+    assert pan_cc == [(0.0, 0), (8.0, 127)]
+    assert volume_cc == [(0.0, 127), (4.0, 64)]
+
+
+def test_edit_part_drums_can_carry_volume_pan_automation():
+    """Drums skip the melodic pan/reverb/sweep CC pass, but every part has its own
+    output insert now (Slice 1) — a drawn curve should still bake in for drums."""
+    from app.models.schemas import EditPartRequest, EditedNote, PartAutomation, AutomationPoint
+    from app.api.routes_song import edit_part
+
+    r = _song(seed=83)
+    d = EXPORTS_DIR / r.generation_id
+    notes = [EditedNote(pitch=36, start=0.0, duration=0.25, velocity=110)]
+    automation = PartAutomation(volume=[AutomationPoint(beat=0.0, value=0.8)])
+    edit_part(EditPartRequest(generation_id=r.generation_id, part="drums", notes=notes,
+                              automation=automation))
+
+    volume_cc = _read_stem_cc(d / "drums.mid", 7)
+    assert volume_cc == [(0.0, 102)]   # round(0.8 * 127)
+
+
 def test_song_tempo_map_intensity():
     """The tempo-automation knob scales the chorus push, pre-chorus lean and
     ending ritardando: 0 = flat, 0.5 = the classic subtle default, 1 = double."""

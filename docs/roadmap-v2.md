@@ -619,16 +619,42 @@ Recorded/performed MIDI is **captured user data** (like an imported melody) — 
   introspection of the live graph — gain stays 1.0 and pan matches the backend's `_PART_PAN`
   table to 15+ decimal places for melodic parts, 0 for bass/drums, exactly reproducing prior
   behavior. Full frontend suite (308 tests), typecheck, and eslint all clean.
-- **Still to build:** backend `AutomationPoint`/`PartAutomation` schema + baking a drawn curve
-  into CC7 (volume, unused today)/CC10 (pan) events via the existing `/edit-part` seam (an
-  automation-bearing part auto-locks exactly like a note edit, so it survives every other regen
-  path via the already-proven lock mechanism — no other backend endpoint needs to change); live
-  scheduling via `Tone.getTransport().schedule()` (Transport-relative, tempo-nudge-safe) vs.
-  offline scheduling via the raw-second path `useOfflineRender.ts` already uses for notes (the
-  two engines don't share a scheduling mechanism today — parity comes from both reading the same
-  CC data, matching how `SynthPatch` already achieves live/export parity); and a lane-editor UI in
-  `PianoRollEditor.vue` (reusing its existing pixel/time viewport math, sibling to the velocity
-  lane). **Effort remaining:** M.
+- ✅ **Volume + pan automation lanes SHIPPED 2026-08-02.** Backend: `AutomationPoint`/
+  `PartAutomation` (`schemas.py`) extend `EditPartRequest`; `_apply_automation_cc`
+  (`mixdown.py`) overlays a drawn curve onto a part's CC list from `edit_part` only — a
+  drawn pan curve replaces the single default CC10 point with its own breakpoints, a drawn
+  volume curve adds CC7 breakpoints, and drums (which otherwise skip the melodic CC pass
+  entirely) can carry automation too since every part already has its own output insert
+  (Slice 1). No automation drawn → `[]`/`None` write identically (`write_midi`'s `cc_events`
+  check is falsy either way), so the byte-identical invariant holds by construction.
+  **No new persistence store** — like notes, a curve's truth lives in the CC7/CC10 events
+  actually written into the stem, parsed back out on load via a new `curveFromCC` helper
+  (`voiceRouting.ts`); this deliberately differs from `useSynthPatches`/`useDrumKitPatches`
+  (legitimately cross-song instrument libraries) since automation is per-song data, a sibling
+  of notes. **Tempo-nudge safety for free:** breakpoints are stored in seconds at the
+  generated tempo (matching `ParsedNote.time`), so live scheduling via
+  `Tone.getTransport().schedule()` inherits 7.6's tempo-nudge behavior with no bars/beats math
+  — a curve with one point degenerates cleanly to today's static set, so there's no separate
+  static-vs-automated code path (`applyPartAutomation` in `useMidiPlayer.ts` replaced the old
+  `trackPan`/one-shot `insert.panner.pan.value = pan` entirely). Offline export
+  (`useOfflineRender.ts`) schedules the same curves directly on the render's AudioParams via
+  precomputed `linearRampToValueAtTime` calls — deterministic and smoother than live's
+  short-ramp-per-breakpoint approximation, an accepted asymmetry (live can't know a future
+  tempo nudge; export is always one-shot). **UI:** a Velocity/Volume/Pan mode toggle on the
+  existing bottom lane in `PianoRollEditor.vue` (not three stacked lanes) — click empty lane
+  space to insert a breakpoint, drag an existing one to move it, dbl-click to remove it; new
+  pure geometry helpers (`valueFromLaneY`, `nearestAutomationPoint`, `insertAutomationPoint`,
+  etc.) in `pianoRollEdit.ts` sibling to `velocityFromLaneY`. Auto-lock falls out for free
+  (`PartCard.vue`'s `saveEdits()` already emits `'edited'` after every successful save,
+  automation included). Tests: backend `test_song_features.py` (no-automation byte-identical
+  + curve-baking, including the drums case); frontend `pianoRollEdit.test.ts`,
+  `voiceRouting.test.ts`, `PianoRollEditor.test.ts` (lane-toggle/drag/dbl-click-remove),
+  `PartCard.test.ts` (seconds→beats round-trip through the edit-part payload). Real-shell
+  proof: `scenarios/automation-lane.mjs` drew a volume point and a pan point in packaged
+  Electron, saved, and confirmed via a raw byte scan of the refetched stem that CC7 and CC10
+  actually landed at the drawn values (a pan curve's first breakpoint reflecting the part's
+  pre-existing style pan is expected — a curve starts from wherever the part already was, not
+  a blank slate).
 
 ### 9.4 Audio recording + audio clips
 - Mic/line-in via `getUserMedia`; record audio clips alongside MIDI (waveform UI, an audio-clip
@@ -677,10 +703,10 @@ output insert, shipped 2026-08-01; backend persistence + scheduling + lane UI st
    song-mode section recording, 2026-08-01, on the unified `/edit-part` note model). ✅ **9.2 first
    slice, including resize** (section-timeline reorder/insert/delete/duplicate/resize, all shipped
    2026-08-01) — whether the fuller track×time clip model is worth building beyond the section
-   timeline is still an open call. **9.3 automation lanes (volume + pan) in progress** — ✅ Slice
-   1 (uniform per-part output insert, both live + offline, shipped 2026-08-01); remaining:
-   backend CC persistence, live/offline scheduling, lane UI → then 9.4 audio. The 9.0 model
-   decisions held (one note model, record against transport ticks, renderer-captures/backend-persists).
+   timeline is still an open call. ✅ **9.3 automation lanes (volume + pan) shipped 2026-08-02**
+   (Slice 1 — uniform per-part output insert — shipped 2026-08-01; CC7/CC10 baking + live/offline
+   scheduling + the Velocity/Volume/Pan lane UI shipped 2026-08-02) → next up, 9.4 audio. The 9.0
+   model decisions held (one note model, record against transport ticks, renderer-captures/backend-persists).
    Stays web-audio-native — **plugin/VST hosting is out of scope** (removed 2026-07-30); MIDI-OUT
    (9.5) is an optional interop nicety.
 

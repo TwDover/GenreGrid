@@ -396,6 +396,10 @@ export async function editPart(req: {
   generation_id: string
   part: string
   notes: { pitch: number; start: number; duration: number; velocity: number }[]
+  automation?: {
+    volume: { beat: number; value: number }[]
+    pan: { beat: number; value: number }[]
+  }
 }): Promise<FileInfo> {
   const res = await fetch(`${BASE_URL}/edit-part`, {
     method: 'POST',

@@ -55,6 +55,11 @@
           <button class="pre-btn pre-tool" :class="{ active: tool === 'draw' }" @click="tool = 'draw'" :title="isDrumPart ? 'Draw hits (click a piece lane to add)' : 'Draw notes (drag empty grid to add)'">✏ Draw</button>
           <button class="pre-btn pre-tool" :class="{ active: tool === 'select' }" @click="tool = 'select'" title="Select (drag empty grid to marquee-select a group)">▭ Select</button>
         </div>
+        <div class="pre-group" title="Lane — Velocity edits note loudness; Volume/Pan draw a curve over time (roadmap 9.3)">
+          <button class="pre-btn pre-tool" :class="{ active: laneMode === 'velocity' }" @click="laneMode = 'velocity'" title="Velocity — drag a note's bar">Velocity</button>
+          <button class="pre-btn pre-tool" :class="{ active: laneMode === 'volume' }" @click="laneMode = 'volume'" title="Volume — click to add a point, drag to move, dbl-click to remove">Volume</button>
+          <button class="pre-btn pre-tool" :class="{ active: laneMode === 'pan' }" @click="laneMode = 'pan'" title="Pan — click to add a point, drag to move, dbl-click to remove">Pan</button>
+        </div>
         <div class="pre-group">
           <span class="pre-glabel">Zoom</span>
           <span class="pre-axis" title="Zoom time (horizontal)">↔</span>
@@ -97,6 +102,7 @@
           class="pre-canvas"
           tabindex="0"
           @mousedown="onPointerDown"
+          @dblclick="onLaneDblClick"
           @mousemove="onHover"
           @wheel="onWheel"
           @keydown="onKeyDown"
@@ -104,8 +110,8 @@
       </div>
 
       <div class="pre-hint">
-        <template v-if="isDrumPart">▶ plays this part · click a piece row (left) to hear it · drag the ruler to loop a span<template v-if="hasSections">, or pick a Section</template>, drag a flag to move one edge · ● Rec overdubs the pads you play into the loop · Draw: click a piece lane to add a hit · Select: marquee a group · arrows to nudge · ⌫ to delete · drag the velocity lane · ⌘/Ctrl-scroll to zoom</template>
-        <template v-else>▶ plays what you hear · click a key (left) or place a note to preview its sound · drag the ruler to loop a span, drag a ⟑ flag to move one edge<template v-if="hasSections"> · pick a Section to loop it, then ● Rec to overdub into just that section</template> · Draw: drag empty grid to add, drag a note's right edge to resize · Select: marquee a group, Shift-click to extend, drag to move · arrows to nudge (Shift = octave / bar) · ⌫ to delete · drag the velocity lane · ⌘/Ctrl-scroll to zoom</template>
+        <template v-if="isDrumPart">▶ plays this part · click a piece row (left) to hear it · drag the ruler to loop a span<template v-if="hasSections">, or pick a Section</template>, drag a flag to move one edge · ● Rec overdubs the pads you play into the loop · Draw: click a piece lane to add a hit · Select: marquee a group · arrows to nudge · ⌫ to delete · drag the bottom lane (Velocity/Volume/Pan) — dbl-click a Volume/Pan point to remove it · ⌘/Ctrl-scroll to zoom</template>
+        <template v-else>▶ plays what you hear · click a key (left) or place a note to preview its sound · drag the ruler to loop a span, drag a ⟑ flag to move one edge<template v-if="hasSections"> · pick a Section to loop it, then ● Rec to overdub into just that section</template> · Draw: drag empty grid to add, drag a note's right edge to resize · Select: marquee a group, Shift-click to extend, drag to move · arrows to nudge (Shift = octave / bar) · ⌫ to delete · drag the bottom lane (Velocity/Volume/Pan) — dbl-click a Volume/Pan point to remove it · ⌘/Ctrl-scroll to zoom</template>
       </div>
     </div>
   </div>
@@ -116,16 +122,19 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import * as Tone from 'tone'
 import { Midi } from '@tonejs/midi'
 import { useTheme, themeColor } from '../composables/useTheme'
-import { useMidiPlayer, type ParsedNote } from '../composables/useMidiPlayer'
+import { useMidiPlayer, type ParsedNote, type PartAutomation } from '../composables/useMidiPlayer'
 import { useMidiInput, onMidiNote, setAuditionTarget, clearAuditionTarget, type LiveNote } from '../composables/useMidiInput'
 import { registerStepSurface, type StepSurfaceLane } from '../composables/useApcMini'
 import { countIn as metroCountIn, setMeter as metroSetMeter } from '../composables/useMetronome'
 import { CHANNEL_PART, type PlayerPart } from '../composables/playerConstants'
+import { type AutomationBreakpoint } from '../composables/voiceRouting'
 import { scaleNotes } from '../utils/chordResolver'
 import {
   buildInsertedNote, nearRightEdge, resizedDuration, midiToNoteName, drumPieceName, isBlackKey,
   noteRectZoom, beatToX, timeToX, xToTime, yToPitch, velocityFromLaneY, snapDelta, rectsOverlap,
   nearLoopFlag, sanitizeNotesForPlayback, type RollViewport,
+  valueFromLaneY, automationPointX, automationPointY, nearestAutomationPoint,
+  insertAutomationPoint, removeAutomationPoint, clampAutomationPoint,
 } from '../utils/pianoRollEdit'
 
 export interface EditorSection { name: string; section_type: string; start_bar: number; bars: number }
@@ -133,6 +142,7 @@ export interface EditorSection { name: string; section_type: string; start_bar: 
 const props = withDefaults(defineProps<{
   notes: ParsedNote[]
   duration: number
+  automation?: PartAutomation
   secondsPerBeat?: number
   keyRoot?: string
   scale?: string
@@ -141,10 +151,14 @@ const props = withDefaults(defineProps<{
   // Song-mode section layout (empty in loop mode). Enables section markers in the
   // grid and a "loop a section" control, so you can record/audition into one section.
   sections?: EditorSection[]
-}>(), { secondsPerBeat: 0.5, partName: 'part', sections: () => [] })
+}>(), {
+  secondsPerBeat: 0.5, partName: 'part', sections: () => [],
+  automation: () => ({ volume: [], pan: [] }),
+})
 
 const emit = defineEmits<{
   (e: 'notes-changed', notes: ParsedNote[], dirty: boolean): void
+  (e: 'automation-changed', automation: PartAutomation, dirty: boolean): void
   (e: 'save'): void
   (e: 'close'): void
 }>()
@@ -167,6 +181,21 @@ const selected = ref<Set<ParsedNote>>(new Set())
 const dirty = ref(false)
 const division = ref(0.25)
 const tool = ref<'draw' | 'select'>('draw')
+
+// Bottom-lane mode (roadmap 9.3): Velocity edits each note's loudness (existing
+// behavior, unchanged); Volume/Pan draw a curve of {time, value} breakpoints,
+// independent of notes, baked into CC7/CC10 on save.
+const laneMode = ref<'velocity' | 'volume' | 'pan'>('velocity')
+function cloneCurve(points: AutomationBreakpoint[]): AutomationBreakpoint[] { return points.map(p => ({ ...p })) }
+const localAutomation = ref<PartAutomation>({
+  volume: cloneCurve(props.automation.volume), pan: cloneCurve(props.automation.pan),
+})
+const activeAutomationCurve = computed<AutomationBreakpoint[]>(() =>
+  laneMode.value === 'volume' ? localAutomation.value.volume : localAutomation.value.pan)
+function setActiveAutomationCurve(points: AutomationBreakpoint[]) {
+  if (laneMode.value === 'volume') localAutomation.value.volume = points
+  else localAutomation.value.pan = points
+}
 
 const pxPerBeat = ref(48)
 const pxPerSemitone = ref(15)
@@ -409,7 +438,9 @@ function draw() {
   }
   ctx.restore()
 
-  drawVelocityLane(ctx, cPanel, cAccent, gw, gh)
+  if (laneMode.value === 'velocity') drawVelocityLane(ctx, cPanel, cAccent, gw, gh)
+  else drawAutomationLane(ctx, cPanel, cAccent, gw, gh, activeAutomationCurve.value,
+    laneMode.value === 'volume' ? 'vol' : 'pan', laneMode.value === 'volume' ? 1 : 0.5)
 
   // ── Keyboard gutter ──
   ctx.fillStyle = cPanel
@@ -513,6 +544,56 @@ function drawVelocityLane(ctx: CanvasRenderingContext2D, cPanel: string, cAccent
   ctx.restore()
 }
 
+/** Volume/Pan lane (roadmap 9.3): a connected polyline through the curve's
+ *  breakpoints, with a draggable handle dot at each one. No breakpoints yet ->
+ *  a dashed guide at the flat default (unity gain / centered pan). */
+function drawAutomationLane(
+  ctx: CanvasRenderingContext2D, cPanel: string, cAccent: string, gw: number, gh: number,
+  curve: AutomationBreakpoint[], label: string, defaultValue: number,
+) {
+  const top = RULER_H + gh
+  ctx.fillStyle = cPanel
+  ctx.fillRect(0, top, GUTTER_W, VELO_H)
+  ctx.font = '9px system-ui, sans-serif'
+  ctx.textBaseline = 'middle'
+  ctx.fillStyle = _rgba('--text-faint', 1, '#6a8a98')
+  ctx.save(); ctx.translate(GUTTER_W / 2, top + VELO_H / 2)
+  ctx.textAlign = 'center'; ctx.fillText(label, 0, 0); ctx.textAlign = 'start'
+  ctx.restore()
+
+  ctx.fillStyle = themeColor('--bg-deepest', '#020608')
+  ctx.fillRect(GUTTER_W, top, gw, VELO_H)
+  ctx.strokeStyle = _rgba('--text-dim', 0.3, '#4a7080'); ctx.lineWidth = 1
+  ctx.beginPath(); ctx.moveTo(GUTTER_W, top + 0.5); ctx.lineTo(GUTTER_W + gw, top + 0.5); ctx.stroke()
+
+  ctx.save()
+  ctx.beginPath(); ctx.rect(GUTTER_W, top, gw, VELO_H); ctx.clip()
+  const vp = viewport()
+  const gridRight = GUTTER_W + gw
+  if (curve.length === 0) {
+    const y = automationPointY({ time: 0, value: defaultValue }, top, VELO_H)
+    ctx.strokeStyle = _rgba('--text-dim', 0.4, '#4a7080')
+    ctx.setLineDash([3, 3])
+    ctx.beginPath(); ctx.moveTo(GUTTER_W, y); ctx.lineTo(gridRight, y); ctx.stroke()
+    ctx.setLineDash([])
+  } else {
+    ctx.strokeStyle = cAccent
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.moveTo(GUTTER_W, automationPointY(curve[0], top, VELO_H))
+    for (const p of curve) ctx.lineTo(automationPointX(p, vp), automationPointY(p, top, VELO_H))
+    ctx.lineTo(gridRight, automationPointY(curve[curve.length - 1], top, VELO_H))
+    ctx.stroke()
+    for (const p of curve) {
+      const x = automationPointX(p, vp)
+      if (x < GUTTER_W - 4 || x > gridRight + 4) continue
+      ctx.fillStyle = cAccent
+      ctx.beginPath(); ctx.arc(x, automationPointY(p, top, VELO_H), 3.5, 0, Math.PI * 2); ctx.fill()
+    }
+  }
+  ctx.restore()
+}
+
 function drawScrollbar(ctx: CanvasRenderingContext2D, axis: 'h' | 'v', gw: number, gh: number) {
   const { w, h } = gridSize()
   ctx.fillStyle = _rgba('--panel', 1, '#0e1a20')
@@ -591,6 +672,7 @@ let moved = false
 let collapseOnClick: ParsedNote | null = null
 // Velocity paint
 let veloTargets: ParsedNote[] | null = null   // when a multi-selection is dragged together
+let automationDragIdx: number | null = null   // index in the active curve being dragged (roadmap 9.3)
 // Loop-region drag. `loopEdge` = which boundary flag is being dragged (null = a fresh
 // span drag); `loopAnchorBeat` is the fixed edge/anchor the moving edge is measured against.
 let loopAnchorBeat = 0
@@ -627,17 +709,33 @@ function onPointerDown(e: MouseEvent) {
     onSbMove(e); return
   }
 
-  // Velocity lane
+  // Bottom lane — Velocity (existing per-note behavior) or Volume/Pan (roadmap 9.3)
   if (inVelocityLane(pt.px, pt.py)) {
-    const note = noteAtX(pt.px)
-    if (note) {
-      e.preventDefault()
-      // Dragging a bar that belongs to a multi-selection sets the whole group;
-      // otherwise it paints individual notes under the cursor.
-      veloTargets = selected.value.has(note) && selected.value.size > 1 ? [...selected.value] : null
-      applyVelocity(pt.px, pt.py)
-      window.addEventListener('mousemove', onVeloMove); window.addEventListener('mouseup', onVeloUp)
+    e.preventDefault()
+    if (laneMode.value === 'velocity') {
+      const note = noteAtX(pt.px)
+      if (note) {
+        // Dragging a bar that belongs to a multi-selection sets the whole group;
+        // otherwise it paints individual notes under the cursor.
+        veloTargets = selected.value.has(note) && selected.value.size > 1 ? [...selected.value] : null
+        applyVelocity(pt.px, pt.py)
+        window.addEventListener('mousemove', onVeloMove); window.addEventListener('mouseup', onVeloUp)
+      }
+      return
     }
+    const curve = activeAutomationCurve.value
+    const hitIdx = nearestAutomationPoint(curve, pt.px, pt.py, viewport(), veloTop(), VELO_H)
+    if (hitIdx >= 0) {
+      automationDragIdx = hitIdx
+    } else {
+      const time = xToTime(pt.px, viewport())
+      const value = valueFromLaneY(pt.py, veloTop(), VELO_H)
+      const updated = insertAutomationPoint(curve, time, value)
+      setActiveAutomationCurve(updated)
+      automationDragIdx = updated.findIndex(p => Math.abs(p.time - time) < 1e-6)
+    }
+    window.addEventListener('mousemove', onAutomationMove); window.addEventListener('mouseup', onAutomationUp)
+    redraw()
     return
   }
 
@@ -845,6 +943,39 @@ function onVeloUp() {
   commit()
 }
 
+// Volume/Pan lane (roadmap 9.3). A dragged point is mutated in place at a stable
+// index (dragging in time can't reorder mid-gesture); the curve is only re-sorted
+// on release, mirroring how a note drag doesn't reorder localNotes mid-drag either.
+function onAutomationMove(e: MouseEvent) {
+  const pt = pointerBufferXY(e)
+  if (!pt || automationDragIdx === null) return
+  const curve = activeAutomationCurve.value
+  const maxTime = totalBeats.value * secPerBeat.value
+  const time = xToTime(pt.px, viewport())
+  const value = valueFromLaneY(pt.py, veloTop(), VELO_H)
+  curve[automationDragIdx] = clampAutomationPoint(time, value, maxTime)
+  redraw()
+}
+function onAutomationUp() {
+  window.removeEventListener('mousemove', onAutomationMove); window.removeEventListener('mouseup', onAutomationUp)
+  if (automationDragIdx !== null) setActiveAutomationCurve([...activeAutomationCurve.value].sort((a, b) => a.time - b.time))
+  automationDragIdx = null
+  commit()
+}
+/** Double-click a Volume/Pan breakpoint to remove it (velocity has no analogous
+ *  delete — a note's velocity can't be "unset", only redrawn). */
+function onLaneDblClick(e: MouseEvent) {
+  if (laneMode.value === 'velocity') return
+  const pt = pointerBufferXY(e)
+  if (!pt || !inVelocityLane(pt.px, pt.py)) return
+  const curve = activeAutomationCurve.value
+  const hitIdx = nearestAutomationPoint(curve, pt.px, pt.py, viewport(), veloTop(), VELO_H)
+  if (hitIdx < 0) return
+  e.preventDefault()
+  setActiveAutomationCurve(removeAutomationPoint(curve, hitIdx))
+  commit()
+}
+
 // Scrollbars
 function onSbMove(e: MouseEvent) {
   const pt = pointerBufferXY(e); if (!pt) return
@@ -926,19 +1057,25 @@ function onKeyDown(e: KeyboardEvent) {
   commit()
 }
 
+function cloneAutomation(a: PartAutomation): PartAutomation {
+  return { volume: cloneCurve(a.volume), pan: cloneCurve(a.pan) }
+}
+
 function commit() {
   dirty.value = true
   emit('notes-changed', localNotes.value.map(x => ({ ...x })), true)
+  emit('automation-changed', cloneAutomation(localAutomation.value), true)
   snapshotHistory()
   redraw()
 }
 
-// ── Undo / redo (session history of committed note states) ──────────────────
-const undoStack = ref<ParsedNote[][]>([])
+// ── Undo / redo (session history of committed note + automation states) ─────
+interface EditorSnapshot { notes: ParsedNote[]; automation: PartAutomation }
+const undoStack = ref<EditorSnapshot[]>([])
 const histIndex = ref(-1)
 function snapshotHistory() {
   undoStack.value = undoStack.value.slice(0, histIndex.value + 1)   // drop any redo branch
-  undoStack.value.push(localNotes.value.map(n => ({ ...n })))
+  undoStack.value.push({ notes: localNotes.value.map(n => ({ ...n })), automation: cloneAutomation(localAutomation.value) })
   if (undoStack.value.length > 80) undoStack.value.shift()
   histIndex.value = undoStack.value.length - 1
 }
@@ -946,10 +1083,13 @@ const canUndo = computed(() => histIndex.value > 0)
 const canRedo = computed(() => histIndex.value < undoStack.value.length - 1)
 function restoreHistory(idx: number) {
   histIndex.value = idx
-  localNotes.value = undoStack.value[idx].map(n => ({ ...n }))
+  const snap = undoStack.value[idx]
+  localNotes.value = snap.notes.map(n => ({ ...n }))
+  localAutomation.value = cloneAutomation(snap.automation)
   selected.value = new Set()
   dirty.value = true
   emit('notes-changed', localNotes.value.map(x => ({ ...x })), true)
+  emit('automation-changed', cloneAutomation(localAutomation.value), true)
   redraw()
 }
 function undo() { if (canUndo.value) restoreHistory(histIndex.value - 1) }
@@ -1305,6 +1445,7 @@ function fit() {
 function markSaved() {
   dirty.value = false
   emit('notes-changed', localNotes.value.map(x => ({ ...x })), false)
+  emit('automation-changed', cloneAutomation(localAutomation.value), false)
 }
 defineExpose({ markSaved })
 
@@ -1323,7 +1464,11 @@ watch(() => props.notes, (n) => {
   dirty.value = false
   redraw()
 })
-watch([division, tool, theme], () => redraw())
+watch(() => props.automation, (a) => {
+  localAutomation.value = cloneAutomation(a)
+  redraw()
+})
+watch([division, tool, laneMode, theme], () => redraw())
 
 onMounted(async () => {
   snapshotHistory()   // baseline state for undo — before any await so it precedes edits
