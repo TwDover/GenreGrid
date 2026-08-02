@@ -128,6 +128,54 @@ def default_feel(style_id: str) -> dict | None:
     return _synth(_ARCHETYPES[arch]) if arch else None
 
 
+def _synth_pulses(a: dict, num_pulses: int) -> dict:
+    """Expand archetype parameters into a COMPOUND-METER-native table: 3 eighths
+    per dotted-quarter pulse (head/middle/pickup) instead of the 16-slot 4/4
+    grid `_synth` produces. Mirrors `_synth`'s shape exactly, just re-anchored
+    so 'strong beat' means 'pulse head' and 'backbeat' means 'odd pulse head' —
+    the compound analogues of 4/4's beats 1&3 / 2&4."""
+    steps = num_pulses * 3
+    kick_t, snare_t, hat_t, other_t = ([0.0] * steps for _ in range(4))
+    kick_v, snare_v, hat_v, other_v = ([1.0] * steps for _ in range(4))
+
+    for p in range(num_pulses):
+        backbeat_pulse = p % 2 == 1
+        for e in range(3):     # 0 head, 1 middle, 2 pickup
+            i = p * 3 + e
+            swing = a["swing"] if e else 0.0
+
+            kick_t[i]  = a["kick_lag"] + swing
+            hat_t[i]   = a["hat_push"] + swing + (a["hat_offbeat_extra"] if e else 0.0)
+            other_t[i] = swing
+            snare_t[i] = a["backbeat_lag"] if (e == 0 and backbeat_pulse) else swing
+
+            kick_v[i]  = 1.0 if (e == 0 and not backbeat_pulse) else 0.96
+            snare_v[i] = 1.0 if (e == 0 and backbeat_pulse) else a["ghost"]
+            hat_v[i]   = 1.0 if e == 0 else (a["ghost"] if e == 1 else 0.92)
+            other_v[i] = 0.9
+
+    def _r(xs):
+        return [round(x, 5) for x in xs]
+
+    return {
+        "kick":  {"timing": _r(kick_t),  "velocity": _r(kick_v)},
+        "snare": {"timing": _r(snare_t), "velocity": _r(snare_v)},
+        "hat":   {"timing": _r(hat_t),   "velocity": _r(hat_v)},
+        "other": {"timing": _r(other_t), "velocity": _r(other_v)},
+        "bass_lag": round(a["bass_lag"], 5),
+    }
+
+
+@lru_cache(maxsize=None)
+def compound_feel(style_id: str, num_pulses: int) -> dict | None:
+    """The hand-authored feel profile re-synthesised natively for a compound
+    bar of `num_pulses` dotted-quarter pulses, or None if the style has no
+    hand-authored archetype (mined-only feel has no params to re-synthesise
+    from, so compound meters fall back to the generic 16-slot table there)."""
+    arch = _STYLE_FEEL.get(style_id)
+    return _synth_pulses(_ARCHETYPES[arch], num_pulses) if arch else None
+
+
 def feel_for(style: dict) -> dict | None:
     """Resolve a style's feel profile: a mined ``feel`` block in the style JSON
     overlays the hand-authored default (mined drum classes win per-key; the

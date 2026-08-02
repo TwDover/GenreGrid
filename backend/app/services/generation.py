@@ -31,6 +31,7 @@ from app.generators.answer import melody_cell
 from app.core.constants import DRUM_MAP
 from app.services.humanize import (
     apply_groove_pocket, apply_feel, apply_compound_swing, COMPOUND_SWING_DEFAULT,
+    apply_odd_meter_accent, ODD_ACCENT_DEFAULT,
 )
 from app.services.quality import score_generation, extract_rhythm_patterns
 from app.services.priors import load_prior, sample_progression, melody_prior_for, groove_fields_for
@@ -667,8 +668,15 @@ def _run_attempt(
 
     # Compound meters (6/8, 9/8, 12/8) get their triplet lilt on top: a
     # per-dotted-quarter velocity contour + a middle-eighth swing. No-op for
-    # every other meter (4/4/simple/odd stay byte-identical).
-    apply_compound_swing(all_events, meter, style.get("compound_swing", COMPOUND_SWING_DEFAULT))
+    # every other meter (4/4/simple/odd stay byte-identical). Parts apply_feel
+    # already gave a native compound contour are skipped here so the two
+    # don't stack the same accent twice.
+    apply_compound_swing(all_events, meter, style.get("compound_swing", COMPOUND_SWING_DEFAULT),
+                         skip=_feel_parts)
+
+    # Odd meters (5/8, 7/8, ...) get a per-group velocity accent — the
+    # additive-meter analogue of compound's lilt. No-op for every other meter.
+    apply_odd_meter_accent(all_events, meter, ODD_ACCENT_DEFAULT)
 
     if all_events.get("melody"):
         # Per-section scale pcs (sections can sit in shifted keys — chorus lift)

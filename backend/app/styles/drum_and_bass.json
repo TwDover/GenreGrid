@@ -6,6 +6,7 @@
     180
   ],
   "default_scale": "minor",
+  "compound_swing": 0.1,
   "instrumentation": {
     "chords": "warm_pad",
     "bass": "synth_bass",

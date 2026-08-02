@@ -6,6 +6,7 @@
     105
   ],
   "default_scale": "major",
+  "compound_swing": 0.55,
   "instrumentation": {
     "chords": "accordion",
     "bass": "upright_bass",

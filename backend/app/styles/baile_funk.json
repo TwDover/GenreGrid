@@ -6,6 +6,7 @@
     138
   ],
   "default_scale": "minor",
+  "compound_swing": 0.35,
   "instrumentation": {
     "chords": "wurlitzer_ep",
     "bass": "electric_bass",

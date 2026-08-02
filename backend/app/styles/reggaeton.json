@@ -6,6 +6,7 @@
     100
   ],
   "default_scale": "minor",
+  "compound_swing": 0.45,
   "instrumentation": {
     "chords": "clean_electric_guitar",
     "bass": "picked_bass",

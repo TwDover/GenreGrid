@@ -148,14 +148,36 @@ output **editable** and **portable** — the highest-leverage work on the whole 
 Correctness and arrangement are done; this phase chases the last 10% that separates "great
 MIDI demo" from "record." Most items here are **ear-gated** — validate with `/run-genregrid`.
 
-### 6.1 Meter feel: finish what this session started
-- **Tune `compound_swing` per style** (6/8 ballads want more lilt; orchestral 6/8 marches want
-  `0`) — add the field to the styles that use compound meter.
-- **Odd-meter (7/8, 5/8) accent shaping** — a 2+2+3 velocity contour like the compound one.
-- **Meter-native feel *velocity*** — `apply_feel`'s velocity curve is still a 16-slot 4/4 grid;
-  branch it on `meter.is_compound` so it accents dotted-quarter pulses natively (removing the
-  redundancy the compound-swing contour currently papers over).
-- **Entry:** `services/humanize.py`, style JSON.  **Effort:** M.  **Risk:** ear-gated.
+### 6.1 Meter feel: finish what this session started  ✅ shipped 2026-08-02
+- ✅ **`compound_swing` tuned per style** — all 35 styles now carry a hand-picked value (0.0 for
+  `epic_orchestral`'s marches; up to 0.75 for `jazz`/`latin_jazz`'s shuffle; the `laid_back`/
+  `pushed_funk` feel-archetype styles and the tight electronic ones land in between), replacing
+  the flat `COMPOUND_SWING_DEFAULT` every style used before.
+- ✅ **Odd-meter (5/8, 7/8, ...) accent shaping** — a new `apply_odd_meter_accent` (`humanize.py`)
+  gives each eighth-group's head a velocity boost and its tail a duck, keyed off the group's
+  actual size (2 vs 3, e.g. 7/8's 2+2+3) via a new `Meter.is_odd` / `Meter.eighth_groups` /
+  `odd_meter_group_position`. Velocity-only by design — unlike compound's middle eighth, a
+  2-group has no middle to push late, and swinging a tail risks colliding with the next group's
+  head.
+- ✅ **Meter-native feel velocity** — `apply_feel` no longer forces a compound bar through the
+  16-slot 4/4 table via a naive fold (which put the mid-pulse eighth on a slot meaning "the & of
+  beat 2" in 4/4, not anything about the meter's real pulses). A new `compound_feel` (`core/feel.py`)
+  re-synthesises the SAME hand-authored archetype params (`kick_lag`, `backbeat_lag`, `hat_push`,
+  `swing`, `ghost`, ...) natively per dotted-quarter pulse (head/middle/pickup), so the backbeat
+  lands on the pulse actually felt as the backbeat. Only fires for styles with a hand-authored
+  archetype (8 of 35 — mined-only feel has no params to re-synthesise from and keeps the 16-slot
+  path). `apply_compound_swing` gained a `skip` param so it no longer double-applies its generic
+  contour on top of a part `apply_feel` already placed natively — the exact "redundancy" this item
+  set out to remove.
+- **Entry:** `core/meter.py` (`is_odd`, `eighth_groups`), `core/feel.py` (`compound_feel`,
+  `_synth_pulses`), `services/humanize.py` (`apply_feel`, `apply_compound_swing` skip,
+  `apply_odd_meter_accent`), `services/generation.py`, all 35 `styles/*.json`.
+- **Tests:** `test_compound_feel.py` (new — native-pulse backbeat placement, skip-param
+  de-duplication, non-compound meters untouched), `test_odd_meter_accent.py` (new — group-position
+  math, head/tail accent ordering for both 2- and 3-groups, non-odd meters + amount-0 no-ops).
+  Full 286-test backend suite green. Verified end-to-end via `_do_build_song` for
+  `epic_orchestral`/`jazz`/`soul` in 6/8 and `rock` in 7/8 — real songs generate without error and
+  drum onset timing/velocity reflects the intended contour.
 
 ### 6.2 True LUFS loudness normalization
 - **Why:** per-family master trims are hand-tuned ([`fxPresets.ts`](../frontend/src/soundfonts/fxPresets.ts));
@@ -691,8 +713,9 @@ output insert, shipped 2026-08-01; backend persistence + scheduling + lane UI st
    byte-identical.
 6. **7.2** (code signing) — real distribution gap but **gated on procuring paid certs**; until
    then it's a prepared spec, not a merge. _(7.1 — vitest in CI — is already done.)_
-7. **Phase 6** opportunistically, ear-gated, interleaved with the above (6.1 is cheap and
-   finishes this session's thread). **6.6** (the synth / sound-design patch designer) is the
+7. **Phase 6** opportunistically, ear-gated, interleaved with the above. ✅ **6.1** (meter feel:
+   per-style compound_swing, odd-meter accent shaping, meter-native feel velocity) shipped
+   2026-08-02. **6.6** (the synth / sound-design patch designer) is the
    biggest new bet here — a whole new instrument source — so spike its patch shape + factory
    (migrate one built-in voice to a data patch and prove byte-identical parity) before committing
    to the full designer UI.

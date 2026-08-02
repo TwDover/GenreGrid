@@ -23,6 +23,14 @@ def _bar_slot(start: float, bar_beats: float) -> int:
     return int(round((start % bar_beats) / 0.25)) % 16
 
 
+def _pulse_slot(start: float, bar_beats: float, num_pulses: int) -> int:
+    """Compound-meter analog of `_bar_slot`: which (pulse, eighth) slot within
+    the bar's `num_pulses` dotted-quarter pulses (3 eighths each) a note sits
+    nearest — folded per-bar the same way, just on an eighth-note grid instead
+    of a 16th one."""
+    return int(round((start % bar_beats) / 0.5)) % (num_pulses * 3)
+
+
 def humanize_velocity(velocity: int, amount: float = 0.1) -> int:
     spread = int(velocity * amount)
     return max(1, min(127, velocity + random.randint(-spread, spread)))
@@ -180,19 +188,33 @@ def apply_feel(parts_events: dict, style: dict, meter: Meter = DEFAULT_METER) ->
     """Apply the style's systematic groove feel to drums and bass, in place.
 
     Drums take a per-instrument-class timing offset and velocity factor for
-    their 16th slot (the backbeat drags, the hats push, the hat contour repeats);
-    the bass takes a lag constant so it sits behind the kick. The timing amount
-    tracks the same humanize scale as the pocket, the velocity contour a gentler
-    one (dialled from flat at humanize=0 to full at humanize=1).
+    their felt-pulse slot (the backbeat drags, the hats push, the hat contour
+    repeats); the bass takes a lag constant so it sits behind the kick. The
+    timing amount tracks the same humanize scale as the pocket, the velocity
+    contour a gentler one (dialled from flat at humanize=0 to full at humanize=1).
+
+    In a COMPOUND meter (6/8, 9/8, 12/8), the slot table is re-synthesised
+    natively per dotted-quarter pulse (head/middle/pickup) instead of reading
+    the 4/4-shaped 16-slot table through a naive fold — the fold put a compound
+    bar's mid-pulse eighth on a slot meant to mean "the & of beat 2", so the
+    accent pattern didn't line up with the meter's actual pulses. Only fires
+    when the style has a hand-authored archetype to re-synthesise from; a
+    mined-only feel profile has no params for that and keeps the 16-slot path.
 
     Returns the set of parts it placed so the caller can skip them in
-    apply_groove_pocket. A style with no feel profile is handled by neither: this
-    returns an empty set and leaves ``parts_events`` untouched (byte-identical)."""
+    apply_groove_pocket (and apply_compound_swing). A style with no feel
+    profile is handled by neither: this returns an empty set and leaves
+    ``parts_events`` untouched (byte-identical)."""
     from app.services.midi_writer import NoteEvent
-    from app.core.feel import feel_for, drum_class
+    from app.core.feel import feel_for, drum_class, compound_feel
 
     feel = feel_for(style)
-    if not feel:
+    native = None
+    if meter.is_compound:
+        num_pulses = int(round(meter.bar_beats / 1.5))
+        native = compound_feel(style.get("id", ""), num_pulses)
+    active = native or feel
+    if not active:
         return set()
 
     hs      = _humanize_scale(style)
@@ -201,15 +223,22 @@ def apply_feel(parts_events: dict, style: dict, meter: Meter = DEFAULT_METER) ->
     bar_beats = meter.bar_beats
     handled: set = set()
 
+    table_len = num_pulses * 3 if native else 16
+
+    def slot_for(start: float) -> int:
+        if native:
+            return _pulse_slot(start, bar_beats, num_pulses)
+        return _bar_slot(start, bar_beats)
+
     drums = parts_events.get("drums")
     if drums:
         placed = []
         for e in drums:
             cls  = drum_class(e.pitch)
-            slot = _bar_slot(e.start, bar_beats)
-            cf   = feel.get(cls) or {}
-            toff = (cf.get("timing")   or [0.0] * 16)[slot] * t_scale
-            vf   = (cf.get("velocity") or [1.0] * 16)[slot]
+            slot = slot_for(e.start)
+            cf   = active.get(cls) or {}
+            toff = (cf.get("timing")   or [0.0] * table_len)[slot] * t_scale
+            vf   = (cf.get("velocity") or [1.0] * table_len)[slot]
             vf   = 1.0 + (vf - 1.0) * v_scale
             placed.append(NoteEvent(
                 e.pitch, max(0.0, e.start + toff), e.duration,
@@ -218,7 +247,7 @@ def apply_feel(parts_events: dict, style: dict, meter: Meter = DEFAULT_METER) ->
         handled.add("drums")
 
     bass = parts_events.get("bass")
-    bass_lag = feel.get("bass_lag", 0.0)
+    bass_lag = active.get("bass_lag", 0.0)
     if bass and bass_lag:
         lag = bass_lag * t_scale
         parts_events["bass"] = [
@@ -256,17 +285,23 @@ def compound_swing_delay(eighth: int, amount: float) -> float:
     return _COMPOUND_SWING_MAX * amount if eighth == 1 else 0.0
 
 
-def apply_compound_swing(parts_events: dict, meter: Meter, amount: float) -> None:
+def apply_compound_swing(parts_events: dict, meter: Meter, amount: float,
+                          skip: set | None = None) -> None:
     """Give a compound-meter groove its triplet lilt, in place. No-op unless the
-    meter is compound and amount > 0 (so all other meters stay byte-identical)."""
+    meter is compound and amount > 0 (so all other meters stay byte-identical).
+
+    ``skip`` names parts `apply_feel` already gave a native compound contour
+    (see its docstring) — stacking this generic swing on top would double up
+    the same accent."""
     if not meter.is_compound or amount <= 0:
         return
     from app.services.midi_writer import NoteEvent
 
+    skip = skip or set()
     pulse = meter.pulse            # dotted quarter (1.5) for compound
     bar_beats = meter.bar_beats
     for part, events in parts_events.items():
-        if not events:
+        if not events or part in skip:
             continue
         placed = []
         for e in events:
@@ -280,6 +315,55 @@ def apply_compound_swing(parts_events: dict, meter: Meter, amount: float) -> Non
                 vel = max(1, min(127, int(round(e.velocity * (1.0 + _COMPOUND_VEL[eighth] * amount)))))
             placed.append(NoteEvent(e.pitch, max(0.0, start), e.duration, vel, e.channel))
         parts_events[part] = placed
+
+
+# ── Odd-meter accent shaping ─────────────────────────────────────────────────
+# An odd bar (5/8, 7/8, ...) is felt in mixed 2- and 3-eighth groups (7/8 =
+# 2+2+3). Each group's head is the accent, everything after it lighter — the
+# additive-meter analogue of compound's triplet lilt, but velocity-only: unlike
+# compound's middle eighth, a 2-group has no "middle" to push late, and pushing
+# a group's tail risks it colliding with the next group's head, so this is a
+# pure accent contour, no timing swing. No-op for every meter that isn't odd —
+# 4/4, simple, and compound stay byte-identical.
+ODD_ACCENT_DEFAULT = 0.5
+_ODD_VEL: dict[int, tuple[float, ...]] = {
+    2: (0.09, -0.10),               # group of 2: head / tail
+    3: (0.10, -0.22, -0.04),        # group of 3: head / middle / tail (matches compound)
+}
+
+
+def odd_meter_group_position(start: float, meter: Meter) -> tuple[int, int]:
+    """(position within its eighth group, that group's size) for a note in an
+    ODD meter. Position 0 is always the group head."""
+    pos = start % meter.bar_beats
+    starts = meter.pulse_positions
+    groups = meter.eighth_groups
+    for i, g_start in enumerate(starts):
+        g_end = starts[i + 1] if i + 1 < len(starts) else meter.bar_beats
+        if pos < g_end - 1e-6:
+            return int(round((pos - g_start) / 0.5)), groups[i]
+    return 0, groups[-1]
+
+
+def apply_odd_meter_accent(parts_events: dict, meter: Meter,
+                            amount: float = ODD_ACCENT_DEFAULT) -> None:
+    """Give an odd-meter groove's drums a per-group accent contour, in place.
+    No-op unless the meter is odd and amount > 0."""
+    if not meter.is_odd or amount <= 0:
+        return
+    from app.services.midi_writer import NoteEvent
+
+    drums = parts_events.get("drums")
+    if not drums:
+        return
+    placed = []
+    for e in drums:
+        pos, size = odd_meter_group_position(e.start, meter)
+        contour = _ODD_VEL.get(size)
+        delta = contour[pos] if contour and pos < len(contour) else 0.0
+        vel = max(1, min(127, int(round(e.velocity * (1.0 + delta * amount)))))
+        placed.append(NoteEvent(e.pitch, e.start, e.duration, vel, e.channel))
+    parts_events["drums"] = placed
 
 
 def style_velocity_variation(style: dict) -> int:

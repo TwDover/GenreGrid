@@ -6,6 +6,7 @@
     102
   ],
   "default_scale": "minor",
+  "compound_swing": 0.6,
   "instrumentation": {
     "chords": "rhodes_ep",
     "bass": "electric_bass",

@@ -6,6 +6,7 @@
     75
   ],
   "default_scale": "major",
+  "compound_swing": 0.15,
   "instrumentation": {
     "chords": "warm_pad",
     "bass": "fretless_bass",

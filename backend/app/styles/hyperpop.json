@@ -6,6 +6,7 @@
     168
   ],
   "default_scale": "major",
+  "compound_swing": 0.15,
   "instrumentation": {
     "chords": "polysynth_pad",
     "bass": "sub_808",
