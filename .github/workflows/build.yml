@@ -35,9 +35,13 @@ jobs:
     # Gate on verify-tag. The explicit `if` is required because a *skipped*
     # dependency (branch/PR builds, where verify-tag's own `if` is false) would
     # otherwise skip this job too — so run when verify-tag passed OR was skipped,
-    # and only block when it actually failed (a mismatched tag).
+    # and only block when it actually failed (a mismatched tag). `always()` is
+    # required here too: without it, GitHub's implicit default gate (only run if
+    # everything upstream succeeded) silently wins over this comparison and skips
+    # the job anyway on every branch/PR push — bit us for 5+ merges before anyone
+    # noticed no Linux/Windows/macOS build had actually run on main.
     needs: [verify-tag]
-    if: ${{ needs.verify-tag.result == 'success' || needs.verify-tag.result == 'skipped' }}
+    if: ${{ always() && (needs.verify-tag.result == 'success' || needs.verify-tag.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -104,7 +108,7 @@ jobs:
 
   build-windows:
     needs: [verify-tag]
-    if: ${{ needs.verify-tag.result == 'success' || needs.verify-tag.result == 'skipped' }}
+    if: ${{ always() && (needs.verify-tag.result == 'success' || needs.verify-tag.result == 'skipped') }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -161,7 +165,7 @@ jobs:
     # auto-cancels them at the 24h mark — not something fixable from this repo.
     # Intel Mac users can build from source instead (see README).
     needs: [verify-tag]
-    if: ${{ needs.verify-tag.result == 'success' || needs.verify-tag.result == 'skipped' }}
+    if: ${{ always() && (needs.verify-tag.result == 'success' || needs.verify-tag.result == 'skipped') }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
