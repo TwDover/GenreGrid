@@ -31,7 +31,7 @@ import { SYNTH_STYLES, MELODIC_SYNTH_STYLES, PAD_STYLES, LOFI_STYLES, PLAYER_PAR
 import { isRendering, offlineRenderRaw } from './useOfflineRender'
 import type { AudioFormat } from '../utils/audioEncoder'
 import { makeMelodyLead, makeSynthChords, makeArpPluck, makePad, makeStrings, makeSynthBass, makeLofiSynth } from '../soundfonts/synthVoices'
-import { resolveMelodicVoiceKind, panFromCC10 } from './voiceRouting'
+import { resolveMelodicVoiceKind, curveFromCC, type AutomationBreakpoint } from './voiceRouting'
 import { drumTriggerCallback, voiceTriggerCallback } from './scheduler'
 
 // Re-exported so existing importers keep getting these from useMidiPlayer.
@@ -45,9 +45,30 @@ export interface ParsedNote {
   isPercussion: boolean
 }
 
+export interface PartAutomation {
+  volume: AutomationBreakpoint[]
+  pan: AutomationBreakpoint[]
+}
+
 export interface MidiData {
   notes: ParsedNote[]
   duration: number
+  automation: PartAutomation
+}
+
+/** A per-part stem is a single note track (plus a meta track), so flattening
+ *  CC7/CC10 across every track — the same convention `notes` already uses — is
+ *  safe: only the note-bearing track ever carries these events in practice. */
+function parseAutomation(midi: Midi): PartAutomation {
+  const volume: AutomationBreakpoint[] = []
+  const pan: AutomationBreakpoint[] = []
+  for (const track of midi.tracks) {
+    volume.push(...curveFromCC(track.controlChanges?.[7]))
+    pan.push(...curveFromCC(track.controlChanges?.[10]))
+  }
+  volume.sort((a, b) => a.time - b.time)
+  pan.sort((a, b) => a.time - b.time)
+  return { volume, pan }
 }
 
 
@@ -187,6 +208,10 @@ let scheduledParts: Tone.Part[] = []
 let disposables: Tone.ToneAudioNode[] = []
 // Per-play user custom-instrument samplers (LayeredSampler isn't a ToneAudioNode)
 let customSamplers: LayeredSampler[] = []
+// Transport.schedule() ids for automation-curve ramps past the first breakpoint
+// (roadmap 9.3) — cleared on stop so a stale callback can't ramp a disposed/
+// reused insert on the next play.
+let automationScheduleIds: number[] = []
 
 function cleanup() {
   isPaused.value = false
@@ -198,13 +223,44 @@ function cleanup() {
   scheduledParts.forEach(p => p.dispose())
   disposables.forEach(d => d.dispose())
   customSamplers.forEach(s => s.dispose())
+  automationScheduleIds.forEach(id => Tone.getTransport().clear(id))
   scheduledParts = []
   disposables = []
   customSamplers = []
+  automationScheduleIds = []
   durationSeconds.value = 0
   stopPositionPolling()
   currentlyPlaying.value = null
   nowPlayingLabel.value = null
+}
+
+// Baked CC7 (volume)/CC10 (pan) curves (roadmap 9.3), applied to a part's
+// persistent output insert. The first breakpoint sets the value immediately —
+// exactly like the one-shot CC10 read this replaces, so an unautomated track
+// (today's single default CC10 point) behaves identically. Any further
+// breakpoints ramp in via Tone.getTransport().schedule(), keyed to the same
+// seconds-at-native-tempo convention note times already use, so a live tempo
+// nudge (7.6) stretches automation exactly like it already stretches notes.
+const AUTOMATION_RAMP_SEC = 0.05
+function scheduleAutomationTail(
+  param: { linearRampToValueAtTime(value: number, time: number): unknown },
+  curve: AutomationBreakpoint[],
+  mapValue: (v: number) => number,
+) {
+  for (let i = 1; i < curve.length; i++) {
+    const point = curve[i]
+    const id = Tone.getTransport().schedule((time) => {
+      param.linearRampToValueAtTime(mapValue(point.value), time + AUTOMATION_RAMP_SEC)
+    }, point.time)
+    automationScheduleIds.push(id)
+  }
+}
+function applyPartAutomation(part: PlayerPart, volumeCurve: AutomationBreakpoint[], panCurve: AutomationBreakpoint[]) {
+  const insert = getPartInsert(part)
+  if (volumeCurve.length) insert.gain.gain.value = volumeCurve[0].value
+  scheduleAutomationTail(insert.gain.gain, volumeCurve, v => v)
+  if (panCurve.length) insert.panner.pan.value = panCurve[0].value * 2 - 1
+  scheduleAutomationTail(insert.panner.pan, panCurve, v => v * 2 - 1)
 }
 
 export function useMidiPlayer() {
@@ -366,7 +422,7 @@ export function useMidiPlayer() {
           })
         }
       }
-      midiStore.value[url] = { notes: allNotes, duration: midi.duration }
+      midiStore.value[url] = { notes: allNotes, duration: midi.duration, automation: parseAutomation(midi) }
 
       // A new track loads at its native tempo, clearing any prior live nudge —
       // the previous track's override doesn't carry to a different song.
@@ -397,26 +453,20 @@ export function useMidiPlayer() {
       let _synthBass: Tone.MonoSynth | null = null
       const getSynthBass = () => { if (!_synthBass) _synthBass = makeSynthBass(disposables, getPartInsert('bass').gain); return _synthBass }
 
-      // Static pan (CC10) a track was written with, as the -1..1 a Tone.Panner wants.
-      function trackPan(track: typeof midi.tracks[number]): number {
-        return panFromCC10(track.controlChanges?.[10])
-      }
-
       // Melodic voices are resolved per part (chords / melody / arpeggio) so they
       // no longer share one timbre. Every voice — synth, sampler, or the piano
-      // fallback — connects through that part's persistent insert (roadmap 9.3),
-      // whose Panner is set from the part's CC10 here exactly as before.
+      // fallback — connects through that part's persistent insert (roadmap 9.3).
+      // The insert's pan/gain are set uniformly for every part by
+      // applyPartAutomation below, once per track — not here.
       const voiceCache: Record<number, Tone.PolySynth | LayeredSampler> = {}
 
-      function makePanned(build: (out: Tone.ToneAudioNode) => Tone.PolySynth, part: PlayerPart, pan: number): Tone.PolySynth {
-        const insert = getPartInsert(part)
-        insert.panner.pan.value = pan
-        return build(insert.gain)
+      function makePanned(build: (out: Tone.ToneAudioNode) => Tone.PolySynth, part: PlayerPart): Tone.PolySynth {
+        return build(getPartInsert(part).gain)
       }
 
       // channel 0 = chords, 2 = melody, 3 = arpeggio, 4 = pads,
       // 5 = counter-melody (see backend _PART_CHANNELS)
-      function getMelodicInstrument(channel: number, pan: number): Tone.PolySynth | LayeredSampler {
+      function getMelodicInstrument(channel: number): Tone.PolySynth | LayeredSampler {
         if (voiceCache[channel]) return voiceCache[channel]
 
         const part = CHANNEL_PART[channel]
@@ -435,17 +485,17 @@ export function useMidiPlayer() {
         })
         let inst: Tone.PolySynth | LayeredSampler
         switch (kind) {
-          case 'synth_patch':      inst = makePanned((out) => buildSynthFromPatch(patch!, disposables, out) as Tone.PolySynth, part, pan); break
+          case 'synth_patch':      inst = makePanned((out) => buildSynthFromPatch(patch!, disposables, out) as Tone.PolySynth, part); break
           case 'custom':           inst = custom!; break
           case 'sampler':          inst = sampler!; break
           case 'piano':            inst = piano!; break               // this part's own Salamander grand instance
-          case 'pad':              inst = makePanned((out) => makePad(disposables, out), part, pan); break
-          case 'strings':          inst = makePanned((out) => makeStrings(disposables, out), part, pan); break
-          case 'arp_pluck':        inst = makePanned((out) => makeArpPluck(disposables, out), part, pan); break
-          case 'lofi':             inst = makePanned((out) => makeLofiSynth(disposables, out), part, pan); break
-          case 'synth_chords':     inst = makePanned((out) => makeSynthChords(disposables, out), part, pan); break
-          case 'melody_lead_soft': inst = makePanned((out) => makeMelodyLead(true, disposables, out), part, pan); break
-          case 'synth_lead':       inst = makePanned((out) => makeMelodyLead(false, disposables, out), part, pan); break
+          case 'pad':              inst = makePanned((out) => makePad(disposables, out), part); break
+          case 'strings':          inst = makePanned((out) => makeStrings(disposables, out), part); break
+          case 'arp_pluck':        inst = makePanned((out) => makeArpPluck(disposables, out), part); break
+          case 'lofi':             inst = makePanned((out) => makeLofiSynth(disposables, out), part); break
+          case 'synth_chords':     inst = makePanned((out) => makeSynthChords(disposables, out), part); break
+          case 'melody_lead_soft': inst = makePanned((out) => makeMelodyLead(true, disposables, out), part); break
+          case 'synth_lead':       inst = makePanned((out) => makeMelodyLead(false, disposables, out), part); break
           default: { const _never: never = kind; throw new Error(`unreachable voice kind: ${_never}`) }
         }
         voiceCache[channel] = inst
@@ -458,6 +508,12 @@ export function useMidiPlayer() {
 
         const channel = track.channel ?? 0
         const isPerc = track.instrument.percussion || channel === 9
+        // Baked volume/pan curves (roadmap 9.3) — applied uniformly to every part's
+        // insert regardless of which branch below builds its voice.
+        const automationPart = CHANNEL_PART[channel]
+        if (automationPart) {
+          applyPartAutomation(automationPart, curveFromCC(track.controlChanges?.[7]), curveFromCC(track.controlChanges?.[10]))
+        }
 
         if (isPerc) {
           // Electronic styles get a sidechain pump: each kick briefly ducks the
@@ -485,8 +541,8 @@ export function useMidiPlayer() {
 
         } else {
           // Chords, melody, arpeggio — distinct style-aware voice per part, each
-          // placed in the stereo field from its CC10 pan.
-          const instrument = getMelodicInstrument(channel, trackPan(track))
+          // placed in the stereo field by applyPartAutomation above.
+          const instrument = getMelodicInstrument(channel)
           const notes = track.notes.map(n => ({
             time: n.time, midi: n.midi, duration: n.duration, velocity: n.velocity,
           }))
@@ -774,7 +830,7 @@ export function useMidiPlayer() {
           })
         }
       }
-      midiStore.value[url] = { notes: allNotes, duration: midi.duration }
+      midiStore.value[url] = { notes: allNotes, duration: midi.duration, automation: parseAutomation(midi) }
     } catch {
       // silently ignore — piano roll will appear once the user hits play instead
     }

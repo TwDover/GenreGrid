@@ -13,6 +13,7 @@ Split out of routes_generate.py so mixing concerns live apart from the HTTP
 endpoints and arrangement planning (see app/core/arrangement.py).
 """
 from app.services.midi_writer import NoteEvent, ControlEvent, PitchBendEvent
+from app.models.schemas import PartAutomation
 
 
 # Fallback GM program per part, for user-authored custom styles that ship no
@@ -149,6 +150,27 @@ def _generate_part_cc(part: str, total_bars: int, channel: int, style: dict | No
                 cc.append(ControlEvent(control=64, value=127, start=b, channel=channel))
                 cc.append(ControlEvent(control=64, value=0, start=b + 3.75, channel=channel))
     return cc
+
+
+def _apply_automation_cc(cc: list[ControlEvent], automation: PartAutomation | None, channel: int) -> list[ControlEvent]:
+    """Overlay a hand-drawn volume/pan curve (roadmap 9.3) onto a part's CC list.
+
+    Used only from /edit-part, not from _generate_part_cc's own callers (the regen
+    paths), so untouched/unautomated songs keep writing exactly the single default
+    CC10 point + no CC7 they do today. A drawn pan curve replaces that single CC10
+    point with its own breakpoints; a drawn volume curve adds CC7 breakpoints.
+    """
+    if automation is None:
+        return cc
+    out = cc
+    if automation.pan:
+        out = [e for e in out if e.control != 10]
+        out += [ControlEvent(control=10, value=round(p.value * 127), start=p.beat, channel=channel)
+                for p in automation.pan]
+    if automation.volume:
+        out = out + [ControlEvent(control=7, value=round(p.value * 127), start=p.beat, channel=channel)
+                      for p in automation.volume]
+    return out
 
 
 def _generate_melody_expression_cc(events: list[NoteEvent], channel: int) -> list[ControlEvent]:

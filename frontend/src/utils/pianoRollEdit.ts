@@ -195,6 +195,72 @@ export function velocityFromLaneY(py: number, laneTop: number, laneH: number): n
   return Math.max(0.02, Math.min(1, v))
 }
 
+// ── Automation lane (roadmap 9.3) ────────────────────────────────────────────
+// A continuous point-based lane sibling to the velocity lane above: instead of
+// one scalar owned by each note, a curve is its own small array of {time,
+// value} breakpoints, independent of note boundaries. Same bottom-up fill as
+// velocityFromLaneY, but no audible-floor clamp — 0 is a legitimate drawn value
+// (full mute / hard-left pan), not a mistake to guard against.
+export interface AutomationPointLike { time: number; value: number }
+
+/** Automation lane y (canvas px) → normalized value 0..1. */
+export function valueFromLaneY(py: number, laneTop: number, laneH: number): number {
+  if (laneH <= 0) return 0.5
+  const v = (laneTop + laneH - py) / laneH
+  return Math.max(0, Math.min(1, v))
+}
+
+/** Canvas position of a breakpoint in the automation lane — the forward transform
+ *  both drawing and hit-testing use (mirrors noteRectZoom's role for notes). */
+export function automationPointX(point: AutomationPointLike, vp: RollViewport): number {
+  return timeToX(point.time, vp)
+}
+export function automationPointY(point: AutomationPointLike, laneTop: number, laneH: number): number {
+  return laneTop + laneH - point.value * laneH
+}
+
+/** Index of the breakpoint nearest a pointer position, within `tolerancePx` — or
+ *  -1 if none is close enough. Used to tell "drag an existing point" apart from
+ *  "click empty lane space to insert a new one." */
+export function nearestAutomationPoint(
+  points: readonly AutomationPointLike[], px: number, py: number, vp: RollViewport,
+  laneTop: number, laneH: number, tolerancePx = 8,
+): number {
+  let best = -1
+  let bestDist = tolerancePx
+  points.forEach((p, i) => {
+    const dx = automationPointX(p, vp) - px
+    const dy = automationPointY(p, laneTop, laneH) - py
+    const dist = Math.sqrt(dx * dx + dy * dy)
+    if (dist <= bestDist) { bestDist = dist; best = i }
+  })
+  return best
+}
+
+/** Insert (or replace, if one already sits at ~the same time) a breakpoint, keeping
+ *  the curve sorted by time — the shape a curve must stay in for playback scheduling
+ *  (which walks breakpoints in order). */
+export function insertAutomationPoint(
+  points: readonly AutomationPointLike[], time: number, value: number,
+): AutomationPointLike[] {
+  const clamped = { time: Math.max(0, time), value: Math.max(0, Math.min(1, value)) }
+  const filtered = points.filter(p => Math.abs(p.time - clamped.time) > 1e-6)
+  return [...filtered, clamped].sort((a, b) => a.time - b.time)
+}
+
+/** Drop the breakpoint at `index` (⌫-style delete). */
+export function removeAutomationPoint(points: readonly AutomationPointLike[], index: number): AutomationPointLike[] {
+  return points.filter((_, i) => i !== index)
+}
+
+/** Clamp a dragged breakpoint's time/value while it's still being moved — the
+ *  component mutates the point in place at a stable index during the drag itself
+ *  (dragging can't reorder mid-gesture) and only re-sorts via insertAutomationPoint
+ *  on release. */
+export function clampAutomationPoint(time: number, value: number, maxTime: number): AutomationPointLike {
+  return { time: Math.max(0, Math.min(maxTime, time)), value: Math.max(0, Math.min(1, value)) }
+}
+
 /** Snap a drag delta (seconds) to the grid — used when moving a group of notes so they
  *  shift by whole grid steps and stay aligned. */
 export function snapDelta(deltaSec: number, secondsPerBeat: number, division = 0.25): number {

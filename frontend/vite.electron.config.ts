@@ -14,6 +14,14 @@ import vue from '@vitejs/plugin-vue'
 import electron from 'vite-plugin-electron/simple'
 
 export default defineConfig({
+  build: {
+    // Default 500kB warning is a web-page heuristic; this ships to a local
+    // Electron shell, not over a network. The two chunks that trip it are
+    // already optimal: Vue+Tone.js+app code, and wasm-media-encoders' embedded
+    // codec WASM (base64), which is already lazy `import()`'d in
+    // src/utils/audioEncoder.ts so it only loads on export, not app start.
+    chunkSizeWarningLimit: 900,
+  },
   plugins: [
     // vite-plugin-electron's main/preload sub-builds default to emptyOutDir:false
     // (deliberately — they share dist-electron/ and build sequentially, so either

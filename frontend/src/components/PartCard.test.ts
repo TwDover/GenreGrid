@@ -36,6 +36,7 @@ vi.mock('../services/api', () => ({ downloadUrl: (u: string) => u, editPart: vi.
 
 import PartCard from './PartCard.vue'
 import type { FileInfo } from '../types/midi'
+import { editPart } from '../services/api'
 
 const file: FileInfo = { part: 'melody', filename: 'melody.mid', url: '/exports/abcd1234/melody.mid' }
 
@@ -98,5 +99,54 @@ describe('PartCard — per-part mute (DAW-style, on the instrument row)', () => 
     const wrapper = shallowMount(PartCard, { props: { file: combined } })
     await flushPromises()
     expect(muteBtn(wrapper)).toBeFalsy()
+  })
+})
+
+describe('PartCard — automation round-trip through saveEdits (roadmap 9.3)', () => {
+  const saveBtn = (w: VueWrapper) => w.findAll('button').find(b => b.text() === 'Save edits')
+
+  beforeEach(() => { vi.mocked(editPart).mockClear() })
+
+  it('converts drawn automation breakpoints (seconds/0..1) to beats and includes them in the /edit-part payload', async () => {
+    vi.mocked(editPart).mockResolvedValue({ part: 'melody', filename: 'melody.mid', url: file.url })
+    const wrapper = shallowMount(PartCard, { props: { file, editable: true } })
+    await flushPromises()
+    await editBtn(wrapper)!.trigger('click')
+
+    const editor = wrapper.findComponent({ name: 'PianoRollEditor' })
+    editor.vm.$emit('notes-changed', midi.notes, true)
+    // No real tempo header parses in this test (mocked fetch returns garbage bytes),
+    // so PartCard falls back to its default secondsPerBeat (0.5 = 120bpm): 1s -> 2 beats.
+    editor.vm.$emit('automation-changed', {
+      volume: [{ time: 1, value: 0.8 }],
+      pan: [{ time: 0, value: 0.25 }],
+    }, true)
+    await flushPromises()
+
+    await saveBtn(wrapper)!.trigger('click')
+    await flushPromises()
+
+    expect(editPart).toHaveBeenCalledTimes(1)
+    const payload = vi.mocked(editPart).mock.calls[0][0]
+    expect(payload.automation?.volume).toEqual([{ beat: 2, value: 0.8 }])
+    expect(payload.automation?.pan).toEqual([{ beat: 0, value: 0.25 }])
+  })
+
+  it('falls back to the cached automation when the editor never emitted its own', async () => {
+    vi.mocked(editPart).mockResolvedValue({ part: 'melody', filename: 'melody.mid', url: file.url })
+    const wrapper = shallowMount(PartCard, { props: { file, editable: true } })
+    await flushPromises()
+    await editBtn(wrapper)!.trigger('click')
+
+    const editor = wrapper.findComponent({ name: 'PianoRollEditor' })
+    editor.vm.$emit('notes-changed', midi.notes, true)   // a note-only edit — automation untouched
+    await flushPromises()
+
+    await saveBtn(wrapper)!.trigger('click')
+    await flushPromises()
+
+    expect(editPart).toHaveBeenCalledTimes(1)
+    const payload = vi.mocked(editPart).mock.calls[0][0]
+    expect(payload.automation).toEqual({ volume: [], pan: [] })   // midi has no automation field -> empty fallback
   })
 })

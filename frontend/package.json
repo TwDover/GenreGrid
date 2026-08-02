@@ -1,7 +1,8 @@
 {
   "name": "genregrid-frontend",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
+  "desktopName": "genregrid.desktop",
   "license": "GPL-3.0-or-later",
   "description": "Genregrid — A Midi Loop Generator",
   "author": {
@@ -88,7 +89,8 @@
         "deb"
       ],
       "icon": "public/icon.png",
-      "category": "AudioVideo"
+      "category": "AudioVideo",
+      "syncDesktopName": true
     },
     "extraResources": [
       {

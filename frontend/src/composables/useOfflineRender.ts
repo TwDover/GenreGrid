@@ -29,6 +29,22 @@ import { useDrumKitPatches } from './useDrumKitPatches'
 import { voiceFor } from './useStyleCatalog'
 import { encodeAudio, type AudioFormat } from '../utils/audioEncoder'
 import { PLAYER_PARTS, type PlayerPart, CHANNEL_PART, SYNTH_STYLES, PAD_STYLES, LOFI_STYLES } from './playerConstants'
+import { curveFromCC, type AutomationBreakpoint } from './voiceRouting'
+
+// A part's drawn CC7/CC10 curve, scheduled directly onto its insert's gain/pan
+// AudioParam. Unlike live playback (see useMidiPlayer.ts's applyPartAutomation)
+// this needs no ramp-duration fudge factor or Transport scheduling: an offline
+// render is fully deterministic ahead of time, so each breakpoint after the
+// first can be a true linearRampToValueAtTime from the previous value.
+function scheduleOfflineAutomationTail(
+  param: { linearRampToValueAtTime(value: number, time: number): unknown },
+  curve: AutomationBreakpoint[],
+  mapValue: (v: number) => number,
+) {
+  for (let i = 1; i < curve.length; i++) {
+    param.linearRampToValueAtTime(mapValue(curve[i].value), curve[i].time)
+  }
+}
 
 // True while any WAV export is rendering (drives the export progress UI).
 export const isRendering = ref(false)
@@ -202,13 +218,31 @@ export async function offlineRenderRaw(
       // uses. Unlike the live side this doesn't need to be persistent or reset — each
       // buildGraph() call is a fresh, one-shot offline render, and (per the orchestration
       // above) only ever carries ONE real part's audio, so a plain per-call cache suffices.
+      //
+      // Baked volume/pan curves (roadmap 9.3), keyed by part the same way
+      // partHasNotes resolves channel -> part. No automation for a part -> falls
+      // back to the `pan` argument callers already compute (panForChannel below),
+      // so an unautomated render stays exactly what it was before this existed.
+      const automationByPart = new Map<PlayerPart, { volume: AutomationBreakpoint[]; pan: AutomationBreakpoint[] }>()
+      for (const t of midi.tracks) {
+        if (t.notes.length === 0) continue
+        const perc = t.instrument.percussion || (t.channel ?? 0) === 9
+        const p = perc ? 'drums' : CHANNEL_PART[t.channel ?? 0] ?? 'chords'
+        automationByPart.set(p, { volume: curveFromCC(t.controlChanges?.[7]), pan: curveFromCC(t.controlChanges?.[10]) })
+      }
+
       const partInserts = new Map<PlayerPart, Tone.Gain>()
       const partInsert = (part: PlayerPart, pan: number): Tone.Gain => {
         const existing = partInserts.get(part)
         if (existing) return existing
-        const panner = new Tone.Panner({ context, pan }).connect(comp)
-        const gain = new Tone.Gain({ context, gain: 1 }).connect(panner)
+        const automation = automationByPart.get(part)
+        const initialPan = automation?.pan.length ? automation.pan[0].value * 2 - 1 : pan
+        const initialVolume = automation?.volume.length ? automation.volume[0].value : 1
+        const panner = new Tone.Panner({ context, pan: initialPan }).connect(comp)
+        const gain = new Tone.Gain({ context, gain: initialVolume }).connect(panner)
         partInserts.set(part, gain)
+        scheduleOfflineAutomationTail(gain.gain, automation?.volume ?? [], v => v)
+        scheduleOfflineAutomationTail(panner.pan, automation?.pan ?? [], v => v * 2 - 1)
         return gain
       }
 

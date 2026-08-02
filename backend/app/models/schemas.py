@@ -241,11 +241,24 @@ class EditedNote(BaseModel):
     velocity: int = Field(ge=1, le=127)
 
 
+class AutomationPoint(BaseModel):
+    """One breakpoint of a hand-drawn volume/pan curve (time in beats, value normalized 0..1)."""
+    beat: float = Field(ge=0)
+    value: float = Field(ge=0, le=1)
+
+
+class PartAutomation(BaseModel):
+    """A part's drawn automation curves — baked into CC7 (volume) / CC10 (pan) on save."""
+    volume: list[AutomationPoint] = Field(default_factory=list, max_length=200)
+    pan: list[AutomationPoint] = Field(default_factory=list, max_length=200)
+
+
 class EditPartRequest(BaseModel):
     """Replace a song stem's notes with a hand-edited list (piano-roll editing)."""
     generation_id: str
     part: str
     notes: list[EditedNote] = Field(max_length=5000)
+    automation: PartAutomation | None = None
 
 
 class SongSectionResult(BaseModel):
