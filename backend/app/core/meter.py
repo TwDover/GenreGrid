@@ -76,6 +76,20 @@ class Meter:
         return self.denominator in (2, 4) or (self.denominator == 8 and not self.is_compound)
 
     @property
+    def is_odd(self) -> bool:
+        """Odd/asymmetric meters (5/8, 7/8, 11/8, ...) — irregular eighth
+        groupings (2s and 3s mixed), as opposed to compound's uniform 3s.
+        Only denominator-8 meters with more than 4 eighths qualify; 1-4/8 are
+        just simple meters spelled in eighths."""
+        return self.denominator == 8 and not self.is_compound and self.numerator >= 5
+
+    @property
+    def eighth_groups(self) -> list[int]:
+        """Eighth-note group sizes making up a denominator-8 bar, e.g.
+        7/8→[2,2,3], 6/8→[3,3]. Only meaningful when denominator == 8."""
+        return _eighth_grouping(self.numerator) if self.denominator == 8 else [self.numerator]
+
+    @property
     def pulse(self) -> float:
         """Nominal felt-beat spacing in quarter-beats (compound → dotted quarter,
         1.5). Irregular meters vary — use `pulse_positions` for exact placement."""
@@ -88,7 +102,7 @@ class Meter:
         if self.denominator == 8:
             out: list[float] = []
             eighth = 0
-            for g in _eighth_grouping(self.numerator):
+            for g in self.eighth_groups:
                 out.append(eighth * 0.5)   # an eighth is 0.5 quarter-beats
                 eighth += g
             return out

@@ -6,6 +6,7 @@
     160
   ],
   "default_scale": "major",
+  "compound_swing": 0.2,
   "instrumentation": {
     "chords": "newage_pad",
     "bass": "synth_bass",

@@ -6,6 +6,7 @@
         80
     ],
     "default_scale": "minor",
+    "compound_swing": 0.0,
     "instrumentation": {
         "chords": "brass_section",
         "bass": "contrabass",

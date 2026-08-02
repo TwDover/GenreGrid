@@ -6,6 +6,7 @@
         90
     ],
     "default_scale": "major",
+    "compound_swing": 0.7,
     "instrumentation": {
         "chords": "rhodes_ep",
         "bass": "fretless_bass",

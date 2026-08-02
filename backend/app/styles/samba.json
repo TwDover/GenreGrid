@@ -6,6 +6,7 @@
         104
     ],
     "default_scale": "major",
+    "compound_swing": 0.5,
     "instrumentation": {
         "chords": "nylon_guitar",
         "bass": "upright_bass",

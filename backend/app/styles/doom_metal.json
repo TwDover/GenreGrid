@@ -6,6 +6,7 @@
     78
   ],
   "default_scale": "minor",
+  "compound_swing": 0.05,
   "instrumentation": {
     "chords": "distortion_guitar",
     "bass": "electric_bass",

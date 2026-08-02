@@ -6,6 +6,7 @@
     160
   ],
   "default_scale": "minor",
+  "compound_swing": 0.4,
   "instrumentation": {
     "chords": "bowed_pad",
     "bass": "sub_808",
