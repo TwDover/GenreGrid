@@ -598,7 +598,8 @@ def download_export(gen_id: str, filename: str):
         raise HTTPException(status_code=404, detail="File not found")
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(str(file_path), media_type="audio/midi", filename=file_path.name)
+    media_type = "audio/wav" if file_path.suffix == ".wav" else "audio/midi"
+    return FileResponse(str(file_path), media_type=media_type, filename=file_path.name)
 
 
 _SAFE_PATH = re.compile(r'^[a-zA-Z0-9_\-]{1,80}$')

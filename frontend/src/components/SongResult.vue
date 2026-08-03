@@ -218,6 +218,20 @@
         </template>
       </div>
 
+      <!-- Recorded audio take (roadmap 9.4) — a mic performance alongside the
+           generated parts, section-aligned. Kept off the MIDI part machinery. -->
+      <AudioClipCard
+        v-if="songUrl"
+        :generationId="result.generation_id"
+        :styleId="result.style"
+        :bpm="result.bpm"
+        :clip="audioClip"
+        :playbackUrl="songUrl"
+        :sections="result.sections"
+        @saved="onAudioClipSaved"
+        @deleted="onAudioClipDeleted"
+      />
+
       <!-- Parts not in this build — one click generates and adds the stem -->
       <div v-if="missingParts.length" class="sr-add-row">
         <span class="sr-add-label">Add a part</span>
@@ -239,7 +253,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onUnmounted } from 'vue'
-import type { BuildSongResponse, FileInfo, RearrangeSectionDef } from '../types/midi'
+import type { BuildSongResponse, FileInfo, RearrangeSectionDef, AudioClipInfo } from '../types/midi'
 import { errorMessage } from '../utils/errors'
 import { downloadUrl, exportProjectUrl, regenerateSongPart, regenerateSongSection, rearrangeSongSections, undoSongPart, listSongVersions, restoreSongVersion, setPartGain, rollSongPartCandidates, keepSongPartCandidate, rebuildSongProgression, type SongVersion, type SongPartCandidate } from '../services/api'
 import { resolveProgression } from '../utils/chordResolver'
@@ -254,6 +268,7 @@ import { useDownloadPrompt } from '../composables/useDownloadPrompt'
 import { useRenderQueue } from '../composables/useRenderQueue'
 import { useStyleCatalog } from '../composables/useStyleCatalog'
 import PartCard from './PartCard.vue'
+import AudioClipCard from './AudioClipCard.vue'
 
 const props = defineProps<{ result: BuildSongResponse | null; label: string }>()
 const emit = defineEmits<{
@@ -349,6 +364,14 @@ const ALL_PARTS = ['chords', 'bass', 'melody', 'drums', 'arpeggio', 'pads', 'cou
 const addedFiles = ref<FileInfo[]>([])
 const addLoading = ref<string | null>(null)
 watch(() => props.result?.generation_id, () => { addedFiles.value = [] })
+
+// Recorded audio clip (roadmap 9.4) — same "prop is immutable" pattern: a
+// local override layered on top of whatever the result was built/loaded with.
+const localAudioClip = ref<AudioClipInfo | null | undefined>(undefined)   // undefined = defer to the prop
+watch(() => props.result?.generation_id, () => { localAudioClip.value = undefined })
+const audioClip = computed(() => localAudioClip.value !== undefined ? localAudioClip.value : (props.result?.audio_clip ?? null))
+function onAudioClipSaved(clip: AudioClipInfo) { localAudioClip.value = clip }
+function onAudioClipDeleted() { localAudioClip.value = null }
 
 const stemFiles = computed(() => [
   ...(props.result?.files ?? []).filter(f => f.part !== 'song'),
@@ -867,7 +890,11 @@ async function loadAndPlay(resumeAt = 0) {
   const blob = await res.blob()
   if (songBlobUrl) URL.revokeObjectURL(songBlobUrl)
   songBlobUrl = URL.createObjectURL(blob)
-  await toggle(songBlobUrl, props.result?.style, props.label, false)
+  const clip = audioClip.value
+  const audioClipArg = clip
+    ? { url: downloadUrl(clip.url), offsetSeconds: clip.start_bar * 4 * (60 / (props.result?.bpm ?? 120)) }
+    : null
+  await toggle(songBlobUrl, props.result?.style, props.label, false, undefined, audioClipArg)
   if (resumeAt > 0) seek(resumeAt)
 }
 
@@ -917,10 +944,14 @@ async function exportSongWav() {
     // ritardando make the real playback slightly longer than a flat bpm
     // calculation, and offlineRender's buffer must cover the whole thing.
     const duration = (props.result.total_bars * 4 * 60 / props.result.bpm) * 1.05 + 2
+    const clip = audioClip.value
+    const clipArg = clip
+      ? { url: downloadUrl(clip.url), offsetSeconds: clip.start_bar * 4 * (60 / props.result.bpm) }
+      : null
     const blob = await offlineRender(songFile.value.url, props.result.style, duration, 'all', v => {
       wavProgress.value = v
       updateProgress(jobId, v)
-    }, format)
+    }, format, clipArg)
     completeJob(jobId, blob)
     toast(`Song exported as ${upper}`)
   } catch (e) {

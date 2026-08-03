@@ -8,7 +8,7 @@
  * version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
  * <https://www.gnu.org/licenses/> for details.
  */
-import type { StyleInfo, StyleConfig, GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, LibraryEntry, BatchGenerateRequest, BuildSongRequest, BuildSongResponse, RearrangeSectionDef } from '../types/midi'
+import type { StyleInfo, StyleConfig, GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, LibraryEntry, BatchGenerateRequest, BuildSongRequest, BuildSongResponse, RearrangeSectionDef, AudioClipInfo } from '../types/midi'
 
 const BASE_URL = (() => {
   if (typeof window !== 'undefined' && window.electronAPI?.apiPort) {
@@ -411,4 +411,28 @@ export async function editPart(req: {
     throw new Error(err.detail ?? 'Saving note edits failed')
   }
   return res.json()
+}
+
+export async function saveAudioClip(req: {
+  generation_id: string; start_bar: number; bars: number; file: Blob
+}): Promise<AudioClipInfo> {
+  const fd = new FormData()
+  fd.append('generation_id', req.generation_id)
+  fd.append('start_bar', String(req.start_bar))
+  fd.append('bars', String(req.bars))
+  fd.append('file', req.file, 'clip.wav')
+  const res = await fetch(`${BASE_URL}/save-audio-clip`, { method: 'POST', body: fd })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Saving the recording failed')
+  }
+  return res.json()
+}
+
+export async function deleteAudioClip(generationId: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/audio-clip/${generationId}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Deleting the recording failed')
+  }
 }

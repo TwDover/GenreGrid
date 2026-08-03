@@ -30,6 +30,7 @@ import { voiceFor } from './useStyleCatalog'
 import { encodeAudio, type AudioFormat } from '../utils/audioEncoder'
 import { PLAYER_PARTS, type PlayerPart, CHANNEL_PART, SYNTH_STYLES, PAD_STYLES, LOFI_STYLES } from './playerConstants'
 import { curveFromCC, type AutomationBreakpoint } from './voiceRouting'
+import { placeClipInMix } from '../utils/audioClip'
 
 // A part's drawn CC7/CC10 curve, scheduled directly onto its insert's gain/pan
 // AudioParam. Unlike live playback (see useMidiPlayer.ts's applyPartAutomation)
@@ -143,6 +144,7 @@ export async function offlineRenderRaw(
   channelFilter: 'all' | 'melodic' | PlayerPart = 'all',
   onProgress?: (v: number) => void,
   format: AudioFormat = 'wav',
+  audioClip?: { url: string; offsetSeconds: number } | null,
 ): Promise<Blob> {
   isRendering.value = true
   onProgress?.(0.02)
@@ -602,8 +604,25 @@ export async function offlineRenderRaw(
         const buffers = dry.map(b => b.get()).filter((b): b is AudioBuffer => !!b)
         if (buffers.length === 0) throw new Error('Offline render returned empty buffer')
         onProgress?.(0.9)
-        // Sum the parts and apply the master limiter once, on the full mix.
-        finalBuffer = await limitMix(buffers)
+
+        // A recorded audio clip (roadmap 9.4) mixes in as one more buffer, placed
+        // at its bar-aligned offset — only for the full mix, never a single-part
+        // stem export (a clip isn't a "part"). Best-effort: a failed fetch/decode
+        // just exports without it rather than failing the whole render.
+        let mixInputs: Array<Pick<AudioBuffer, 'length' | 'sampleRate' | 'numberOfChannels' | 'getChannelData'>> = buffers
+        if (audioClip && channelFilter === 'all') {
+          try {
+            const clipBytes = await fetch(audioClip.url).then(r => r.arrayBuffer())
+            const decodeCtx = new OfflineAudioContext(2, 1, buffers[0].sampleRate)
+            const decoded = await decodeCtx.decodeAudioData(clipBytes)
+            const totalLength = Math.max(...buffers.map(b => b.length))
+            mixInputs = [...buffers, placeClipInMix(decoded, audioClip.offsetSeconds, totalLength)]
+          } catch (e) {
+            console.warn('[export] audio clip failed to mix into the render — continuing without it', e)
+          }
+        }
+        // Sum the parts (+ clip, if any) and apply the master limiter once, on the full mix.
+        finalBuffer = await limitMix(mixInputs)
       }
     } finally {
       clearInterval(progressTimer)

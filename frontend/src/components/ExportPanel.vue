@@ -184,6 +184,16 @@
               @undo="handleUndo(response, file.part)"
             />
           </div>
+          <AudioClipCard
+            v-if="response.files.some(f => f.part === 'combined')"
+            :generationId="response.generation_id"
+            :bpm="response.summary.bpm"
+            :clip="audioClipFor(response)"
+            :playbackUrl="response.files.find(f => f.part === 'combined')!.url"
+            :totalBars="response.summary.bars"
+            @saved="clip => onAudioClipSaved(response.generation_id, clip)"
+            @deleted="onAudioClipDeleted(response.generation_id)"
+          />
         </div>
       </div>
     </div>
@@ -206,7 +216,7 @@ import { ref, computed, watch } from 'vue'
 import PartCard from './PartCard.vue'
 import QualityBadge from './QualityBadge.vue'
 import ArrangementBuilder from './ArrangementBuilder.vue'
-import type { GenerateResponse, FileInfo } from '../types/midi'
+import type { GenerateResponse, FileInfo, AudioClipInfo } from '../types/midi'
 import { errorMessage } from '../utils/errors'
 import { regeneratePart, saveToLibrary, bundleUrl, sectionsUrl, downloadUrl } from '../services/api'
 import { useMidiPlayer, type PlayerPart } from '../composables/useMidiPlayer'
@@ -217,6 +227,7 @@ import { resolveProgression } from '../utils/chordResolver'
 import { FORMAT_EXT } from '../utils/audioEncoder'
 import { useExportFormat } from '../composables/useExportFormat'
 import AudioFormatToggle from './AudioFormatToggle.vue'
+import AudioClipCard from './AudioClipCard.vue'
 
 const props = defineProps<{ history: GenerateResponse[]; loading?: boolean; starredIds?: Set<string> }>()
 const emit = defineEmits<{
@@ -234,6 +245,21 @@ const { startJob, updateProgress, completeJob, failJob } = useRenderQueue()
 const zipLoading = ref<string | null>(null)
 const showArrange = ref(false)
 const arrangeRef = ref<InstanceType<typeof ArrangementBuilder> | null>(null)
+
+// Recorded audio clips (roadmap 9.4) — loop mode has no backend rehydration
+// path (GenerateResponse isn't reloaded from disk the way BuildSongResponse
+// is), so a saved/deleted clip only lives in this session's local state,
+// keyed by generation id since the history holds many generations at once.
+const localAudioClips = ref<Record<string, AudioClipInfo | null>>({})
+function audioClipFor(response: GenerateResponse): AudioClipInfo | null {
+  return localAudioClips.value[response.generation_id] ?? null
+}
+function onAudioClipSaved(genId: string, clip: AudioClipInfo) {
+  localAudioClips.value = { ...localAudioClips.value, [genId]: clip }
+}
+function onAudioClipDeleted(genId: string) {
+  localAudioClips.value = { ...localAudioClips.value, [genId]: null }
+}
 
 // Search
 const searchQuery = ref('')
@@ -430,10 +456,14 @@ async function handleOfflineExport(response: GenerateResponse, mode: 'wav' | 'st
     if (mode === 'wav') {
       const jobId = startJob(`${label} — ${name}`, `${name}.${ext}`)
       try {
+        const clip = audioClipFor(response)
+        const clipArg = clip
+          ? { url: downloadUrl(clip.url), offsetSeconds: clip.start_bar * 4 * (60 / response.summary.bpm) }
+          : null
         const blob = await offlineRender(combinedFile.url, response.style, durationSeconds, 'all', v => {
           exportProgress.value = v
           updateProgress(jobId, v)
-        }, format)
+        }, format, clipArg)
         completeJob(jobId, blob)
       } catch (e) {
         failJob(jobId, e instanceof Error ? e.message : `${upper} export failed`)

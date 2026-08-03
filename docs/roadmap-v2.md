@@ -678,9 +678,71 @@ Recorded/performed MIDI is **captured user data** (like an imported melody) — 
   pre-existing style pan is expected — a curve starts from wherever the part already was, not
   a blank slate).
 
-### 9.4 Audio recording + audio clips
-- Mic/line-in via `getUserMedia`; record audio clips alongside MIDI (waveform UI, an audio-clip
-  model, monitoring). A real step up in scope. **Effort:** L.
+### 9.4 Audio recording + audio clips  ✅ shipped 2026-08-02
+- **Scope, decided with the user before building:** section/loop-aligned placement only (no
+  free-time clip placement — matches 9.1's MIDI-overdub model); one clip per generation
+  (re-recording replaces it, like MIDI overdub replacing a part's notes); record → monitor →
+  play back in the mix → export, no trim/split/gain editing (delete-and-re-record fixes a bad
+  take). This keeps 9.4 the size 9.1 actually shipped at, not the "L effort, full clip model"
+  9.2 explicitly deferred.
+- **Capture:** `Tone.UserMedia` (getUserMedia) + `Tone.Recorder`
+  ([`useAudioRecorder.ts`](../frontend/src/composables/useAudioRecorder.ts)) — mirrors 9.1's
+  MIDI-recording shape (arm → count-in via the existing `useMetronome` → capture → review
+  → explicit Save/Discard) but for a single continuous take instead of a note list. On stop,
+  the take is decoded and trimmed/padded to EXACTLY the target region's duration
+  (`fitBufferToDuration`, [`utils/audioClip.ts`](../frontend/src/utils/audioClip.ts)) so a
+  saved clip's length always matches its declared `{start_bar, bars}` — no variable-length
+  drift for playback/export placement math to account for.
+- **Backend:** `AudioClipInfo` (`schemas.py`) + `POST /save-audio-clip` (multipart —
+  the first non-`.ggproj` binary upload route in the FastAPI backend) /
+  `DELETE /audio-clip/{generation_id}` ([`routes_song.py`](../backend/app/api/routes_song.py)).
+  Works for both song mode (`song_meta.json`, `_snapshot_song`'d into History like any other
+  mutation) and loop mode (`meta.json`, no version history there — matches loop mode's existing
+  thinner support level). `.ggproj` export/import and the `/exports/{gen_id}/{filename}` static
+  route (now content-type-aware for `.wav`) both widened to carry it.
+  Kept deliberately OUTSIDE `FileInfo`/`PLAYER_PARTS`/`_ALL_SONG_PARTS` — a clip has no MIDI
+  channel/program, and those enums drive real channel-mute/CC-writing logic that a stray
+  `'audio'` value would silently miscompute rather than cleanly reject.
+- **UI:** a new [`AudioClipCard.vue`](../frontend/src/components/AudioClipCard.vue) (sibling to
+  `PartCard.vue`, not a graft onto it — piano-roll MIDI editing and waveform/mic concerns don't
+  belong in one component) wired into `SongResult.vue` (song mode, with a section picker) and
+  `ExportPanel.vue` (loop mode, whole-loop region). Read-only waveform preview via a new
+  `waveformPeaks` canvas peak-downsampler — no trim/split editing in v1.
+- **Live playback:** a `Tone.Player` — confirmed the app's first use of one anywhere; every
+  other voice is MIDI-triggered synthesis — `.sync()`'d to the transport and started at the
+  clip's bar-computed offset in [`useMidiPlayer.ts`](../frontend/src/composables/useMidiPlayer.ts),
+  through its own one-off `Gain → Panner` insert (mirroring 9.3's `partInsert.ts` shape but kept
+  outside the `PlayerPart` union) with its own mute (`audioClipMuted`, a small parallel flag
+  rather than folding into the MIDI-channel mute system, which has no channel for a clip).
+- **Offline export:** the clip is decoded and placed at its sample offset
+  (`placeClipInMix`, `utils/audioClip.ts`) and summed in alongside the per-part renders in
+  [`useOfflineRender.ts`](../frontend/src/composables/useOfflineRender.ts)'s existing
+  `sumPartBuffers`/`limitMix` — only for a full-mix export, never a single-part stem (a clip
+  isn't a "part").
+- **Follow-up fix, same day:** first real-mic testing (by the user, real hardware — the
+  fake-device real-shell check above can't catch this) found a real gap: v1 had no input
+  device picker, so `getUserMedia`'s browser/OS default device was always used with no way to
+  choose — a take recorded clean silence with no error if that default wasn't the intended
+  mic. Fixed: `useAudioRecorder.ts` gained `listInputDevices()` (wraps
+  `Tone.UserMedia.enumerateDevices()`) and `start(deviceId?)`; `AudioClipCard.vue` shows a
+  device `<select>` whenever more than one input exists, plus a **live input-level meter**
+  (`Tone.Meter({normalRange: true})` polled every 100ms while armed/recording) so a wrong or
+  silent device is obvious immediately, not after reviewing a dead take.
+- **Tests:** `test_audio_clip.py` (backend — save/delete persistence, `.ggproj` round-trip,
+  byte-identical invariant for untouched songs), `audioClip.test.ts` (pure buffer-math:
+  fit-to-duration, peak downsampling, mix placement), `useAudioRecorder.test.ts` (arm/permission-
+  denied/stop/cancel state machine, Tone faked per `synthDrums.test.ts`'s precedent),
+  `AudioClipCard.test.ts` (record→review→save→delete UI flow). Full 295-test backend suite +
+  370-test frontend suite green, typecheck/eslint clean.
+  **Real-shell proof:** `scenarios/audio-clip.mjs` (a new permanent `/run-genregrid` scenario,
+  driven with Chromium's `--use-fake-device-for-media-stream` — opt-in via the driver's new
+  `GG_FAKE_MEDIA=1`, since this sandbox has no physical mic) recorded a take in packaged
+  Electron, confirmed the waveform canvas had real non-blank pixels (1580–1620 of 9600, proving
+  actual signal was captured, not silence), saved it, independently verified via the `/songs`
+  API that the backend persisted `{filename, start_bar, bars}` correctly, and played the song
+  back with zero console errors. The saved WAV itself: 48kHz stereo, 9.14s, 50.6% non-zero
+  samples. (The offline WAV-export mixing path itself wasn't exercised live — its native
+  Save-As dialog blocks headless CDP automation — but is covered by the unit tests above.)
 
 ### 9.5 (optional) MIDI-OUT to external gear / a DAW
 - Web MIDI **output** streams GenreGrid's parts + live performance to an external DAW or hardware
@@ -693,9 +755,9 @@ _Plugin / VST hosting is intentionally **not** on this roadmap — it needs a na
 
 **Sequencing:** ✅ 7.4 (metronome/count-in) → ✅ 9.1 (recording: loop-record + song-mode, shipped
 2026-08-01) → ✅ **9.2 first slice, including resize (reorder/insert/delete/duplicate/resize
-section timeline, all shipped 2026-08-01)** → **9.3 in progress** (✅ Slice 1 — uniform per-part
-output insert, shipped 2026-08-01; backend persistence + scheduling + lane UI still to build) →
-9.4 (audio) by demand; 9.5 (MIDI-OUT) opportunistically.
+section timeline, all shipped 2026-08-01)** → ✅ **9.3 (volume + pan automation lanes, shipped
+2026-08-02)** → ✅ **9.4 (recorded audio clips, shipped 2026-08-02)** → 9.5 (MIDI-OUT)
+opportunistically, not yet started.
 
 ---
 
@@ -728,10 +790,12 @@ output insert, shipped 2026-08-01; backend persistence + scheduling + lane UI st
    2026-08-01) — whether the fuller track×time clip model is worth building beyond the section
    timeline is still an open call. ✅ **9.3 automation lanes (volume + pan) shipped 2026-08-02**
    (Slice 1 — uniform per-part output insert — shipped 2026-08-01; CC7/CC10 baking + live/offline
-   scheduling + the Velocity/Volume/Pan lane UI shipped 2026-08-02) → next up, 9.4 audio. The 9.0
+   scheduling + the Velocity/Volume/Pan lane UI shipped 2026-08-02). ✅ **9.4 recorded audio clips
+   shipped 2026-08-02** (section/loop-aligned, one clip per generation, no in-place editing —
+   scope confirmed with the user before building; see 9.4's own write-up above). The 9.0
    model decisions held (one note model, record against transport ticks, renderer-captures/backend-persists).
    Stays web-audio-native — **plugin/VST hosting is out of scope** (removed 2026-07-30); MIDI-OUT
-   (9.5) is an optional interop nicety.
+   (9.5) is the last item in this phase, opportunistic and not yet started.
 
 ## Measurement
 
