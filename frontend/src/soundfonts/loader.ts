@@ -32,6 +32,9 @@ const SAMPLE_MAP: Record<string, string> = {
 // Module-level singletons — created once, reused across all plays
 let masterOut: Tone.Gain | null = null
 let masterLimiter: Tone.WaveShaper | null = null
+let masterEqLow: Tone.Filter | null = null
+let masterEqMid: Tone.Filter | null = null
+let masterEqHigh: Tone.Filter | null = null
 
 // ── Master soft-clip limiter ─────────────────────────────────────────────────
 // A safety limiter on the master so a dense full arrangement can't peak past the
@@ -80,11 +83,39 @@ export function makeMasterLimiter(context?: Tone.BaseContext): Tone.WaveShaper {
 export function getMasterCompressor(): Tone.Gain {
   if (masterOut) return masterOut
   masterOut = new Tone.Gain(1)
+  masterEqLow = new Tone.Filter({ type: 'lowshelf', frequency: 120, gain: 0 })
+  masterEqMid = new Tone.Filter({ type: 'peaking', frequency: 1000, Q: 1, gain: 0 })
+  masterEqHigh = new Tone.Filter({ type: 'highshelf', frequency: 3500, gain: 0 })
   masterLimiter = makeMasterLimiter()
-  masterOut.connect(masterLimiter)                     // masterOut → limiter → speakers
+  masterOut.connect(masterEqLow)                        // masterOut → EQ (low→mid→high) → limiter → speakers
+  masterEqLow.connect(masterEqMid)
+  masterEqMid.connect(masterEqHigh)
+  masterEqHigh.connect(masterLimiter)
   masterLimiter.toDestination()
   console.log(`[audio] master gain + soft-clip limiter created (ctx=${Tone.getContext().state}, sr=${Tone.getContext().rawContext.sampleRate}) → toDestination`)
   return masterOut
+}
+
+// ── Master EQ (roadmap 6.5) ───────────────────────────────────────────────────
+// A simple 3-band tone control (low/mid/high shelf+peak, ±6 dB) sitting between the
+// trim and the limiter, so a user can finish a mix without a DAW. Tone.Filter, not
+// Tone.EQ3 — the codebase already leans on Tone.Filter everywhere (bass.ts,
+// synthDrums.ts, …) and it's proven safe on Linux packaged Electron, unlike
+// Tone.Compressor (see the master-gain comment above).
+export interface MasterEqBands { low: number; mid: number; high: number }
+
+/** Set the 3-band master EQ, in dB (±6 recommended). Ramped, not stepped, so
+ *  moving a slider mid-playback doesn't click. Ensures the master chain exists. */
+export function setMasterEQ(bands: MasterEqBands): void {
+  getMasterCompressor()      // ensure the EQ nodes exist
+  const now = Tone.getContext().currentTime
+  const ramp = (filter: Tone.Filter, db: number) => {
+    filter.gain.cancelScheduledValues(now)
+    filter.gain.setTargetAtTime(db, now, 0.02)
+  }
+  ramp(masterEqLow!, bands.low)
+  ramp(masterEqMid!, bands.mid)
+  ramp(masterEqHigh!, bands.high)
 }
 
 // Set the pre-limiter master trim, in dB, for cross-style loudness normalization

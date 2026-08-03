@@ -18,6 +18,8 @@ import * as Tone from 'tone'
 import { Midi } from '@tonejs/midi'
 import { downloadUrl } from '../services/api'
 import { makeMasterLimiter, softClipCurve } from '../soundfonts/loader'
+import { resolveToneValues, saturationCurve } from '../soundfonts/partTone'
+import { useMixSettings } from './useMixSettings'
 import { makeSynthKit } from '../soundfonts/synthDrums'
 import { makeHybridKit, makeBlendedKit, materializeSampleLayer, type KitSamplers } from '../soundfonts/customDrumKit'
 import { LayeredSampler } from '../soundfonts/layeredSampler'
@@ -133,7 +135,17 @@ async function limitMix(
   for (let i = 0; i < 4096; i++) curve[i] = softClipCurve((i / 4095) * 2 - 1)
   ws.curve = curve
   ws.oversample = '4x'
-  src.connect(ws).connect(ctx.destination)
+  // Master EQ (roadmap 6.5), raw BiquadFilterNodes mirroring loader.ts's live
+  // masterOut → EQ → limiter chain — this multi-part summed-mix pass has no Tone
+  // context, same reason the limiter above is hand-reconstructed rather than reused.
+  const { low, mid, high } = useMixSettings().masterEQ.value
+  const eqLow = ctx.createBiquadFilter()
+  eqLow.type = 'lowshelf'; eqLow.frequency.value = 120; eqLow.gain.value = low
+  const eqMid = ctx.createBiquadFilter()
+  eqMid.type = 'peaking'; eqMid.frequency.value = 1000; eqMid.Q.value = 1; eqMid.gain.value = mid
+  const eqHigh = ctx.createBiquadFilter()
+  eqHigh.type = 'highshelf'; eqHigh.frequency.value = 3500; eqHigh.gain.value = high
+  src.connect(eqLow).connect(eqMid).connect(eqHigh).connect(ws).connect(ctx.destination)
   src.start(0)
   return await ctx.startRendering()
 }
@@ -159,6 +171,10 @@ export async function offlineRenderRaw(
     const isLofi = styleId ? LOFI_STYLES.has(styleId) : false
     const isSynth = styleId ? SYNTH_STYLES.has(styleId) : false
     const isMelodicSynth = styleId ? MELODIC_SYNTH_STYLES.has(styleId) : false
+
+    // Mix settings (roadmap 6.5) — read once and passed through the closures below,
+    // matching how useSynthPatches/useCustomInstruments/useDrumKitPatches are read.
+    const mixSettings = useMixSettings()
 
     // Master loudness trim (roadmap 6.2), matching live playback (useMidiPlayer.ts's
     // setMasterTrimDb) — only for a full-mix export. A single-part stem isn't "the
@@ -220,6 +236,17 @@ export async function offlineRenderRaw(
         const limiter = makeMasterLimiter(context)
         limiter.connect(dest)
         busOut = limiter
+        // Master EQ (roadmap 6.5), mirroring live playback's masterOut → EQ →
+        // limiter chain (loader.ts). Only meaningful when this graph's output IS
+        // the full mix — the multi-part parallel path (withLimiter=false) gets its
+        // EQ once, on the summed buffer, in limitMix() below instead.
+        if (channelFilter === 'all') {
+          const { low, mid, high } = mixSettings.masterEQ.value
+          const eqHigh = new Tone.Filter({ context, type: 'highshelf', frequency: 3500, gain: high }).connect(busOut)
+          const eqMid = new Tone.Filter({ context, type: 'peaking', frequency: 1000, Q: 1, gain: mid }).connect(eqHigh)
+          const eqLow = new Tone.Filter({ context, type: 'lowshelf', frequency: 120, gain: low }).connect(eqMid)
+          busOut = eqLow
+        }
       }
       const comp = new Tone.Gain({ context, gain: Tone.dbToGain(trimDb) }).connect(busOut)
 
@@ -249,7 +276,14 @@ export async function offlineRenderRaw(
         const automation = automationByPart.get(part)
         const initialPan = automation?.pan.length ? automation.pan[0].value * 2 - 1 : pan
         const initialVolume = automation?.volume.length ? automation.volume[0].value : 1
-        const panner = new Tone.Panner({ context, pan: initialPan }).connect(comp)
+        // Per-part tone preset (roadmap 6.5), mirroring partInsert.ts's live insert:
+        // gain → panner → toneLow → toneHigh → toneSat → comp. Baked in once at
+        // construction (offline is one-shot, no live "setter" needed).
+        const { lowShelfDb, highShelfDb, drive } = resolveToneValues(mixSettings.toneForPart(part))
+        const toneSat = new Tone.WaveShaper({ context, mapping: x => saturationCurve(x, drive), length: 1024 }).connect(comp)
+        const toneHigh = new Tone.Filter({ context, type: 'highshelf', frequency: 3500, gain: highShelfDb }).connect(toneSat)
+        const toneLow = new Tone.Filter({ context, type: 'lowshelf', frequency: 120, gain: lowShelfDb }).connect(toneHigh)
+        const panner = new Tone.Panner({ context, pan: initialPan }).connect(toneLow)
         const gain = new Tone.Gain({ context, gain: initialVolume }).connect(panner)
         partInserts.set(part, gain)
         scheduleOfflineAutomationTail(gain.gain, automation?.volume ?? [], v => v)

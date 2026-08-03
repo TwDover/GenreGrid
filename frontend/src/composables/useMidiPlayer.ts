@@ -12,9 +12,10 @@ import { ref, computed } from 'vue'
 import * as Tone from 'tone'
 import { Midi } from '@tonejs/midi'
 import { downloadUrl } from '../services/api'
-import { getPianoSampler, getMasterLimiterNode, duckOnKick, resetBusLevels, applyMelodicFxPreset, setMasterTrimDb } from '../soundfonts/loader'
-import { getPartInsert, resetPartInsert } from '../soundfonts/partInsert'
+import { getPianoSampler, getMasterLimiterNode, duckOnKick, resetBusLevels, applyMelodicFxPreset, setMasterTrimDb, setMasterEQ } from '../soundfonts/loader'
+import { getPartInsert, resetPartInsert, applyPartTone } from '../soundfonts/partInsert'
 import { MELODIC_FX_PRESETS, fxFamilyFor, trimDbForStyle } from '../soundfonts/fxPresets'
+import { useMixSettings } from './useMixSettings'
 import { makeSynthKit } from '../soundfonts/synthDrums'
 import { makeHybridKit, makeBlendedKit, materializeSampleLayer, type KitSamplers } from '../soundfonts/customDrumKit'
 import { getBassSampler, SAMPLED_BASS_VOICES } from '../soundfonts/bass'
@@ -306,7 +307,17 @@ export function useMidiPlayer() {
       // Every part's output insert (roadmap 9.3) is a persistent node reused across
       // plays — reset it to flat/centered now so a previous song's automation can't
       // bleed into this one before this song's own static pan / automation is applied.
-      for (const p of PLAYER_PARTS) resetPartInsert(p)
+      // Also (re-)apply the persisted per-part tone preset (roadmap 6.5) — the insert
+      // is persistent, so this has to happen on every play, not just when the
+      // Instruments panel is open.
+      const { toneForPart, masterEQ } = useMixSettings()
+      for (const p of PLAYER_PARTS) {
+        resetPartInsert(p)
+        applyPartTone(p, toneForPart(p))
+      }
+      // Push the persisted master EQ into the live chain too, for the same reason —
+      // it's only otherwise applied when the settings panel's sliders are touched.
+      setMasterEQ(masterEQ.value)
 
       const isSynth        = styleId ? SYNTH_STYLES.has(styleId) : false
       const isMelodicSynth = styleId ? MELODIC_SYNTH_STYLES.has(styleId) : false

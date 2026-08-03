@@ -38,29 +38,49 @@
               <label><input v-model="scope" type="radio" value="all" /> All styles</label>
             </div>
 
-            <div v-for="row in lineup" :key="row.part" class="ip-row">
-              <span class="ip-part">{{ row.partLabel }}</span>
-              <span class="ip-builtin" :title="row.builtin">{{ row.builtin }}</span>
-              <select
-                class="ip-input ip-pick"
-                :value="currentAssignment(row.part) ?? ''"
-                @change="onAssign(row.part, ($event.target as HTMLSelectElement).value)"
-              >
-                <option value="">Built-in</option>
-                <option v-for="inst in instrumentsFor(row.part)" :key="inst.id" :value="inst.id">
-                  {{ inst.name }}
-                </option>
-              </select>
-              <button
-                v-if="row.part === 'drums' && assignedKit"
-                class="ip-mini"
-                title="Edit kit pieces"
-                @click="editKitId = assignedKit.id"
-              >
-                ✎ pieces
-              </button>
-              <span v-else class="ip-mini-spacer"></span>
-            </div>
+            <template v-for="row in lineup" :key="row.part">
+              <div class="ip-row">
+                <span class="ip-part">{{ row.partLabel }}</span>
+                <span class="ip-builtin" :title="row.builtin">{{ row.builtin }}</span>
+                <select
+                  class="ip-input ip-pick"
+                  :value="currentAssignment(row.part) ?? ''"
+                  @change="onAssign(row.part, ($event.target as HTMLSelectElement).value)"
+                >
+                  <option value="">Built-in</option>
+                  <option v-for="inst in instrumentsFor(row.part)" :key="inst.id" :value="inst.id">
+                    {{ inst.name }}
+                  </option>
+                </select>
+                <button
+                  v-if="row.part === 'drums' && assignedKit"
+                  class="ip-mini"
+                  title="Edit kit pieces"
+                  @click="editKitId = assignedKit.id"
+                >
+                  ✎ pieces
+                </button>
+                <span v-else class="ip-mini-spacer"></span>
+              </div>
+              <div class="ip-tone-row">
+                <span class="ip-tone-label">Tone</span>
+                <select
+                  class="ip-input ip-tone-pick"
+                  :value="toneForPart(row.part).preset"
+                  @change="onTonePreset(row.part, ($event.target as HTMLSelectElement).value as TonePresetId)"
+                >
+                  <option v-for="id in TONE_PRESET_IDS" :key="id" :value="id">{{ TONE_PRESETS[id].label }}</option>
+                </select>
+                <input
+                  type="range" min="0" max="1" step="0.05"
+                  class="ip-tone-amount"
+                  :disabled="toneForPart(row.part).preset === 'neutral'"
+                  :value="toneForPart(row.part).amount"
+                  @input="onToneAmount(row.part, ($event.target as HTMLInputElement).valueAsNumber)"
+                />
+                <span class="ip-tone-pct">{{ Math.round(toneForPart(row.part).amount * 100) }}%</span>
+              </div>
+            </template>
             <p v-if="scope === 'style' && inheritedNote" class="ip-hint ip-inherit">{{ inheritedNote }}</p>
           </template>
         </section>
@@ -161,10 +181,12 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useCustomInstruments } from '../composables/useCustomInstruments'
 import { useStyleCatalog, instrumentLabel } from '../composables/useStyleCatalog'
+import { useMixSettings } from '../composables/useMixSettings'
 import { drumCharacterForStyle } from '../soundfonts/drums'
 import { auditionPiece, auditionSynthPiece, disposeAudition } from '../soundfonts/audition'
 import type { PlayerPart } from '../composables/useMidiPlayer'
 import { DRUM_SLOTS, type CustomInstrument } from '../soundfonts/customInstruments'
+import { TONE_PRESETS, TONE_PRESET_IDS, type TonePresetId } from '../soundfonts/partTone'
 
 const {
   instruments, assignments, panelOpen, supported,
@@ -172,6 +194,14 @@ const {
   getInstrument, materializeKit, updateKitSlot, storedFileNames,
 } = useCustomInstruments()
 const { catalog, activeStyleId } = useStyleCatalog()
+const { toneForPart, setPartTone } = useMixSettings()
+
+function onTonePreset(part: PlayerPart, preset: TonePresetId) {
+  setPartTone(part, { ...toneForPart(part), preset })
+}
+function onToneAmount(part: PlayerPart, amount: number) {
+  setPartTone(part, { ...toneForPart(part), amount })
+}
 
 // ── Lineup ───────────────────────────────────────────────────────────────────
 // Ordered as you'd read a mixer, not as PLAYER_PARTS happens to be declared.
@@ -374,6 +404,11 @@ h3 { font-size: 0.85rem; margin: 0 0 0.4rem; color: var(--text); }
 .ip-scope-label { font-weight: 600; }
 .ip-row { display: grid; grid-template-columns: 84px 1fr 1fr auto; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
 .ip-part { font-size: 0.82rem; }
+.ip-tone-row { display: grid; grid-template-columns: 84px 1fr 1fr 40px; align-items: center; gap: 0.5rem; margin-bottom: 0.6rem; }
+.ip-tone-label { font-size: 0.72rem; color: var(--text-faint); }
+.ip-tone-pick { font-size: 0.78rem; padding: 0.25rem 0.4rem; }
+.ip-tone-amount { min-width: 0; }
+.ip-tone-pct { font-size: 0.72rem; color: var(--text-faint); text-align: right; }
 .ip-builtin { font-size: 0.78rem; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ip-mini {
   font-size: 0.72rem; background: none; border: 1px solid var(--border);
