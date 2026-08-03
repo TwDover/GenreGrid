@@ -28,7 +28,8 @@ import { useCustomInstruments } from './useCustomInstruments'
 import { useDrumKitPatches } from './useDrumKitPatches'
 import { voiceFor } from './useStyleCatalog'
 import { encodeAudio, type AudioFormat } from '../utils/audioEncoder'
-import { PLAYER_PARTS, type PlayerPart, CHANNEL_PART, SYNTH_STYLES, PAD_STYLES, LOFI_STYLES } from './playerConstants'
+import { PLAYER_PARTS, type PlayerPart, CHANNEL_PART, SYNTH_STYLES, PAD_STYLES, LOFI_STYLES, MELODIC_SYNTH_STYLES } from './playerConstants'
+import { fxFamilyFor, trimDbForStyle } from '../soundfonts/fxPresets'
 import { curveFromCC, type AutomationBreakpoint } from './voiceRouting'
 import { placeClipInMix } from '../utils/audioClip'
 
@@ -157,6 +158,14 @@ export async function offlineRenderRaw(
     const isPad  = styleId ? PAD_STYLES.has(styleId)  : false
     const isLofi = styleId ? LOFI_STYLES.has(styleId) : false
     const isSynth = styleId ? SYNTH_STYLES.has(styleId) : false
+    const isMelodicSynth = styleId ? MELODIC_SYNTH_STYLES.has(styleId) : false
+
+    // Master loudness trim (roadmap 6.2), matching live playback (useMidiPlayer.ts's
+    // setMasterTrimDb) — only for a full-mix export. A single-part stem isn't "the
+    // mix" the trim was measured against, so it renders at its natural level.
+    const trimDb = channelFilter === 'all'
+      ? trimDbForStyle(styleId, fxFamilyFor({ isPad, isLofi, isSynth, isMelodicSynth }))
+      : 0
 
     onProgress?.(0.08)
 
@@ -212,7 +221,7 @@ export async function offlineRenderRaw(
         limiter.connect(dest)
         busOut = limiter
       }
-      const comp = new Tone.Gain({ context, gain: 1 }).connect(busOut)
+      const comp = new Tone.Gain({ context, gain: Tone.dbToGain(trimDb) }).connect(busOut)
 
       // Per-part output insert (roadmap 9.3), mirroring useMidiPlayer.ts's live-side
       // insert: every part's voice(s) connect here instead of straight to `comp`, so

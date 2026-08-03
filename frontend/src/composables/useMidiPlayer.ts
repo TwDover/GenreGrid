@@ -14,7 +14,7 @@ import { Midi } from '@tonejs/midi'
 import { downloadUrl } from '../services/api'
 import { getPianoSampler, getMasterLimiterNode, duckOnKick, resetBusLevels, applyMelodicFxPreset, setMasterTrimDb } from '../soundfonts/loader'
 import { getPartInsert, resetPartInsert } from '../soundfonts/partInsert'
-import { MELODIC_FX_PRESETS, MASTER_TRIM_DB, fxFamilyFor } from '../soundfonts/fxPresets'
+import { MELODIC_FX_PRESETS, fxFamilyFor, trimDbForStyle } from '../soundfonts/fxPresets'
 import { makeSynthKit } from '../soundfonts/synthDrums'
 import { makeHybridKit, makeBlendedKit, materializeSampleLayer, type KitSamplers } from '../soundfonts/customDrumKit'
 import { getBassSampler, SAMPLED_BASS_VOICES } from '../soundfonts/bass'
@@ -318,7 +318,7 @@ export function useMidiPlayer() {
       // here (may regenerate the reverb IR) and awaited before parts are scheduled.
       const fxFamily = fxFamilyFor({ isPad, isLofi, isSynth, isMelodicSynth })
       const fxReady = applyMelodicFxPreset(MELODIC_FX_PRESETS[fxFamily])
-      setMasterTrimDb(MASTER_TRIM_DB[fxFamily])
+      setMasterTrimDb(trimDbForStyle(styleId, fxFamily))
 
       // Pre-load all samplers + MIDI in parallel.
       // SYNTH_STYLES use synthesis for drums + bass — skip those sampler loads entirely.

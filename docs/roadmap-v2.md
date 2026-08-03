@@ -179,12 +179,45 @@ MIDI demo" from "record." Most items here are **ear-gated** — validate with `/
   `epic_orchestral`/`jazz`/`soul` in 6/8 and `rock` in 7/8 — real songs generate without error and
   drum onset timing/velocity reflects the intended contour.
 
-### 6.2 True LUFS loudness normalization
-- **Why:** per-family master trims are hand-tuned ([`fxPresets.ts`](../frontend/src/soundfonts/fxPresets.ts));
-  perceived loudness still varies by style. Roadmap Phase 2 explicitly deferred a real target.
-- **Approach:** offline-measure integrated LUFS per style (a script under `scripts/`), store a
-  per-style trim so every style hits a common target (e.g. −14 LUFS).
-- **Effort:** M.  **Done when:** measured LUFS across styles sits within ±1 of target.
+### 6.2 True LUFS loudness normalization  ✅ shipped 2026-08-03
+- **Why:** per-family master trims were hand-tuned ([`fxPresets.ts`](../frontend/src/soundfonts/fxPresets.ts));
+  perceived loudness still varied by style. Roadmap Phase 2 explicitly deferred a real target.
+- **Shipped — measurement:** [`measure-lufs.mjs`](../.claude/skills/run-genregrid/scenarios/measure-lufs.mjs)
+  (a `/run-genregrid` CDP scenario, not a Python script — the offline render pipeline it measures
+  only exists in the renderer: samplers, synths, per-style FX, the limiter) renders each style's
+  real offline mix (an 8-bar loop, seed 42, default complexity/variation) and computes ITU-R
+  BS.1770-4 **gated integrated loudness** in-browser (K-weighting biquads + the standard
+  absolute/relative gating, resampled to 48kHz first if the context isn't already there) — no
+  external LUFS library. Sanity-checked with a self-test (a full-scale 997Hz dual-mono sine
+  measures ~0 LUFS, matching the well-known -3.01 LUFS mono reference +3.01dB for the doubled
+  channel sum). Drives generation straight off the backend `/generate` endpoint (no UI clicking)
+  and calls `offlineRenderRaw()` directly via a temporarily-extended `window.__gg` debug hook
+  (reverted after the sweep) — the UI's own Save-As button couldn't be used here since (post-7.1b)
+  it opens a real native OS dialog that hangs headless CDP.
+- **Found a real gap while wiring this up:** offline export applied **no master trim at all** —
+  only live playback did (`loader.setMasterTrimDb`, called from `useMidiPlayer.ts`). Every
+  exported WAV/MP3/OGG mix rendered at each style's raw, untrimmed level regardless of the old
+  per-family table — the same shape of live/export mismatch 9.3 found for pan. Fixed as part of
+  this item, not treated as a separate ticket, since a trim that doesn't apply to the file you
+  actually export isn't "done."
+- **Shipped — per-style trims:** `STYLE_TRIM_DB` (all 35 styles) in `fxPresets.ts`, replacing
+  the old per-family `MASTER_TRIM_DB` as the primary source (kept as the fallback for any future
+  style not yet measured) — `trim = −14.0 − measured LUFS`. `trimDbForStyle(styleId, fxFamily)`
+  resolves the measured value if present, else the family default. Applied identically in both
+  paths: `useMidiPlayer.ts`'s live `setMasterTrimDb` call, and a new `trimDb` on
+  `useOfflineRender.ts`'s per-render-context `comp` gain node — applied only when
+  `channelFilter === 'all'` (a single-part stem isn't "the mix" the trim was measured against,
+  so it renders at its natural level, matching how the roadmap-9.4 audio clip is also excluded
+  from stem exports).
+- **Verified:** re-ran the sweep against the fixed export path — all 35 styles landed within
+  **±0.1 LUFS** of the −14.0 target (well inside the ±1 LUFS bar below), except `samba` at the
+  fixed seed, which hit a pre-existing unrelated bug (a zero-duration note trips `PolySynth`,
+  `seed=42` only) — confirmed via alternate seeds (7/13/99, avg ≈ −13.3 LUFS) that its natural
+  level and derived trim are in line with its neighbors.
+- **Tests:** `fxPresets.test.ts` — every `STYLE_TRIM_DB` entry within a sane range, the per-style
+  value winning over the family fallback (`trap_soul` cuts despite being a `PAD_STYLES` member
+  whose family default boosts), and the fallback firing for an unmeasured/undefined style.
+- **Done when:** ✅ measured LUFS across styles sits within ±1 of target (measured: ±0.1).
 
 ### 6.3 Custom-instrument follow-ups
 From [`custom-instruments-design.md`](custom-instruments-design.md) §"Phased delivery" 4–5:
@@ -777,7 +810,8 @@ opportunistically, not yet started.
    then it's a prepared spec, not a merge. _(7.1 — vitest in CI — is already done.)_
 7. **Phase 6** opportunistically, ear-gated, interleaved with the above. ✅ **6.1** (meter feel:
    per-style compound_swing, odd-meter accent shaping, meter-native feel velocity) shipped
-   2026-08-02. **6.6** (the synth / sound-design patch designer) is the
+   2026-08-02. ✅ **6.2** (true LUFS loudness normalization — measured per-style trims, and the
+   offline-export trim gap it found and fixed) shipped 2026-08-03. **6.6** (the synth / sound-design patch designer) is the
    biggest new bet here — a whole new instrument source — so spike its patch shape + factory
    (migrate one built-in voice to a data patch and prove byte-identical parity) before committing
    to the full designer UI.
