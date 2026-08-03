@@ -9,7 +9,7 @@
  * <https://www.gnu.org/licenses/> for details.
  */
 import { describe, it, expect } from 'vitest'
-import { fxFamilyFor, MELODIC_FX_PRESETS, MASTER_TRIM_DB, type FxFamily } from './fxPresets'
+import { fxFamilyFor, MELODIC_FX_PRESETS, MASTER_TRIM_DB, STYLE_TRIM_DB, trimDbForStyle, type FxFamily } from './fxPresets'
 
 describe('fxFamilyFor', () => {
   it('prioritises pad and lo-fi over the synth buckets', () => {
@@ -50,5 +50,29 @@ describe('preset + trim tables', () => {
       expect(MASTER_TRIM_DB[f]).toBeGreaterThanOrEqual(-6)
       expect(MASTER_TRIM_DB[f]).toBeLessThanOrEqual(3)    // guard against runaway boost into the limiter
     }
+  })
+})
+
+// Roadmap 6.2 — per-style trims measured against a -14 LUFS integrated target
+// (see measure-lufs.mjs and the comment above STYLE_TRIM_DB).
+describe('STYLE_TRIM_DB / trimDbForStyle', () => {
+  it('keeps every measured trim within a sane range', () => {
+    for (const [style, db] of Object.entries(STYLE_TRIM_DB)) {
+      expect(db, style).toBeGreaterThanOrEqual(-6)
+      expect(db, style).toBeLessThanOrEqual(6)
+    }
+  })
+
+  it('prefers the measured per-style trim over the family fallback', () => {
+    expect(STYLE_TRIM_DB.trap_soul).toBeDefined()
+    expect(trimDbForStyle('trap_soul', 'pad')).toBe(STYLE_TRIM_DB.trap_soul)
+    // trap_soul is a PAD_STYLES member (MASTER_TRIM_DB.pad = 1.0) but its own
+    // measured trim (a cut) must win, not the family default.
+    expect(trimDbForStyle('trap_soul', 'pad')).not.toBe(MASTER_TRIM_DB.pad)
+  })
+
+  it('falls back to the family default for a style with no measurement', () => {
+    expect(trimDbForStyle('some_brand_new_style', 'synth')).toBe(MASTER_TRIM_DB.synth)
+    expect(trimDbForStyle(undefined, 'default')).toBe(MASTER_TRIM_DB.default)
   })
 })
