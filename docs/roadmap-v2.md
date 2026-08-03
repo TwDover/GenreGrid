@@ -230,10 +230,36 @@ preview → SFZ → SF2 → pitch-detect.
 Clavinet, drawbar organ, accordion, nylon guitar — if a CC0/CC-BY multisample source turns up
 (none found in the Phase 2 pass; [`LICENSE_AUDIT.md`](LICENSE_AUDIT.md) §6). Opportunistic.
 
-### 6.5 (new) Mix polish: per-part tone + a master EQ
+### 6.5 Mix polish: per-part tone + a master EQ  ✅ shipped 2026-08-03
 - **Why:** the mix has a limiter, per-style FX, sidechain, and loudness trims, but no user tone
   control. A couple of tasteful per-part options (bright/warm tilt, light saturation) and a
   simple 3-band master EQ would let users finish a mix without a DAW.
+- **Shipped — master EQ:** a 3-band EQ (low/mid/high shelf+peak, ±6 dB, `Tone.Filter` — not
+  `Tone.EQ3`, matching the rest of the codebase's proven-safe-on-Linux-Electron filter usage)
+  sits between the trim and the limiter in both playback paths: live
+  (`loader.ts`'s `masterOut → EQ → masterLimiter` chain, `setMasterEQ()`) and offline export
+  (`useOfflineRender.ts` — `buildGraph()`'s single-part full-mix branch, and `limitMix()`'s raw
+  `BiquadFilterNode` chain for the more common multi-part summed-mix pass, mirroring exactly
+  where the master limiter itself is applied in each path). Persisted globally via the new
+  `useMixSettings.ts` store (`genregrid_master_eq` in localStorage) and pushed into the live
+  chain on every play-start, not only when the settings panel is open.
+- **Shipped — per-part tone:** four presets (Neutral / Warm / Bright / Saturated —
+  `soundfonts/partTone.ts`) scale linearly with a single 0–1 intensity knob, deliberately not a
+  per-band console (see risk note below). Applied at the tail of the existing roadmap-9.3 per-part
+  insert (`voice → gain → panner → toneLow → toneHigh → toneSat → bus`) — the one point every
+  voice type (sampled, synth-patch, custom instrument, synth kit) already converges on before its
+  family bus — in both `partInsert.ts` (live) and `useOfflineRender.ts`'s local mirror (offline).
+  Global per-part only, no per-style override (unlike `InstrumentAssignments`) — a deliberate
+  scope cut, not an oversight.
+- **UI:** the master EQ joins `MidiSettings.vue`'s existing panel; the per-part tone preset +
+  amount slider joins `InstrumentsPanel.vue`'s per-part lineup rows.
+- **Tests:** `partTone.test.ts` (pure `saturationCurve` transfer-function math — transparent at
+  drive 0, odd-symmetric, bounded, monotonic — same pattern as `masterLimiter.test.ts`'s
+  `softClipCurve`) and `useMixSettings.test.ts` (persistence/default round-trip).
+- **Verified:** live in the real Electron shell via `/run-genregrid` — Master EQ sliders and
+  per-part Tone controls both render and update with no console errors; a WAV export with a
+  boosted EQ and a saturated part completed and measured within the limiter's normal ceiling
+  tolerance (peaks ≤ ~0.999, consistent with a flat-EQ baseline — not a regression).
 - **Effort:** M.  **Risk:** scope creep toward a full mixer — keep it to presets, not a console.
 
 ### 6.6 Synthesizer / sound-design patch designer  ✅ shipped (2026-07-30)
@@ -811,7 +837,8 @@ opportunistically, not yet started.
 7. **Phase 6** opportunistically, ear-gated, interleaved with the above. ✅ **6.1** (meter feel:
    per-style compound_swing, odd-meter accent shaping, meter-native feel velocity) shipped
    2026-08-02. ✅ **6.2** (true LUFS loudness normalization — measured per-style trims, and the
-   offline-export trim gap it found and fixed) shipped 2026-08-03. **6.6** (the synth / sound-design patch designer) is the
+   offline-export trim gap it found and fixed) shipped 2026-08-03. ✅ **6.5** (mix polish —
+   per-part tone presets + a 3-band master EQ) shipped 2026-08-03. **6.6** (the synth / sound-design patch designer) is the
    biggest new bet here — a whole new instrument source — so spike its patch shape + factory
    (migrate one built-in voice to a data patch and prove byte-identical parity) before committing
    to the full designer UI.

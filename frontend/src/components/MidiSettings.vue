@@ -79,12 +79,30 @@
 
       <p v-if="error" class="ms-error">{{ error }}</p>
     </template>
+
+    <div class="ms-eq">
+      <div class="ms-head">
+        <span class="ms-title">Master EQ</span>
+        <button class="ms-mini" title="Reset to flat" @click="resetMasterEQ">Reset</button>
+      </div>
+      <div v-for="band in EQ_BANDS" :key="band.key" class="ms-field">
+        <span class="ms-label">{{ band.label }}</span>
+        <input
+          type="range" min="-6" max="6" step="0.5"
+          :value="masterEQ[band.key]"
+          @input="onEq(band.key, ($event.target as HTMLInputElement).valueAsNumber)"
+        />
+        <span class="ms-eq-val">{{ masterEQ[band.key] > 0 ? '+' : '' }}{{ masterEQ[band.key] }} dB</span>
+      </div>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { useMidiInput } from '../composables/useMidiInput'
 import { useApcMini } from '../composables/useApcMini'
+import { useMixSettings } from '../composables/useMixSettings'
+import { setMasterEQ } from '../soundfonts/loader'
 import type { PlayerPart } from '../composables/useMidiPlayer'
 
 const {
@@ -92,6 +110,22 @@ const {
   toggle, setPart,
 } = useMidiInput()
 const apc = useApcMini()
+
+const { masterEQ, setMasterEQBands, resetMasterEQ: resetStoredEQ } = useMixSettings()
+const EQ_BANDS = [
+  { key: 'low' as const, label: 'Low' },
+  { key: 'mid' as const, label: 'Mid' },
+  { key: 'high' as const, label: 'High' },
+]
+function onEq(key: 'low' | 'mid' | 'high', value: number) {
+  const next = { ...masterEQ.value, [key]: value }
+  setMasterEQBands(next)
+  setMasterEQ(next)
+}
+function resetMasterEQ() {
+  resetStoredEQ()
+  setMasterEQ(masterEQ.value)
+}
 
 const MIDI_PARTS = ['melody', 'chords', 'bass', 'pads', 'arpeggio', 'counter_melody', 'drums'] as const
 function onPart(e: Event) { setPart((e.target as HTMLSelectElement).value as PlayerPart) }
@@ -145,4 +179,17 @@ function onDevice(e: Event) { selectedId.value = (e.target as HTMLSelectElement)
 .ms-apc-map summary { cursor: pointer; color: var(--ink-faint); }
 .ms-apc-map ul { margin: var(--s2) 0 0; padding-left: var(--s5); display: flex; flex-direction: column; gap: 2px; }
 .ms-apc-map b { color: var(--ink-dim); font-weight: 600; }
+
+.ms-eq {
+  display: flex; flex-direction: column; gap: var(--s3);
+  padding-top: var(--s5); margin-top: var(--s2); border-top: 1px solid var(--line);
+}
+.ms-eq .ms-head { justify-content: space-between; }
+.ms-mini {
+  border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface);
+  color: var(--ink-dim); font-size: var(--t-meta); padding: 2px var(--s2); cursor: pointer;
+}
+.ms-mini:hover { color: var(--ink); border-color: var(--ink-faint); }
+.ms-eq input[type='range'] { flex: 1; min-width: 0; }
+.ms-eq-val { width: 56px; flex-shrink: 0; text-align: right; font-size: var(--t-meta); color: var(--ink-dim); font-variant-numeric: tabular-nums; }
 </style>
