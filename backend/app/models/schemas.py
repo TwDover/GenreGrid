@@ -93,6 +93,19 @@ class FileInfo(BaseModel):
     url: str
 
 
+class AudioClipInfo(BaseModel):
+    """A recorded audio take (roadmap 9.4) — one per generation, placed at a
+    bar-aligned region (a loop region in loop mode, a section in song mode).
+    Kept deliberately outside FileInfo/PLAYER_PARTS: it has no MIDI channel,
+    program, or note data, so it doesn't belong in the closed part enums that
+    drive regen/CC/channel-mute logic."""
+    part: str = "audio"
+    filename: str
+    url: str
+    start_bar: int
+    bars: int
+
+
 class GenerateSummary(BaseModel):
     key: str        # formatted label e.g. "C minor"
     key_root: str   # e.g. "C"
@@ -286,3 +299,4 @@ class BuildSongResponse(BaseModel):
     key: str
     progression: Optional[List[str]] = None  # resolved roman-numeral progression (shown + lockable in the UI)
     mixer: Optional[dict] = None  # per-part gain (1.0 = as generated), persisted in song_meta
+    audio_clip: Optional[AudioClipInfo] = None  # recorded take (roadmap 9.4), if any

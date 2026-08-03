@@ -79,7 +79,12 @@ process.on('SIGTERM', () => { killTree(); process.exit(143); });
 function launchElectron() {
   const env = { ...process.env, DISPLAY: process.env.DISPLAY || ':0', NODE_ENV: 'production' };
   delete env.ELECTRON_RUN_AS_NODE;   // this env sets it → Electron would run as plain Node and crash
-  child = spawn(ELECTRON, ['.', `--remote-debugging-port=${PORT}`, '--no-sandbox', '--disable-http-cache'], {
+  const args = ['.', `--remote-debugging-port=${PORT}`, '--no-sandbox', '--disable-http-cache'];
+  // GG_FAKE_MEDIA=1 — synthesize a non-silent getUserMedia signal and auto-grant its
+  // permission prompt, for scenarios exercising mic capture (roadmap 9.4) with no real
+  // microphone on this host. Opt-in: every other scenario keeps the default (no mic).
+  if (process.env.GG_FAKE_MEDIA) args.push('--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream');
+  child = spawn(ELECTRON, args, {
     cwd: FRONTEND, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true,   // own group so we can kill the real electron, not just the .bin shim
   });
   let log = '';

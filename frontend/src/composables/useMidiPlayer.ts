@@ -90,6 +90,13 @@ const isRecording = ref(false)
 const _allUnmuted = (): Record<PlayerPart, boolean> =>
   ({ drums: false, bass: false, chords: false, melody: false, arpeggio: false, pads: false, counter_melody: false })
 const channelMuted = ref<Record<PlayerPart, boolean>>(_allUnmuted())
+// A recorded audio clip (roadmap 9.4) has no MIDI channel, so it's muted via
+// its own flag rather than folding into channelMuted/PLAYER_PARTS.
+const audioClipMuted = ref(false)
+function toggleAudioClipMute(): void {
+  audioClipMuted.value = !audioClipMuted.value
+  if (audioClipGain) audioClipGain.gain.value = audioClipMuted.value ? 0 : 1
+}
 // Per-part live level (0..1, default 1) — the control-surface fader mixer. Applied
 // as velocity scaling at trigger time (see scheduler.ts), so it shapes live
 // playback only; exports and offline renders stay at the written velocities.
@@ -212,6 +219,10 @@ let customSamplers: LayeredSampler[] = []
 // (roadmap 9.3) — cleared on stop so a stale callback can't ramp a disposed/
 // reused insert on the next play.
 let automationScheduleIds: number[] = []
+// The current play's recorded-audio-clip insert (roadmap 9.4), if any — torn
+// down by cleanup() via `disposables` like everything else; this reference is
+// just so toggleAudioClipMute() can reach the live gain node.
+let audioClipGain: Tone.Gain | null = null
 
 function cleanup() {
   isPaused.value = false
@@ -228,6 +239,7 @@ function cleanup() {
   disposables = []
   customSamplers = []
   automationScheduleIds = []
+  audioClipGain = null
   durationSeconds.value = 0
   stopPositionPolling()
   currentlyPlaying.value = null
@@ -265,7 +277,8 @@ function applyPartAutomation(part: PlayerPart, volumeCurve: AutomationBreakpoint
 
 export function useMidiPlayer() {
   async function toggle(url: string, styleId?: string, label?: string, loop?: boolean,
-                        loopRegion?: { start: number; end: number }) {
+                        loopRegion?: { start: number; end: number },
+                        audioClip?: { url: string; offsetSeconds: number } | null) {
     if (currentlyPlaying.value === url) {
       cleanup()
       return
@@ -557,6 +570,27 @@ export function useMidiPlayer() {
 
       console.log(`[play] built graph — tracks=${midi.tracks.length} parts=${scheduledParts.length} disposables=${disposables.length} duration=${midi.duration.toFixed(2)}s bpm=${Tone.getTransport().bpm.value}`)
 
+      // A recorded audio clip (roadmap 9.4) — a raw buffer placed at a fixed
+      // transport offset, independent of the MIDI-triggered synthesis graph
+      // above. `.sync()` binds start/stop to the transport clock, so it
+      // follows loop/seek/tempo-nudge behavior the same as everything else,
+      // with no bars/beats math of its own to keep in step.
+      if (audioClip) {
+        try {
+          const clipPlayer = new Tone.Player(audioClip.url)
+          await Tone.loaded()
+          if (token !== _playToken) { clipPlayer.dispose(); return }
+          const panner = new Tone.Panner(0).toDestination()
+          const gain = new Tone.Gain(audioClipMuted.value ? 0 : 1).connect(panner)
+          clipPlayer.connect(gain)
+          clipPlayer.sync().start(audioClip.offsetSeconds)
+          audioClipGain = gain
+          disposables.push(clipPlayer, gain, panner)
+        } catch (e) {
+          console.warn('[play] audio clip failed to load — continuing without it', e)
+        }
+      }
+
       durationSeconds.value = midi.duration
       currentlyPlaying.value = url
 
@@ -789,12 +823,13 @@ export function useMidiPlayer() {
     channelFilter: 'all' | 'melodic' | PlayerPart = 'all',
     onProgress?: (v: number) => void,
     format: AudioFormat = 'wav',
+    audioClip?: { url: string; offsetSeconds: number } | null,
   ): Promise<Blob> {
     if (currentlyPlaying.value !== null && !isPaused.value) {
       Tone.getTransport().pause()
       isPaused.value = true
     }
-    return offlineRenderRaw(url, styleId, durationSeconds, channelFilter, onProgress, format)
+    return offlineRenderRaw(url, styleId, durationSeconds, channelFilter, onProgress, format, audioClip)
   }
 
   function stop() {
@@ -948,5 +983,5 @@ export function useMidiPlayer() {
     ]).catch(() => { /* best-effort, ignore network errors */ })
   }
 
-  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, sampleMode, setSampleMode, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, partLevel, setPartLevel, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause, cue, playCued, playPause, cuedLabel, prepareAudition, audition, scheduleAudition, auditionOn, auditionOff, setMidiData, generatedBpm, playbackBpm, tempoRatio, isTempoNudged, setPlaybackBpm, resetPlaybackBpm }
+  return { toggle, stop, currentlyPlaying, nowPlayingLabel, isLoading, getMidiData, prefetchMidi, prefetchSamplers, volume, setVolume, sampleMode, setSampleMode, looping, setLooping, isRecording, exportAudio, offlineRender, isRendering, channelMuted, toggleMute, soloPart, partLevel, setPartLevel, seek, positionSeconds, durationSeconds, isPlayingUrl, isPaused, togglePause, cue, playCued, playPause, cuedLabel, prepareAudition, audition, scheduleAudition, auditionOn, auditionOff, setMidiData, generatedBpm, playbackBpm, tempoRatio, isTempoNudged, setPlaybackBpm, resetPlaybackBpm, audioClipMuted, toggleAudioClipMute }
 }

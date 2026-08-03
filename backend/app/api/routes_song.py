@@ -28,7 +28,8 @@ from app.models.schemas import (FileInfo, BuildSongRequest, BuildSongResponse,
                                 RegenerateSongSectionRequest, RestoreSongVersionRequest,
                                 SetPartGainRequest, EditPartRequest, SongSectionDef,
                                 RollSongPartRequest, SongPartCandidate, KeepSongPartCandidateRequest,
-                                RebuildSongProgressionRequest, RearrangeSongSectionsRequest)
+                                RebuildSongProgressionRequest, RearrangeSongSectionsRequest,
+                                AudioClipInfo)
 from app.services.style_loader import load_style
 from app.services.progression_import import parse_progression, ROMAN_TOKEN_RE
 from app.services.midi_writer import (NoteEvent, write_midi, rebuild_combined_from_parts, mido_key_signature)
@@ -782,6 +783,82 @@ def edit_part(req: EditPartRequest):
                     url=f"/exports/{req.generation_id}/{req.part}.mid")
 
 
+# ── Recorded audio clip (roadmap 9.4) ────────────────────────────────────────
+# One clip per generation, section/loop-aligned (never freely placed) — a mic take
+# recorded alongside the generated parts. Works for both song mode (song_meta.json)
+# and loop mode (meta.json, the much thinner file `/generate` writes): the two are
+# mutually exclusive on disk, so which one exists tells us which mode a generation
+# id belongs to. No note/channel/program data, so it's kept out of FileInfo/
+# PLAYER_PARTS/_ALL_SONG_PARTS entirely — see AudioClipInfo's docstring.
+_MAX_AUDIO_CLIP_BYTES = 100 * 1024 * 1024
+
+
+def _generation_meta_path(output_dir):
+    """song_meta.json (song mode) or meta.json (loop mode) — whichever this
+    generation id actually has. None if neither exists."""
+    song_meta = output_dir / "song_meta.json"
+    if song_meta.exists():
+        return song_meta
+    loop_meta = output_dir / "meta.json"
+    return loop_meta if loop_meta.exists() else None
+
+
+@router.post("/save-audio-clip", response_model=AudioClipInfo)
+async def save_audio_clip(generation_id: str = Form(...), start_bar: int = Form(..., ge=0),
+                          bars: int = Form(..., ge=1), file: UploadFile = FastAPIFile(...)):
+    """Persist a recorded take (a WAV, already trimmed to the exact target
+    duration by the renderer) at `start_bar`/`bars` in this generation.
+    Re-recording replaces the previous take — one clip per generation."""
+    if not _SAFE_PATH.match(generation_id):
+        raise HTTPException(status_code=400, detail="Invalid generation id")
+    output_dir = EXPORTS_DIR / generation_id
+    meta_path = _generation_meta_path(output_dir)
+    if meta_path is None:
+        raise HTTPException(status_code=404, detail="Generation not found")
+
+    data = await file.read()
+    if len(data) > _MAX_AUDIO_CLIP_BYTES:
+        raise HTTPException(status_code=400, detail="Audio clip is too large")
+    if data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+        raise HTTPException(status_code=400, detail="Expected a WAV file")
+
+    is_song = meta_path.name == "song_meta.json"
+    if is_song:
+        _snapshot_song(output_dir)   # version history: state before this mutation
+
+    (output_dir / "audio_clip.wav").write_bytes(data)
+    meta = _json_module.loads(meta_path.read_text())
+    meta["audio_clip"] = {"filename": "audio_clip.wav", "start_bar": start_bar, "bars": bars}
+    meta_path.write_text(_json_module.dumps(meta))
+
+    return AudioClipInfo(filename="audio_clip.wav", url=f"/exports/{generation_id}/audio_clip.wav",
+                         start_bar=start_bar, bars=bars)
+
+
+@router.delete("/audio-clip/{generation_id}")
+def delete_audio_clip(generation_id: str):
+    """Remove the recorded take, if any — the "delete and re-record" path for
+    fixing a bad take (v1 has no in-place editing)."""
+    if not _SAFE_PATH.match(generation_id):
+        raise HTTPException(status_code=400, detail="Invalid generation id")
+    output_dir = EXPORTS_DIR / generation_id
+    meta_path = _generation_meta_path(output_dir)
+    if meta_path is None:
+        raise HTTPException(status_code=404, detail="Generation not found")
+
+    meta = _json_module.loads(meta_path.read_text())
+    if meta.get("audio_clip") is None:
+        raise HTTPException(status_code=404, detail="No audio clip on this generation")
+
+    if meta_path.name == "song_meta.json":
+        _snapshot_song(output_dir)
+
+    (output_dir / "audio_clip.wav").unlink(missing_ok=True)
+    meta.pop("audio_clip", None)
+    meta_path.write_text(_json_module.dumps(meta))
+    return {"generation_id": generation_id, "deleted": True}
+
+
 def _song_response_from_dir(d) -> BuildSongResponse | None:
     """Rehydrate a BuildSongResponse from a song export folder, or None if the
     folder isn't a complete song (missing meta/structure/stems)."""
@@ -796,6 +873,8 @@ def _song_response_from_dir(d) -> BuildSongResponse | None:
     if not files:
         return None
     total_bars = sum(s.get("bars", 0) for s in sections)
+    clip = meta.get("audio_clip")
+    audio_clip = AudioClipInfo(url=f"/exports/{d.name}/{clip['filename']}", **clip) if clip else None
     return BuildSongResponse(
         generation_id=d.name,
         style=meta.get("style_id", ""),
@@ -808,6 +887,7 @@ def _song_response_from_dir(d) -> BuildSongResponse | None:
         key=f"{meta.get('key', 'C')} {meta.get('scale', 'minor')}",
         progression=meta.get("song_progression"),
         mixer=meta.get("mixer") or {},
+        audio_clip=audio_clip,
     )
 
 
@@ -866,6 +946,9 @@ def export_project(generation_id: str):
                 zf.write(f, name)
         for f in sorted(output_dir.glob("*.mid")):
             zf.write(f, f.name)
+        clip = output_dir / "audio_clip.wav"
+        if clip.is_file():
+            zf.write(clip, clip.name)
         sec_dir = output_dir / "sections"
         if sec_dir.is_dir():
             for f in sorted(sec_dir.iterdir()):
@@ -882,7 +965,7 @@ def _is_safe_project_member(name: str) -> bool:
     """Accept only known, non-escaping members from an imported .ggproj."""
     if name.startswith("/") or "\\" in name or ".." in name.split("/"):
         return False   # absolute path, windows separator, or `..` traversal
-    if name in ("song_meta.json", "song_structure.json", "project.json"):
+    if name in ("song_meta.json", "song_structure.json", "project.json", "audio_clip.wav"):
         return True
     if name.endswith(".mid") and "/" not in name:
         return True
@@ -952,7 +1035,8 @@ def _snapshot_song(output_dir) -> None:
     snap = versions_dir / str(int(_time.time() * 1000))
     snap.mkdir(exist_ok=True)
     for f in output_dir.iterdir():
-        if f.is_file() and (f.suffix == ".mid" or f.name in ("song_meta.json", "song_structure.json")):
+        if f.is_file() and (f.suffix == ".mid" or
+                            f.name in ("song_meta.json", "song_structure.json", "audio_clip.wav")):
             shutil.copy(f, snap / f.name)
     snaps = sorted((d for d in versions_dir.iterdir() if d.is_dir()), key=lambda d: d.name)
     for old_snap in snaps[:-_MAX_SONG_VERSIONS]:

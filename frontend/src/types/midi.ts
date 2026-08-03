@@ -81,6 +81,17 @@ export interface FileInfo {
   url: string
 }
 
+/** A recorded audio take (roadmap 9.4) — one per generation, placed at a
+ * bar-aligned region. Deliberately not a FileInfo: it has no MIDI channel/
+ * program, so it stays out of the PLAYER_PARTS-driven part machinery. */
+export interface AudioClipInfo {
+  part: 'audio'
+  filename: string
+  url: string
+  start_bar: number
+  bars: number
+}
+
 export interface GenerateSummary {
   key: string
   key_root: string
@@ -190,6 +201,7 @@ export interface BuildSongResponse {
   key: string
   progression?: string[] | null   // resolved roman-numeral progression (shown + lockable)
   mixer?: Record<string, number> | null   // per-part gain, 1.0 = generated balance
+  audio_clip?: AudioClipInfo | null   // recorded take (roadmap 9.4), if any
 }
 
 export interface LibraryEntry {
