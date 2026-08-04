@@ -8,13 +8,15 @@
  * version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
  * <https://www.gnu.org/licenses/> for details.
  */
-import { describe, it, expect, vi } from 'vitest'
-import { ref } from 'vue'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { nextTick, ref } from 'vue'
 import { mount, type DOMWrapper } from '@vue/test-utils'
+import type { CustomInstrument } from '../soundfonts/customInstruments'
 
-const instruments = ref<unknown[]>([])
+const instruments = ref<CustomInstrument[]>([])
 const assignments = ref({ defaults: {} })
 const panelOpen = ref(true)
+const updateKitSlot = vi.fn()
 vi.mock('../composables/useCustomInstruments', () => ({
   useCustomInstruments: () => ({
     instruments, assignments, panelOpen,
@@ -23,10 +25,10 @@ vi.mock('../composables/useCustomInstruments', () => ({
     importInstrument: vi.fn(),
     deleteInstrument: vi.fn(),
     assignPart: vi.fn(),
-    getInstrument: () => undefined,
+    getInstrument: (id: string) => instruments.value.find(i => i.id === id),
     materializeKit: vi.fn(),
-    updateKitSlot: vi.fn(),
-    storedFileNames: vi.fn().mockResolvedValue([]),
+    updateKitSlot,
+    storedFileNames: vi.fn().mockResolvedValue(['kick_soft.wav', 'kick_hard.wav', 'kick_rr2.wav']),
   }),
 }))
 vi.mock('../composables/useStyleCatalog', () => ({
@@ -99,5 +101,71 @@ describe('InstrumentsPanel — file-picker gating', () => {
     expect(wrapper.text()).not.toContain('file(s) selected')
     const addBtn = wrapper.findAll('button').find(b => b.text().includes('Add instrument'))!
     expect((addBtn.element as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('InstrumentsPanel — multi-file kit slots', () => {
+  const kickPitch = 36
+
+  afterEach(() => {
+    instruments.value = []
+    updateKitSlot.mockClear()
+  })
+
+  async function openKitEditor() {
+    instruments.value = [{
+      id: 'kit-1',
+      name: 'My Kit',
+      kind: 'drums',
+      manifest: { layers: [] },
+      kit: {
+        [kickPitch]: {
+          layers: [
+            { maxVelocity: 0.5, urls: { C4: 'kick_soft.wav' } },
+            { maxVelocity: 1, urls: { C4: 'kick_hard.wav' } },
+          ],
+        },
+      },
+      createdAt: 0,
+    }]
+    const wrapper = mount(InstrumentsPanel)
+    await wrapper.findAll('.ip-mini').find(b => b.text() === '✎ pieces')!.trigger('click')
+    await nextTick()
+    return wrapper
+  }
+
+  // DRUM_SLOTS renders all twelve pieces regardless of which the kit fills, so tests
+  // must scope to the Kick row specifically rather than grabbing the first slot.
+  function kickSlot(wrapper: Awaited<ReturnType<typeof openKitEditor>>) {
+    return wrapper.findAll('.ip-slot').find(s => s.text().includes('Kick'))!
+  }
+
+  it('lists every file on a piece as a chip, across all its layers', async () => {
+    const wrapper = await openKitEditor()
+    const slot = kickSlot(wrapper)
+    expect(slot.text()).toContain('kick_soft.wav')
+    expect(slot.text()).toContain('kick_hard.wav')
+  })
+
+  it('only offers not-yet-assigned files in the "add" dropdown for that piece', async () => {
+    const wrapper = await openKitEditor()
+    const options = kickSlot(wrapper).find('select.ip-slot-add').findAll('option').map(o => o.attributes('value'))
+    expect(options).not.toContain('kick_soft.wav')
+    expect(options).not.toContain('kick_hard.wav')
+    expect(options).toContain('kick_rr2.wav')
+  })
+
+  it('removing a chip drops just that file, keeping the rest of the piece intact', async () => {
+    const wrapper = await openKitEditor()
+    const chip = kickSlot(wrapper).findAll('.ip-chip').find(c => c.text().includes('kick_soft.wav'))!
+    await chip.find('.ip-chip-x').trigger('click')
+    expect(updateKitSlot).toHaveBeenCalledWith('kit-1', kickPitch, ['kick_hard.wav'])
+  })
+
+  it('adding a file appends it to the piece\'s existing files', async () => {
+    const wrapper = await openKitEditor()
+    const select = kickSlot(wrapper).find('select.ip-slot-add')
+    await select.setValue('kick_rr2.wav')
+    expect(updateKitSlot).toHaveBeenCalledWith('kit-1', kickPitch, ['kick_soft.wav', 'kick_hard.wav', 'kick_rr2.wav'])
   })
 })

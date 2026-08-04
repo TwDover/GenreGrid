@@ -221,6 +221,20 @@ describe('setKitSlot', () => {
     expect(kit[pitchOf('ride')].layers[0].urls[KIT_ROOT]).toBe('whatever.wav')
   })
 
+  it('given several files, groups them into velocity layers / round-robins by filename hint', () => {
+    const kit = setKitSlot({}, pitchOf('kick'), ['kick_soft.wav', 'kick_hard.wav', 'kick_rr2_hard.wav'])
+    const layers = kit[pitchOf('kick')].layers
+    expect(layers).toHaveLength(2)
+    expect(layers[0].urls[KIT_ROOT]).toBe('kick_soft.wav')
+    expect(layers[1].urls[KIT_ROOT]).toEqual(['kick_hard.wav', 'kick_rr2_hard.wav'])
+  })
+
+  it('re-deriving a slot from an edited file list drops files no longer passed', () => {
+    const withThree = setKitSlot({}, 36, ['a.wav', 'b.wav', 'c.wav'])
+    const afterRemoveB = setKitSlot(withThree, 36, ['a.wav', 'c.wav'])
+    expect(kitFiles(afterRemoveB)).toEqual(['a.wav', 'c.wav'])
+  })
+
   it('clearing a piece removes it, so it falls back to the synth kit', () => {
     const kit = setKitSlot(setKitSlot({}, 36, ['a.wav']), 36, [])
     expect(kit[36]).toBeUndefined()

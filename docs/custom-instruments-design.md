@@ -38,7 +38,7 @@ transport-bar button.
   supported by the store and resolver — only the UI never passed a `styleId`.
 
 **Not yet done:** SF2/SFZ import (T4), auto pitch-detection, a mapping preview for
-chromatic instruments (mini keyboard), web/OPFS storage. **Runtime-verified 2026-07-29**
+chromatic instruments (mini keyboard). **Runtime-verified 2026-07-29**
 (see the desktop pass above) — the earlier "automation can't launch Electron or play audio"
 caveat was worked around by driving the real shell over the DevTools Protocol and asserting
 non-silent offline renders of the user samples.
@@ -216,10 +216,13 @@ interface InstrumentAssignments {
 3. ✅ **Per-slot audition** in the kit editor (`soundfonts/audition.ts`): a ▶ per piece
    plays the user's sample if the slot is filled, or the synth fallback (at the shown
    style's drum character) if empty, so a mis-mapped file is caught where it's edited.
-4. ⬜ **SF2/SFZ import (T4)** — start with SFZ (text), then SF2 via a parser.
-5. ⬜ **Polish** — mapping preview for chromatic instruments (mini keyboard, hear each
-   zone), auto pitch-detection, export/share an instrument as a zip (round-trips with
-   `build_velocity_samples.py` output), web/OPFS storage.
+4. ✅ **Web/OPFS storage** (2026-08-03) and ✅ **multi-file kit slots** (2026-08-04, see
+   "Open questions / risks" above) — both originally filed under "Polish" below, pulled
+   forward.
+5. ⬜ **SF2/SFZ import (T4)** — start with SFZ (text), then SF2 via a parser.
+6. ⬜ **Remaining polish** — mapping preview for chromatic instruments (mini keyboard,
+   hear each zone), auto pitch-detection, export/share an instrument as a zip
+   (round-trips with `build_velocity_samples.py` output).
 
 ## Open questions / risks
 
@@ -227,9 +230,12 @@ interface InstrumentAssignments {
   maybe transcode-to-ogg on import to bound footprint.)
 - **Large libraries:** memory/CPU if a user loads many big multisamples — lazy-load per
   style, cap total decoded buffers.
-- **Kit editing is one file per piece today.** The map supports velocity layers and
-  round-robins per piece (import builds them from folders/`_rrN`), but the editor's
-  slot picker only assigns a single file, and audition plays the top layer only.
-  Multi-file-per-slot editing is the obvious next increment.
+- ✅ **Multi-file-per-slot editing (shipped 2026-08-04).** The kit editor's slot picker
+  now shows every file on a piece as a removable chip, plus an "add a file" dropdown
+  of not-yet-assigned stored files — `setKitSlot` already re-derives velocity layers
+  and round-robins from a file list by filename hint, so this was a pure UI change.
+  Audition also now caches one sampler per piece (rebuilt only when its files change)
+  and alternates loud/soft hits, so round-robins actually cycle and a quieter layer is
+  reachable from the editor, not just the top one. See roadmap-v2.md §6.3.
 - **No audition for chromatic instruments yet** — only kit pieces. A mini-keyboard
   preview for melodic/bass instruments is the counterpart follow-up.

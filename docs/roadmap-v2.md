@@ -221,10 +221,37 @@ MIDI demo" from "record." Most items here are **ear-gated** — validate with `/
 
 ### 6.3 Custom-instrument follow-ups
 From [`custom-instruments-design.md`](custom-instruments-design.md) §"Phased delivery" 4–5:
-✅ **web/OPFS storage** (unblocks custom instruments in the browser build), SF2/SFZ import (T4),
-multi-file kit slots, chromatic-instrument mapping preview (mini keyboard), auto pitch-detection
-on import. **Effort:** S each except SF2 (M–L). Sequence: ✅ OPFS → multi-file slots → chromatic
-preview → SFZ → SF2 → pitch-detect.
+✅ **web/OPFS storage** (unblocks custom instruments in the browser build), ✅ **multi-file kit
+slots**, SF2/SFZ import (T4), chromatic-instrument mapping preview (mini keyboard), auto
+pitch-detection on import. **Effort:** S each except SF2 (M–L). Sequence: ✅ OPFS → ✅ multi-file
+slots → chromatic preview → SFZ → SF2 → pitch-detect.
+
+- **Multi-file kit slots ✅ shipped 2026-08-04** — the kit editor's per-piece picker was a single
+  `<select>`, so a piece could only ever hold one file even though the underlying manifest
+  (`DrumKitMap` → `LayeredSamplerManifest`) already supported velocity layers and round-robins —
+  `setKitSlot`/`groupIntoLayers` already built multi-layer manifests from a file list, it's what
+  import already did for a dropped folder. The whole gap was UI: `InstrumentsPanel.vue`'s kit
+  editor now shows each piece's files as removable chips (`slotFiles`, flattening every layer's
+  `urls[KIT_ROOT]`) plus a "+ add a file" dropdown of not-yet-assigned stored files
+  (`availableFilesFor`); `addSlotFile`/`removeSlotFile` both just call the existing
+  `updateKitSlot(id, pitch, paths)`, which re-derives the layer/round-robin grouping from
+  filename hints (`soft`/`hard`, `_rrN`) on every edit — no data-model or store changes needed.
+  Also fixed the editor's audition, which is what actually surfaced why multi-file editing
+  mattered: `auditionPiece` rebuilt-and-disposed a throwaway sampler on every click, so a
+  round-robin's later alternates were never reachable (`LayeredSampler`'s round-robin cursor is
+  per-instance and always restarted at 0). It now caches one sampler per piece — keyed by a
+  signature of the piece's manifest so an edit forces a rebuild — reused across clicks, and
+  alternates a loud/soft hit so a multi-layer piece's quieter layer is reachable from the
+  editor too.
+  **Tests:** `InstrumentsPanel.test.ts` (chips render every file across a piece's layers, the
+  "add" dropdown excludes already-assigned files, add/remove call `updateKitSlot` with the
+  right file list) and a `setKitSlot` multi-file case in `customInstruments.test.ts`.
+  **Verified:** live in the real Electron shell via `/run-genregrid` — imported a kit, added a
+  second file to the Kick piece (rendered as two chips), removed one (back to one chip,
+  the other intact), auditioned twice with no console errors. Driven by seeding the instrument
+  directly through the store (`window.__gg`, temporarily, reverted after) since CDP can't drive
+  a native OS file-picker dialog — the same technique the original custom-instruments desktop
+  pass used.
 
 - **OPFS storage ✅ shipped 2026-08-03** — custom instruments were Electron-only (stored via IPC
   under `userData/instruments/`); a browser build showed an empty library with no way to add one.

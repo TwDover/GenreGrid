@@ -27,19 +27,31 @@ import { useCustomInstruments } from '../composables/useCustomInstruments'
 // Auditioning is a preview and never touches the play session's cached instruments:
 // it builds its own throwaway sampler and keeps its own synth kit.
 
-// How long the longest plausible one-shot (a crash) needs to ring before its
-// sampler can be freed. A short audition sound is disposed well within this.
-const RING_OUT_MS = 5000
+// One throwaway sampler per kit piece, reused across clicks instead of rebuilt-and-
+// disposed per call. LayeredSampler cycles round-robins on its own internal counter,
+// so a fresh sampler every click always replayed the first alternate — reusing one
+// lets repeated ▶ presses actually cycle round-robins. Keyed by a signature of the
+// manifest so editing a slot (add/remove a file) rebuilds instead of playing stale
+// audio; entries are disposed in `disposeAudition` when the editor closes.
+const pieceSamplers = new Map<number, { sig: string; sampler: LayeredSampler; hit: number }>()
 
-/** Play a single kit piece (a single-zone manifest) once, at a strong velocity so
- *  the top layer is heard. Disposes the throwaway sampler after it rings out. */
-export async function auditionPiece(manifest: LayeredSamplerManifest): Promise<void> {
+/** Play a single kit piece, reusing the piece's cached sampler so repeated clicks
+ *  cycle round-robins, and alternating loud/soft hits so a multi-layer piece's
+ *  quieter layers are reachable from the editor too, not just the top one. */
+export async function auditionPiece(pitch: number, manifest: LayeredSamplerManifest): Promise<void> {
   await Tone.start()
-  const sampler = new LayeredSampler({ baseUrl: '', manifest, volume: -4 })
-  await sampler.loaded
-  sampler.connect(getDrumBus())
-  sampler.triggerAttack(KIT_ROOT, Tone.now(), 0.95)
-  setTimeout(() => sampler.dispose(), RING_OUT_MS)
+  const sig = JSON.stringify(manifest)
+  let entry = pieceSamplers.get(pitch)
+  if (!entry || entry.sig !== sig) {
+    entry?.sampler.dispose()
+    const sampler = new LayeredSampler({ baseUrl: '', manifest, volume: -4 })
+    await sampler.loaded
+    sampler.connect(getDrumBus())
+    entry = { sig, sampler, hit: 0.95 }
+    pieceSamplers.set(pitch, entry)
+  }
+  entry.hit = entry.hit === 0.95 ? 0.3 : 0.95
+  entry.sampler.triggerAttack(KIT_ROOT, Tone.now(), entry.hit)
 }
 
 // One synth kit per style, reused across clicks. Auditioning an empty slot should
@@ -61,13 +73,15 @@ export async function auditionSynthPiece(pitch: number, styleId?: string): Promi
   kit.trigger(pitch, 0.9, Tone.now())
 }
 
-/** Free every audition synth kit. Call when the editor closes so its nodes don't
- *  linger in the audio graph. */
+/** Free every audition synth kit and cached piece sampler. Call when the editor
+ *  closes so nothing lingers in the audio graph. */
 export function disposeAudition(): void {
   for (const kit of synthByStyle.values()) {
     for (const node of kit.nodes) node.dispose()
   }
   synthByStyle.clear()
+  for (const entry of pieceSamplers.values()) entry.sampler.dispose()
+  pieceSamplers.clear()
 }
 
 // ── Live audition for the synth designer ─────────────────────────────────────
