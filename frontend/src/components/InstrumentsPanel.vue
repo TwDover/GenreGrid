@@ -17,7 +17,8 @@
       </header>
 
       <p v-if="!supported()" class="ip-note">
-        Custom instruments need the GenreGrid desktop app — this feature is unavailable in the browser build.
+        Custom instruments need either the GenreGrid desktop app or a browser new enough to support
+        the Origin Private File System (recent Chrome, Edge, Firefox, or Safari).
       </p>
 
       <template v-else>
@@ -156,7 +157,7 @@
           <div class="ip-add-row">
             <label class="ip-file">
               Choose files
-              <input ref="filesInput" type="file" accept="audio/*,.mp3,.wav,.ogg,.flac,.m4a" multiple @change="onPick" />
+              <input ref="filesInput" type="file" accept="audio/*,.mp3,.wav,.ogg,.flac,.m4a,.aac" multiple @change="onPick" />
             </label>
             <label class="ip-file">
               Choose folder
@@ -185,7 +186,7 @@ import { useMixSettings } from '../composables/useMixSettings'
 import { drumCharacterForStyle } from '../soundfonts/drums'
 import { auditionPiece, auditionSynthPiece, disposeAudition } from '../soundfonts/audition'
 import type { PlayerPart } from '../composables/useMidiPlayer'
-import { DRUM_SLOTS, type CustomInstrument } from '../soundfonts/customInstruments'
+import { DRUM_SLOTS, isAudioFile, type CustomInstrument } from '../soundfonts/customInstruments'
 import { TONE_PRESETS, TONE_PRESET_IDS, type TonePresetId } from '../soundfonts/partTone'
 
 const {
@@ -332,9 +333,16 @@ function kindLabel(inst: CustomInstrument): string {
 
 function onPick(e: Event) {
   const input = e.target as HTMLInputElement
-  picked.value = input.files ? Array.from(input.files) : []
+  const all = input.files ? Array.from(input.files) : []
+  // The "Choose files" dialog's `accept` filter only narrows what an OS picker
+  // shows — it doesn't apply to "Choose folder" (webkitdirectory ignores accept
+  // entirely) and some OSes let the user override it anyway. Filter here too so
+  // a folder's readme/cover art/.DS_Store never counts as a "selected" sample or
+  // reaches the importer.
+  picked.value = all.filter(f => isAudioFile(f.name))
+  const skipped = all.length - picked.value.length
   error.value = ''
-  notice.value = ''
+  notice.value = skipped ? `${skipped} non-audio file(s) skipped.` : ''
 }
 
 async function doImport() {

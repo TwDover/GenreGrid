@@ -27,8 +27,9 @@ interface ElectronAPI {
   logRendererError: (entry: { timestamp: string; context: string; message: string; stack?: string }) => Promise<void>
 
   /** User custom-instrument storage (see docs/custom-instruments-design.md). Audio
-   *  lives under userData/instruments/<id>/ and is served back over the gginstr://
-   *  protocol; only the index (with manifests) round-trips through these calls. */
+   *  lives under userData/instruments/<id>/ and is read back over these IPC calls
+   *  as raw bytes, turned into blob: object URLs renderer-side (not a custom
+   *  protocol — that reproduces the Linux Web Audio silent-output bug). */
   instruments?: {
     /** Read the library index (instruments without their audio bytes). */
     list: () => Promise<import('./soundfonts/customInstruments').CustomInstrument[]>

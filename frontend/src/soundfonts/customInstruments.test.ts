@@ -25,7 +25,7 @@ import {
 
 describe('isAudioFile', () => {
   it('accepts common audio extensions, rejects others', () => {
-    for (const f of ['a.mp3', 'a.WAV', 'a.ogg', 'a.flac', 'a.m4a']) expect(isAudioFile(f)).toBe(true)
+    for (const f of ['a.mp3', 'a.WAV', 'a.ogg', 'a.flac', 'a.m4a', 'a.aac']) expect(isAudioFile(f)).toBe(true)
     for (const f of ['a.txt', 'a.json', 'a.png', 'velocity.json', 'a']) expect(isAudioFile(f)).toBe(false)
   })
 })
