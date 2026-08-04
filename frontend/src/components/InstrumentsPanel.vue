@@ -93,23 +93,35 @@
             <button class="ip-mini" @click="editKitId = null">Done</button>
           </div>
           <p class="ip-hint">
-            Empty pieces play the synthesized kit, so a partial kit works straight away.
+            Empty pieces play the synthesized kit, so a partial kit works straight away. Add more
+            than one file to a piece for velocity layers or round-robins — name them like your
+            import files (<code>soft</code>/<code>hard</code>, <code>_rr2</code>) so they're grouped
+            correctly; ▶ alternates loud/soft hits so every layer is reachable here.
           </p>
           <div v-for="slot in DRUM_SLOTS" :key="slot.pitch" class="ip-slot">
-            <span class="ip-slot-name">{{ slot.label }}</span>
+            <div class="ip-slot-top">
+              <span class="ip-slot-name">{{ slot.label }}</span>
+              <button
+                class="ip-audition"
+                :title="slotFiles(slot.pitch).length ? 'Hear this piece' : 'Hear the synth fallback'"
+                @click="audition(slot.pitch)"
+              >▶</button>
+            </div>
+            <div class="ip-slot-files">
+              <span v-if="!slotFiles(slot.pitch).length" class="ip-slot-empty">— empty (synth) —</span>
+              <span v-for="f in slotFiles(slot.pitch)" :key="f" class="ip-chip">
+                {{ f }}
+                <button class="ip-chip-x" title="Remove" @click="removeSlotFile(slot.pitch, f)">✕</button>
+              </span>
+            </div>
             <select
-              class="ip-input ip-slot-pick"
-              :value="slotFile(slot.pitch)"
-              @change="onSlot(slot.pitch, ($event.target as HTMLSelectElement).value)"
+              class="ip-input ip-slot-add"
+              value=""
+              @change="addSlotFile(slot.pitch, ($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = ''"
             >
-              <option value="">— empty (synth) —</option>
-              <option v-for="f in kitFileChoices" :key="f" :value="f">{{ f }}</option>
+              <option value="">+ add a file (velocity layer / round-robin)…</option>
+              <option v-for="f in availableFilesFor(slot.pitch)" :key="f" :value="f">{{ f }}</option>
             </select>
-            <button
-              class="ip-audition"
-              :title="slotFile(slot.pitch) ? 'Hear this sample' : 'Hear the synth fallback'"
-              @click="audition(slot.pitch)"
-            >▶</button>
           </div>
           <p v-if="!kitFileChoices.length" class="ip-empty">
             This instrument has no stored audio files.
@@ -186,7 +198,7 @@ import { useMixSettings } from '../composables/useMixSettings'
 import { drumCharacterForStyle } from '../soundfonts/drums'
 import { auditionPiece, auditionSynthPiece, disposeAudition } from '../soundfonts/audition'
 import type { PlayerPart } from '../composables/useMidiPlayer'
-import { DRUM_SLOTS, isAudioFile, type CustomInstrument } from '../soundfonts/customInstruments'
+import { DRUM_SLOTS, KIT_ROOT, isAudioFile, type CustomInstrument } from '../soundfonts/customInstruments'
 import { TONE_PRESETS, TONE_PRESET_IDS, type TonePresetId } from '../soundfonts/partTone'
 
 const {
@@ -287,25 +299,47 @@ watch(editKitId, async (id) => {
   kitFileChoices.value = id ? await storedFileNames(id) : []
 })
 
-function slotFile(pitch: number): string {
-  const layers = editKit.value?.kit?.[pitch]?.layers
-  const first = layers?.[0] && Object.values(layers[0].urls)[0]
-  return Array.isArray(first) ? first[0] : (first ?? '')
+/** Every file currently assigned to a piece, across all its velocity layers and
+ *  round-robins — `setKitSlot` re-derives the layer/RR grouping from this list's
+ *  filenames each time, so the UI only needs to track the flat set. */
+function slotFiles(pitch: number): string[] {
+  const layers = editKit.value?.kit?.[pitch]?.layers ?? []
+  const out: string[] = []
+  for (const layer of layers) {
+    const v = layer.urls[KIT_ROOT]
+    if (Array.isArray(v)) out.push(...v)
+    else if (v) out.push(v)
+  }
+  return out
 }
 
-async function onSlot(pitch: number, file: string) {
+// Files not already on this piece, so the "add" dropdown doesn't offer duplicates.
+function availableFilesFor(pitch: number): string[] {
+  const used = new Set(slotFiles(pitch))
+  return kitFileChoices.value.filter(f => !used.has(f))
+}
+
+async function addSlotFile(pitch: number, file: string) {
+  if (!editKitId.value || !file) return
+  await updateKitSlot(editKitId.value, pitch, [...slotFiles(pitch), file])
+}
+
+async function removeSlotFile(pitch: number, file: string) {
   if (!editKitId.value) return
-  await updateKitSlot(editKitId.value, pitch, file ? [file] : [])
+  await updateKitSlot(editKitId.value, pitch, slotFiles(pitch).filter(f => f !== file))
 }
 
 /** Play one kit piece so a mis-mapped file is caught here, not on playback: the
- *  user's sample if the slot is filled, else the synth fallback it would use. */
+ *  user's sample if the slot is filled, else the synth fallback it would use. Reuses
+ *  one throwaway sampler per piece across clicks (rebuilt only when its files change)
+ *  so repeated ▶ clicks actually cycle round-robins instead of always hearing the
+ *  first alternate. */
 async function audition(pitch: number) {
   if (!editKitId.value) return
-  if (slotFile(pitch)) {
+  if (slotFiles(pitch).length) {
     const kit = await materializeKit(editKitId.value)
     const manifest = kit?.[pitch]
-    if (manifest?.layers.length) await auditionPiece(manifest)
+    if (manifest?.layers.length) await auditionPiece(pitch, manifest)
   } else {
     await auditionSynthPiece(pitch, styleId.value || undefined)
   }
@@ -424,11 +458,27 @@ h3 { font-size: 0.85rem; margin: 0 0 0.4rem; color: var(--text); }
 }
 .ip-mini:hover { color: var(--text); }
 .ip-mini-spacer { width: 0; }
-.ip-slot { display: grid; grid-template-columns: 96px 1fr auto; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; }
-.ip-slot-name { font-size: 0.78rem; }
+.ip-slot { padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
+.ip-slot:last-of-type { border-bottom: none; }
+.ip-slot-top { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.3rem; }
+.ip-slot-name { font-size: 0.78rem; font-weight: 600; }
+.ip-slot-files { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.35rem; }
+.ip-slot-empty { font-size: 0.75rem; color: var(--text-faint); font-style: italic; }
+.ip-chip {
+  display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.72rem;
+  background: var(--surface-muted); border: 1px solid var(--border); border-radius: 999px;
+  padding: 0.15rem 0.3rem 0.15rem 0.55rem; max-width: 100%;
+}
+.ip-chip-x {
+  background: none; border: none; color: var(--text-faint); cursor: pointer;
+  font-size: 0.65rem; line-height: 1; padding: 0.1rem 0.2rem;
+}
+.ip-chip-x:hover { color: #e66; }
+.ip-slot-add { width: 100%; font-size: 0.75rem; padding: 0.3rem 0.45rem; }
 .ip-audition {
   font-size: 0.7rem; line-height: 1; background: none; border: 1px solid var(--border);
   border-radius: 5px; color: var(--text-faint); cursor: pointer; padding: 0.3rem 0.45rem;
+  flex-shrink: 0;
 }
 .ip-audition:hover { color: var(--text); border-color: var(--accent); }
 .ip-add-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; }
