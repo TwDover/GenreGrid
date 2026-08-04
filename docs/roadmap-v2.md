@@ -221,10 +221,40 @@ MIDI demo" from "record." Most items here are **ear-gated** — validate with `/
 
 ### 6.3 Custom-instrument follow-ups
 From [`custom-instruments-design.md`](custom-instruments-design.md) §"Phased delivery" 4–5:
-SF2/SFZ import (T4), **web/OPFS storage** (unblocks custom instruments in the browser build),
+✅ **web/OPFS storage** (unblocks custom instruments in the browser build), SF2/SFZ import (T4),
 multi-file kit slots, chromatic-instrument mapping preview (mini keyboard), auto pitch-detection
-on import. **Effort:** S each except SF2 (M–L). Sequence: OPFS → multi-file slots → chromatic
+on import. **Effort:** S each except SF2 (M–L). Sequence: ✅ OPFS → multi-file slots → chromatic
 preview → SFZ → SF2 → pitch-detect.
+
+- **OPFS storage ✅ shipped 2026-08-03** — custom instruments were Electron-only (stored via IPC
+  under `userData/instruments/`); a browser build showed an empty library with no way to add one.
+  New [`opfsInstrumentStorage.ts`](../frontend/src/soundfonts/opfsInstrumentStorage.ts) implements
+  the **same four-method shape** the Electron IPC surface already exposes (`list`/`save`/`remove`/
+  `read`) against the Origin Private File System (`navigator.storage.getDirectory()`) — an
+  `index.json` of metadata-only `CustomInstrument` entries plus one subdirectory per instrument
+  holding its raw audio files, the same on-disk layout `electron/main.ts`'s handlers already use.
+  `useCustomInstruments.ts`'s `storageApi()` (the one seam every store function already goes
+  through) now falls back to it when `window.electronAPI` is absent:
+  `window.electronAPI?.instruments ?? opfsInstrumentStorage()` — every other line in the store,
+  and `InstrumentsPanel.vue`, needed **zero changes**, since both were already written against
+  this same abstract four-method contract rather than assuming Electron. `createWritable()` (not a
+  `FileSystemSyncAccessHandle`) works from the main thread, so this needs no Worker. Feature-
+  detected gracefully — an older browser without OPFS support degrades to the same "unavailable"
+  state the Electron-less browser build already had (message copy updated to say so, not just
+  "needs the desktop app"). Also fixed a stale doc comment (`env.d.ts`) claiming a `gginstr://`
+  custom protocol serves instrument audio — that was superseded by blob: object URLs before this
+  session (avoids the Linux Web Audio custom-scheme silence bug) and the protocol was never
+  actually registered.
+  **Tests:** `opfsInstrumentStorage.test.ts` (12 — a from-scratch in-memory mock of the OPFS
+  handle interfaces, since jsdom has no real OPFS and this is the first use of it in the codebase:
+  nested-path file creation, recursive read, list/save/read/remove round-trip, a metadata-only
+  resave preserving existing files — the exact shape `updateKitSlot` already relies on — instrument
+  isolation, and no-op edge cases for removing/reading an id that was never saved).
+  **Verification caveat:** unit-tested + typechecked against the real DOM `FileSystemDirectoryHandle`/
+  `FileSystemFileHandle` lib types (not hand-rolled interfaces), but **not exercised in a live
+  browser tab** — `/run-genregrid`'s real-shell harness is Electron-only, so it always resolves
+  `window.electronAPI.instruments` and can never reach this code path. A manual check in an actual
+  Chrome/Firefox/Safari browser build is the one verification step still outstanding.
 
 ### 6.4 Finish the 4 synth-only voices
 Clavinet, drawbar organ, accordion, nylon guitar — if a CC0/CC-BY multisample source turns up

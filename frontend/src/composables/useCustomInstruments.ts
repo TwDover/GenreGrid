@@ -13,22 +13,25 @@ import {
   buildManifest,
   buildKit,
   setKitSlot,
+  isAudioFile,
   type CustomInstrument,
   type DrumKitMap,
   type InstrumentAssignments,
 } from '../soundfonts/customInstruments'
 import type { LayeredSamplerManifest } from '../soundfonts/layeredSampler'
 import type { PlayerPart } from './useMidiPlayer'
+import { opfsInstrumentStorage } from '../soundfonts/opfsInstrumentStorage'
 
 // ── Custom-instrument library store ──────────────────────────────────────────
 // Owns the user's uploaded instruments (persisted by the Electron main process
-// under userData/instruments/) and the per-part assignments (persisted in
-// localStorage). At play time `materialize()` reads an instrument's audio bytes over
-// IPC and turns them into object URLs, so LayeredSampler loads them as blob: URLs —
-// the same audio path the app already uses, which sidesteps the custom-scheme Web
-// Audio silence bug seen on Linux Electron. See docs/custom-instruments-design.md.
-// Storage is Electron-only for now; a plain browser build shows an empty library
-// (OPFS support is a follow-up).
+// under userData/instruments/, or by OPFS in a browser build — roadmap 6.3) and
+// the per-part assignments (persisted in localStorage, either way). At play time
+// `materialize()` reads an instrument's audio bytes over whichever backend is
+// active and turns them into object URLs, so LayeredSampler loads them as blob:
+// URLs — the same audio path the app already uses, which sidesteps the
+// custom-scheme Web Audio silence bug seen on Linux Electron. Both backends
+// implement the same four-method shape (list/save/remove/read), so everything
+// below this point is storage-agnostic. See docs/custom-instruments-design.md.
 
 const ASSIGN_KEY = 'genregrid_instrument_assignments'
 
@@ -56,10 +59,12 @@ function persistAssignments() {
 }
 
 function storageApi() {
-  return typeof window !== 'undefined' ? window.electronAPI?.instruments : undefined
+  if (typeof window === 'undefined') return undefined
+  return window.electronAPI?.instruments ?? opfsInstrumentStorage()
 }
 
-/** True when a persistent instrument store is available (the Electron shell). */
+/** True when a persistent instrument store is available — the Electron shell,
+ *  or a browser new enough to support OPFS. */
 export function customInstrumentsSupported(): boolean {
   return !!storageApi()
 }
@@ -179,7 +184,7 @@ async function importInstrument(
   files: File[],
 ): Promise<{ instrument: CustomInstrument; unmatched: string[] } | null> {
   const api = storageApi()
-  if (!api) throw new Error('Custom instruments need the desktop app.')
+  if (!api) throw new Error('Custom instruments need either the desktop app or a browser with OPFS support.')
 
   const named = files.map(f => ({ file: f, path: relPath(f) }))
   const paths = named.map(n => n.path)
@@ -215,7 +220,7 @@ async function importInstrument(
   // them on disk to place later.
   const payload = await Promise.all(
     named
-      .filter(n => /\.(mp3|wav|ogg|flac|m4a|aac)$/i.test(n.path))
+      .filter(n => isAudioFile(n.path))
       .map(async n => ({ name: n.path, data: [...new Uint8Array(await n.file.arrayBuffer())] })),
   )
   await api.save(inst, payload)
@@ -242,7 +247,7 @@ async function storedFileNames(id: string): Promise<string[]> {
   const api = storageApi()
   if (!api) return []
   try {
-    return (await api.read(id)).map(f => f.name).filter(n => /\.(mp3|wav|ogg|flac|m4a|aac)$/i.test(n))
+    return (await api.read(id)).map(f => f.name).filter(isAudioFile)
   } catch {
     return []
   }
