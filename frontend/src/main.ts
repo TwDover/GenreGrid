@@ -25,7 +25,16 @@ import { getMasterCompressor, getMelodicBus, getDrumBus, getBassBus } from './so
 // small buffer because Tone still schedules events ahead via its lookAhead. Earlier this
 // was `0.3` (~170ms) to avoid underrun glitches on the heavy graph — if those crackles
 // reappear on weaker hardware, raise this back toward 0.1–0.3 (latency-for-stability).
-Tone.setContext(new Tone.Context(new AudioContext({ latencyHint: 'interactive' })))
+//
+// Pass latencyHint as an OPTION, not a pre-built `new AudioContext(...)` — Tone's Context
+// constructor only calls standardized-audio-context's own createAudioContext() (which it
+// uses internally to recognize its own gain nodes/params) when it creates the context
+// itself. A raw externally-constructed AudioContext skips that wrapping entirely, so
+// isAnyAudioParam()/isAnyAudioNode() checks on Tone's own internal nodes can fail —
+// "param must be an AudioParam" thrown from Tone's own initialize() the first time it
+// touches audio. This worked "by luck" in Electron's bundled Chromium but broke in a plain
+// browser build (found 2026-08-04 via a user report + the app's own error log).
+Tone.setContext(new Tone.Context({ latencyHint: 'interactive' }))
 
 // TEMP audio debug hook — probe the live graph from DevTools via window.__gg
 ;(window as unknown as { __gg: unknown }).__gg = {
