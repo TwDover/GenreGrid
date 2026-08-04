@@ -46,6 +46,36 @@ def read_note_starts(path) -> list[tuple[float, int]]:
     return notes
 
 
+def read_note_events(path) -> list["NoteEvent"]:
+    """Read a .mid file back into full NoteEvents (pitch/start/duration/velocity,
+    each note's own channel preserved) by pairing note-on/note-off per (channel,
+    pitch), FIFO — the same pairing a DAW does for overlapping same-pitch notes.
+
+    Unlike `read_note_starts`, this round-trips a stem's *entire* note content —
+    used where a caller needs to rewrite a part's notes (e.g. removing/re-adding
+    a region's expansion) rather than just read its harmony for reference.
+    """
+    mid = mido.MidiFile(str(path))
+    tpb = mid.ticks_per_beat or TICKS_PER_BEAT
+    events: list[NoteEvent] = []
+    for track in mid.tracks:
+        t = 0
+        open_notes: dict[tuple[int, int], list[tuple[int, int]]] = {}
+        for msg in track:
+            t += msg.time
+            if msg.type == "note_on" and msg.velocity > 0:
+                open_notes.setdefault((msg.channel, msg.note), []).append((t, msg.velocity))
+            elif msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0):
+                stack = open_notes.get((msg.channel, msg.note))
+                if stack:
+                    start, vel = stack.pop(0)
+                    events.append(NoteEvent(pitch=msg.note, start=start / tpb,
+                                            duration=(t - start) / tpb, velocity=vel,
+                                            channel=msg.channel))
+    events.sort(key=lambda e: (e.start, e.pitch))
+    return events
+
+
 @dataclass
 class ControlEvent:
     control: int    # CC number (e.g. 10=pan, 11=expression, 64=sustain)

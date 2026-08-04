@@ -274,6 +274,52 @@ class EditPartRequest(BaseModel):
     automation: PartAutomation | None = None
 
 
+class NoteRegionInfo(BaseModel):
+    """A recorded MIDI take (roadmap 9.1) tracked as an independent, draggable,
+    loopable region on a part's timeline — distinct from the section it was
+    recorded into (roadmap 9.2's "remaining scope"). `notes` are the take's exact
+    captured content, relative to the region's own start (beat 0 = region start);
+    the part's on-disk stem always holds the *expansion* of this content
+    (repeated `loop_count` times starting at `start_bar`), merged in alongside
+    any other (non-region) notes on the part."""
+    id: str
+    part: str
+    start_bar: int = Field(ge=0)
+    bars: int = Field(ge=1)
+    loop_count: int = Field(default=1, ge=1, le=32)
+    notes: list[EditedNote] = Field(max_length=2000)
+
+
+class SaveNoteRegionRequest(BaseModel):
+    """Register a just-recorded take as a region. Fired *after* the take's own
+    /edit-part save has already persisted its notes into the stem — this call
+    only adds bookkeeping metadata (and, if the new take overlaps an existing
+    region on the same part, replaces it)."""
+    generation_id: str
+    part: str
+    start_bar: int = Field(ge=0)
+    bars: int = Field(ge=1)
+    notes: list[EditedNote] = Field(max_length=2000)
+
+
+class MoveNoteRegionRequest(BaseModel):
+    generation_id: str
+    new_start_bar: int = Field(ge=0)
+
+
+class SetNoteRegionLoopRequest(BaseModel):
+    generation_id: str
+    loop_count: int = Field(ge=1, le=32)
+
+
+class NoteRegionMutationResponse(BaseModel):
+    """Returned by the region endpoints that rewrite a part's stem (move /
+    loop-change / delete) — the rewritten stem plus this generation's full,
+    current region list, so the frontend can refresh its timeline in one call."""
+    file: FileInfo
+    regions: list[NoteRegionInfo]
+
+
 class SongSectionResult(BaseModel):
     name: str
     section_type: str
@@ -300,3 +346,4 @@ class BuildSongResponse(BaseModel):
     progression: Optional[List[str]] = None  # resolved roman-numeral progression (shown + lockable in the UI)
     mixer: Optional[dict] = None  # per-part gain (1.0 = as generated), persisted in song_meta
     audio_clip: Optional[AudioClipInfo] = None  # recorded take (roadmap 9.4), if any
+    note_regions: List[NoteRegionInfo] = []  # movable/loopable MIDI regions (roadmap 9.2 follow-up), if any

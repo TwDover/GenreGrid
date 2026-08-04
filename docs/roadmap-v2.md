@@ -536,21 +536,17 @@ to prove feasibility + demand before committing. Ordered by feasibility × payof
   (fills the form, doesn't hide it) so a mediocre guess is still a good starting point.
 - **Done when:** common descriptions land on a sensible, editable Setup; the mapping is tested.
 
-### 8.4 Post-generation arrangement editing
+### 8.4 Post-generation arrangement editing  ✅ shipped via 9.2 (2026-08-01)
 - **Why:** [`ArrangementBuilder.vue`](../frontend/src/components/ArrangementBuilder.vue) designs
-  the section sequence *before* generation; after generating you can re-roll a section but not
-  **reorder / resize / insert / delete** sections on a timeline. That's the natural next edit
-  surface above the per-part piano roll (Phase 5.1).
-- **Approach:** a section-timeline view on the song result: drag to reorder, resize bar counts,
-  insert/duplicate/delete sections. The backend already regenerates single sections and rebuilds
-  the combined song (`rebuild_combined_from_parts`), persists `song_meta.json`, and snapshots
-  History — this is mostly a frontend timeline UI that drives those existing operations, plus a
-  backend "reorder/insert section" that reuses the section-build path.
-- **Entry:** `SongResult.vue`, `ArrangementBuilder.vue`, `routes_song.py` section ops.
-- **Effort:** M.  **Risk:** keeping voice-leading/motif continuity coherent across reorders
-  (seams re-thread `prev_voicing`/motif state) — reuse the song-builder's existing seam logic.
-- **Done when:** a generated song's sections can be reordered/resized/inserted with the song
-  rebuilt coherently, undoable via History.
+  the section sequence *before* generation; after generating you couldn't **reorder / resize /
+  insert / delete** sections on a timeline. That's the natural next edit surface above the
+  per-part piano roll (Phase 5.1).
+- **Closed out, not built separately:** 9.2's first slice (`feat/song-timeline-rearrange`, PR #140)
+  delivered exactly this — a section-timeline view on `SongResult.vue` with drag-to-reorder,
+  resize (drag handle, live bar-count preview), insert (`+ section` picker), duplicate (⧉), and
+  delete (✕), backed by `POST /rearrange-song-sections`, undoable via the existing History
+  snapshot path. See 9.2 above for the full write-up. This entry stays only as a pointer so the
+  overlap is visible — no further work needed at the section-block granularity described here.
 
 ### 8.5 Style sharing / community packs
 - **Why:** users can already create custom styles (`create_custom_style`, validated); there's no
@@ -663,12 +659,66 @@ Recorded/performed MIDI is **captured user data** (like an imported melody) — 
   locked); real-shell proof `scenarios/resize-section.mjs` — dragging Intro's handle +4 bars
   worth of pixels resized it 4→8 bars exactly (`total_bars` 57→61), with drag-reorder still
   working immediately after.
-- **Remaining scope beyond the first slice:** this is still section-block granularity (bars +
-  section identity), not a true **track × time clip canvas** — no per-part clips, no placing
-  *recorded* MIDI (9.1) as an independent movable/loopable region distinct from its section, no
-  split. Whether that fuller clip model is worth building beyond what the section timeline already
-  covers is an open call — the section timeline may cover most of the real workflow need.
-  **Effort (full clip model):** L.
+- **Movable/loopable MIDI regions ✅ shipped 2026-08-03** — the fuller track × time model beyond
+  section-block granularity: a recorded take (9.1) is now tracked as an independent, draggable,
+  loopable **region** on a new per-part timeline strip, distinct from the section it was recorded
+  into (8.4's separate "post-gen arrangement editing" item was superseded by this — closed out
+  above). A region's `notes` are the take's **exact captured content**, snapshotted relative to
+  the region's own start; the part's on-disk stem always holds the *expansion* of that content
+  (`loop_count` copies starting at `start_bar`), merged in alongside anything else on the part —
+  chosen over simpler time-window inference for robustness against notes drifting near a boundary.
+  **Backend:** four new endpoints (`POST /save-note-region`, `POST /move-note-region/{id}`,
+  `POST /set-note-region-loop/{id}`, `DELETE /note-region/{gen_id}/{id}`), a new pure
+  `note_regions.py` (`expand_region`/`region_window`/`remove_expansion`), a new production
+  `read_note_events` (`midi_writer.py` — no prior function read a stem back into full
+  pitch/start/duration/velocity, only a test helper existed), and `_write_part_stem_and_rebuild`
+  extracted from `edit_part`'s body so all four endpoints reuse the exact same CC/rebuild treatment
+  as a hand edit. **Two real correctness gaps found and fixed while building this, not just new
+  metadata:** (1) the shared rewrite path regenerates CC from scratch, so naively reusing it would
+  have silently erased any hand-drawn 9.3 automation curve the first time a region moved — fixed
+  with a new `read_part_automation` (`mixdown.py`, the literal inverse of `_apply_automation_cc`)
+  that reads a stem's *current* CC7/CC10 before rewriting it; (2) removing a region's old note
+  expansion by exact content match, done naively across a whole part, could delete an unrelated
+  note elsewhere that happens to be byte-identical (plausible for drums' small pitch/duration/
+  velocity alphabet) — fixed by bounding every removal to the region's own absolute window, never
+  touching anything outside it. Re-recording over an existing region's span **auto-replaces** it
+  (mirrors 9.4's audio-clip "re-record replaces" precedent). Regenerating/rearranging a part or
+  section prunes any now-stale region on the rewritten part(s) (belt-and-suspenders — a
+  region-bearing part already auto-locks via the existing edit/lock pipeline, which already blocks
+  this). Song-mode only; a region is created only by finishing a recording take, never retroactively
+  promoted from existing notes. **Frontend:** `PianoRollEditor.vue` emits `region-captured`
+  (relative-seconds payload) on `stopRecord()`, captured *after* quantization but before the take
+  buffer clears; `PartCard.vue` holds it as a pending take and registers it via `saveNoteRegion`
+  only *after* the take's own `/edit-part` save succeeds (never at record-stop, so an undone/
+  discarded take never creates a ghost region) — a failure here degrades safely (the note edit
+  stays saved, just region-less). A new **`NoteRegionTrack.vue`** renders one part's region row on
+  `SongResult.vue` (percent-based positioning, since a region can start at an arbitrary offset
+  unlike the section timeline's flex-basis blocks) — drag-to-move mirrors the section timeline's
+  own resize-handle interaction (local pixel-preview state, one commit on mouseup), plus a
+  loop-count stepper and delete. New pure `utils/noteRegionLayout.ts`
+  (`barToPercent`/`regionRect`/`pxDeltaToBars`/`clampNewStartBar`/`regionsOverlap`). **Known v1
+  limitations, called out rather than hidden:** hand-editing a note inside a region's span via the
+  ordinary piano roll "detaches" it (a later move/loop-change leaves it behind as an orphan rather
+  than moving it — re-recording is the clean fix); loop repeats are always uniform copies of the
+  canonical recorded content, so a hand-edit to one repeat only is overwritten back to the
+  canonical snapshot on the next move/loop-change. **Tests:** `test_note_regions.py` (pure
+  expansion/removal math, including the bounded-window fix), `test_song_features.py` "Note
+  regions" block (save/move/loop/delete round-trips, automation preservation across a move,
+  bounded-removal survives a content-identical note outside the window, overlap auto-replace,
+  400 on out-of-bounds, stale-region pruning on regen/rearrange — 9 tests; full 309-test backend
+  suite green), `noteRegionLayout.test.ts`, `NoteRegionTrack.test.ts` (drag-to-move pixel math +
+  clamping, loop stepper, delete, disabled state), `PianoRollEditor.test.ts` +2, `PartCard.test.ts`
+  +4 (registers-on-save, no-call-on-plain-edit, safe-degrade-on-failure, discards-on-close),
+  `SongResult.test.ts` +7 (row rendering, move/loop/delete wiring, client-side overlap-replace,
+  locked parts don't disable region controls) — full 428-test frontend suite green, `vue-tsc`/
+  `eslint` clean. **Real-shell proof:** `scenarios/note-region-move.mjs` — built a song, landed a
+  take via `/edit-part` (with a drawn volume/pan curve) + `/save-note-region`, confirmed the region
+  appears via `/songs` and the UI renders a draggable "take" block at the correct percent position
+  (a first pass showed the block/controls unreadably narrow for a 1-bar region on a 57-bar
+  timeline — fixed with a `min-width` floor), moved it via `/move-note-region`, and independently
+  verified via the raw `.mid` bytes that the old position is gone, the new position is present, an
+  unrelated baseline note survived untouched, and the drawn automation curve survived — then
+  confirmed playback still engages with no errors.
 
 ### 9.3 Automation lanes
 - Draw volume / pan / send / **synth-patch params** over time. Scoping this (2026-08-01) found
@@ -815,7 +865,8 @@ _Plugin / VST hosting is intentionally **not** on this roadmap — it needs a na
 **Sequencing:** ✅ 7.4 (metronome/count-in) → ✅ 9.1 (recording: loop-record + song-mode, shipped
 2026-08-01) → ✅ **9.2 first slice, including resize (reorder/insert/delete/duplicate/resize
 section timeline, all shipped 2026-08-01)** → ✅ **9.3 (volume + pan automation lanes, shipped
-2026-08-02)** → ✅ **9.4 (recorded audio clips, shipped 2026-08-02)** → 9.5 (MIDI-OUT)
+2026-08-02)** → ✅ **9.4 (recorded audio clips, shipped 2026-08-02)** → ✅ **9.2's fuller
+track × time model (movable/loopable MIDI regions, shipped 2026-08-03)** → 9.5 (MIDI-OUT)
 opportunistically, not yet started.
 
 ---
@@ -848,8 +899,9 @@ opportunistically, not yet started.
 9. **Phase 9 (DAW direction)** — ✅ **7.4 metronome → 9.1 MIDI recording** shipped (loop-record +
    song-mode section recording, 2026-08-01, on the unified `/edit-part` note model). ✅ **9.2 first
    slice, including resize** (section-timeline reorder/insert/delete/duplicate/resize, all shipped
-   2026-08-01) — whether the fuller track×time clip model is worth building beyond the section
-   timeline is still an open call. ✅ **9.3 automation lanes (volume + pan) shipped 2026-08-02**
+   2026-08-01), plus its **fuller track × time model shipped 2026-08-03** — a recorded take is now
+   an independent, draggable, loopable region on a new per-part timeline strip (8.4's separate
+   item was superseded by this). ✅ **9.3 automation lanes (volume + pan) shipped 2026-08-02**
    (Slice 1 — uniform per-part output insert — shipped 2026-08-01; CC7/CC10 baking + live/offline
    scheduling + the Velocity/Volume/Pan lane UI shipped 2026-08-02). ✅ **9.4 recorded audio clips
    shipped 2026-08-02** (section/loop-aligned, one clip per generation, no in-place editing —

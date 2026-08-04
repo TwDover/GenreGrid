@@ -8,7 +8,7 @@
  * version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
  * <https://www.gnu.org/licenses/> for details.
  */
-import type { StyleInfo, StyleConfig, GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, LibraryEntry, BatchGenerateRequest, BuildSongRequest, BuildSongResponse, RearrangeSectionDef, AudioClipInfo } from '../types/midi'
+import type { StyleInfo, StyleConfig, GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, LibraryEntry, BatchGenerateRequest, BuildSongRequest, BuildSongResponse, RearrangeSectionDef, AudioClipInfo, NoteRegionInfo, NoteRegionMutationResponse } from '../types/midi'
 
 const BASE_URL = (() => {
   if (typeof window !== 'undefined' && window.electronAPI?.apiPort) {
@@ -435,4 +435,64 @@ export async function deleteAudioClip(generationId: string): Promise<void> {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.detail ?? 'Deleting the recording failed')
   }
+}
+
+// ── Note regions (roadmap 9.2 follow-up) — movable/loopable recorded takes ──
+
+export async function saveNoteRegion(req: {
+  generation_id: string
+  part: string
+  start_bar: number
+  bars: number
+  notes: { pitch: number; start: number; duration: number; velocity: number }[]
+}): Promise<NoteRegionInfo> {
+  const res = await fetch(`${BASE_URL}/save-note-region`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Saving the recorded region failed')
+  }
+  return res.json()
+}
+
+export async function moveNoteRegion(regionId: string, req: {
+  generation_id: string; new_start_bar: number
+}): Promise<NoteRegionMutationResponse> {
+  const res = await fetch(`${BASE_URL}/move-note-region/${regionId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Moving the region failed')
+  }
+  return res.json()
+}
+
+export async function setNoteRegionLoop(regionId: string, req: {
+  generation_id: string; loop_count: number
+}): Promise<NoteRegionMutationResponse> {
+  const res = await fetch(`${BASE_URL}/set-note-region-loop/${regionId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Changing the loop count failed')
+  }
+  return res.json()
+}
+
+export async function deleteNoteRegion(generationId: string, regionId: string): Promise<NoteRegionMutationResponse> {
+  const res = await fetch(`${BASE_URL}/note-region/${generationId}/${regionId}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Deleting the region failed')
+  }
+  return res.json()
 }

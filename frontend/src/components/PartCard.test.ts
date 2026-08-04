@@ -32,11 +32,12 @@ vi.mock('../composables/useRenderQueue', () => ({
 }))
 vi.mock('../composables/useErrorLog', () => ({ logError: vi.fn() }))
 vi.mock('../composables/useStyleCatalog', () => ({ instrumentLabel: () => null }))
-vi.mock('../services/api', () => ({ downloadUrl: (u: string) => u, editPart: vi.fn() }))
+vi.mock('../services/api', () => ({ downloadUrl: (u: string) => u, editPart: vi.fn(), saveNoteRegion: vi.fn() }))
 
 import PartCard from './PartCard.vue'
 import type { FileInfo } from '../types/midi'
-import { editPart } from '../services/api'
+import { editPart, saveNoteRegion } from '../services/api'
+import { logError } from '../composables/useErrorLog'
 
 const file: FileInfo = { part: 'melody', filename: 'melody.mid', url: '/exports/abcd1234/melody.mid' }
 
@@ -148,5 +149,126 @@ describe('PartCard — automation round-trip through saveEdits (roadmap 9.3)', (
     expect(editPart).toHaveBeenCalledTimes(1)
     const payload = vi.mocked(editPart).mock.calls[0][0]
     expect(payload.automation).toEqual({ volume: [], pan: [] })   // midi has no automation field -> empty fallback
+  })
+})
+
+describe('PartCard — note-region save flow (roadmap 9.2 follow-up)', () => {
+  const saveBtn = (w: VueWrapper) => w.findAll('button').find(b => b.text() === 'Save edits')
+  // shallowMount's default auto-stubs have no `markSaved` (the real components
+  // expose it via defineExpose) — saveEdits() calls `rollRef.value?.markSaved()`
+  // unconditionally, which throws on the bare auto-stub and aborts the rest of
+  // saveEdits (including the region-save logic under test) before it runs.
+  // Provide minimal named stubs with a no-op markSaved so saveEdits() actually
+  // completes, same as it would against the real components.
+  const stubs = {
+    PianoRoll: { name: 'PianoRoll', template: '<div/>', methods: { markSaved() {} } },
+    PianoRollEditor: { name: 'PianoRollEditor', template: '<div/>', methods: { markSaved() {} } },
+  }
+  function mountEditable() {
+    return shallowMount(PartCard, { props: { file, editable: true }, global: { stubs } })
+  }
+
+  beforeEach(() => {
+    vi.mocked(editPart).mockClear()
+    vi.mocked(saveNoteRegion).mockClear()
+  })
+
+  it('registers a just-recorded take as a region once its notes are saved, converting seconds to beats via the real tempo map', async () => {
+    vi.mocked(editPart).mockResolvedValue({ part: 'melody', filename: 'melody.mid', url: file.url })
+    vi.mocked(saveNoteRegion).mockResolvedValue({
+      id: 'r1', part: 'melody', start_bar: 2, bars: 1, loop_count: 1,
+      notes: [{ pitch: 67, start: 1, duration: 1, velocity: 102 }],
+    })
+    const wrapper = mountEditable()
+    await flushPromises()
+    await editBtn(wrapper)!.trigger('click')
+
+    const editor = wrapper.findComponent({ name: 'PianoRollEditor' })
+    // No real tempo header parses in this test (mocked fetch returns garbage
+    // bytes), so PartCard falls back to secondsPerBeat = 0.5 (120bpm): 1s = 2 beats.
+    // Region: 4s..6s (beats 8..12); one note at relative time 0.5s, duration 0.5s
+    // (absolute 4.5s..5.0s = beats 9..10, i.e. 1..2 relative to the region's beat 8).
+    editor.vm.$emit('region-captured', {
+      startSec: 4, endSec: 6,
+      notes: [{ midi: 67, time: 0.5, duration: 0.5, velocity: 0.8, isPercussion: false }],
+    })
+    editor.vm.$emit('notes-changed', midi.notes, true)
+    await flushPromises()
+
+    await saveBtn(wrapper)!.trigger('click')
+    await flushPromises()
+
+    expect(editPart).toHaveBeenCalledTimes(1)   // the take's notes save through the ordinary path first
+    expect(saveNoteRegion).toHaveBeenCalledTimes(1)
+    const payload = vi.mocked(saveNoteRegion).mock.calls[0][0]
+    expect(payload.generation_id).toBe('abcd1234')
+    expect(payload.part).toBe('melody')
+    expect(payload.start_bar).toBe(2)
+    expect(payload.bars).toBe(1)
+    expect(payload.notes).toEqual([{ pitch: 67, start: 1, duration: 1, velocity: 102 }])
+    expect(wrapper.emitted('region-saved')?.[0]).toEqual(['melody', {
+      id: 'r1', part: 'melody', start_bar: 2, bars: 1, loop_count: 1,
+      notes: [{ pitch: 67, start: 1, duration: 1, velocity: 102 }],
+    }])
+  })
+
+  it('does not call saveNoteRegion for a plain edit with no pending recorded take', async () => {
+    vi.mocked(editPart).mockResolvedValue({ part: 'melody', filename: 'melody.mid', url: file.url })
+    const wrapper = mountEditable()
+    await flushPromises()
+    await editBtn(wrapper)!.trigger('click')
+
+    const editor = wrapper.findComponent({ name: 'PianoRollEditor' })
+    editor.vm.$emit('notes-changed', midi.notes, true)   // an ordinary hand edit, no recording involved
+    await flushPromises()
+
+    await saveBtn(wrapper)!.trigger('click')
+    await flushPromises()
+
+    expect(editPart).toHaveBeenCalledTimes(1)
+    expect(saveNoteRegion).not.toHaveBeenCalled()
+  })
+
+  it('keeps the note save even if registering the region fails (safe degrade, not a rollback)', async () => {
+    vi.mocked(editPart).mockResolvedValue({ part: 'melody', filename: 'melody.mid', url: file.url })
+    vi.mocked(saveNoteRegion).mockRejectedValue(new Error('network blip'))
+    const wrapper = mountEditable()
+    await flushPromises()
+    await editBtn(wrapper)!.trigger('click')
+
+    const editor = wrapper.findComponent({ name: 'PianoRollEditor' })
+    editor.vm.$emit('region-captured', { startSec: 0, endSec: 2, notes: [{ midi: 67, time: 0, duration: 0.5, velocity: 0.8, isPercussion: false }] })
+    editor.vm.$emit('notes-changed', midi.notes, true)
+    await flushPromises()
+
+    await saveBtn(wrapper)!.trigger('click')
+    await flushPromises()
+
+    expect(editPart).toHaveBeenCalledTimes(1)   // the note edit itself still succeeded
+    expect(vi.mocked(logError).mock.calls.some(c => c[0] === 'Save note region')).toBe(true)
+    expect(wrapper.emitted('region-saved')).toBeFalsy()
+  })
+
+  it('discards a pending take if the editor is closed without saving', async () => {
+    vi.mocked(editPart).mockResolvedValue({ part: 'melody', filename: 'melody.mid', url: file.url })
+    const wrapper = mountEditable()
+    await flushPromises()
+    await editBtn(wrapper)!.trigger('click')
+
+    let editor = wrapper.findComponent({ name: 'PianoRollEditor' })
+    editor.vm.$emit('region-captured', { startSec: 0, endSec: 2, notes: [{ midi: 67, time: 0, duration: 0.5, velocity: 0.8, isPercussion: false }] })
+    editor.vm.$emit('notes-changed', midi.notes, true)
+    editor.vm.$emit('close')   // discard the take instead of saving
+    await flushPromises()
+
+    // Reopen and save an unrelated plain edit — the earlier take must not leak through.
+    await editBtn(wrapper)!.trigger('click')
+    editor = wrapper.findComponent({ name: 'PianoRollEditor' })
+    editor.vm.$emit('notes-changed', midi.notes, true)
+    await flushPromises()
+    await saveBtn(wrapper)!.trigger('click')
+    await flushPromises()
+
+    expect(saveNoteRegion).not.toHaveBeenCalled()
   })
 })
