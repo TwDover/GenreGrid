@@ -1,0 +1,26 @@
+{
+  "layers": [
+    {
+      "maxVelocity": 1.0,
+      "urls": {
+        "B2": "main/B2.mp3",
+        "D3": "main/D3.mp3",
+        "Gb3": "main/Gb3.mp3",
+        "G3": "main/G3.mp3",
+        "A3": "main/A3.mp3",
+        "B3": "main/B3.mp3",
+        "C4": "main/C4.mp3",
+        "D4": "main/D4.mp3",
+        "E4": "main/E4.mp3",
+        "Gb4": "main/Gb4.mp3",
+        "G4": "main/G4.mp3",
+        "A4": "main/A4.mp3",
+        "B4": "main/B4.mp3",
+        "C5": "main/C5.mp3",
+        "D5": "main/D5.mp3",
+        "E5": "main/E5.mp3",
+        "G5": "main/G5.mp3"
+      }
+    }
+  ]
+}

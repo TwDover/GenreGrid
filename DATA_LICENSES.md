@@ -79,6 +79,9 @@ separately from the GPL-3.0 code. **Everything shipped has a confirmed license:*
 | **Fingered bass** (`bass/electric_bass_finger/`) | **Karoryfer Samples** — Growlybass (Squier Jazz Bass) | **CC0** | Also serves the `slap_bass_1` voice (no CC0 slap library exists). https://github.com/sfzinstruments/karoryfer.growlybass |
 | **Picked bass** (`bass/electric_bass_pick/`) | **Karoryfer Samples** — Pastabass (Squier Bass VI, flatwound/picked) | **CC0** | https://github.com/sfzinstruments/karoryfer.pastabass |
 | **Fretless bass** (`bass/fretless_bass/`) | **Karoryfer Samples** — Swagbass (dead flatwounds, neck pickup) | **CC0** | https://github.com/sfzinstruments/karoryfer.swagbass |
+| **Drawbar organ** (`melodic/drawbar_organ/`) | **FreePats** — Drawbar Organ Emulation (Roberto, from the setBfree software organ) | **CC0** | https://freepats.zenvoid.org/Organ/electric-organ.html |
+| **Accordion** (`melodic/accordion/`) | **FreePats** — Button Accordion HN (Jeff Stauffer; sound bank by michael02022) | **CC0** | https://freepats.zenvoid.org/Organ/accordion.html |
+| **Nylon guitar** (`melodic/acoustic_guitar_nylon/`) | **FreePats** — Spanish Classical Guitar (Roberto) | **CC0** | https://freepats.zenvoid.org/Guitar/acoustic-guitar.html |
 
 All sets except the piano are **velocity-layered**, built reproducibly by
 `scripts/build_velocity_samples.py` (which records each source URL and license in
@@ -88,10 +91,11 @@ Every other instrument is **synthesized** in the app (no shipped samples), so th
 nothing else to license. A **Samples / Synth toggle** in the transport bar switches
 between the sampled voices above and full synthesis.
 
-**Still synthesized for want of a redistributable source** (searched again 2026-07-23):
-clavinet, drawbar organ, accordion, and nylon guitar — no CC0/CC-BY multisample of any
-of them was found (VCSL's organs are pipe organs; the CC0 guitar libraries are all
-electric). `synth_bass_1` is synthesized *by choice*: it is a synth, so the app's own
+**Still synthesized for want of a redistributable source** (drawbar organ, accordion,
+and nylon guitar re-sourced 2026-08-04 from FreePats — see the table above and
+`docs/LICENSE_AUDIT.md` §7): clavinet — FreePats lists one as "in development"
+(unreleased); the only other clavinet SFZ found carries an unconfirmed license.
+`synth_bass_1` is synthesized *by choice*: it is a synth, so the app's own
 oscillator is more honest and more tweakable than a frozen sample of someone else's.
 
 > **Removed for licensing (2026-07-23).** The following sets were deleted because their

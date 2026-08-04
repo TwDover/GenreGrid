@@ -23,6 +23,8 @@ so this only needs to run for instruments you're upgrading.
 
 Requirements (dev-only; not part of the app):
     pip install numpy soundfile lameenc
+    A few sources ship as an archive (.tar.xz / .7z) rather than one URL per note;
+    those need the `7z` binary (p7zip) on PATH to extract.
 
 Usage (from repo root):
     python scripts/build_velocity_samples.py                 # all specs below
@@ -45,13 +47,18 @@ what Tone.Sampler needs to map a zone correctly.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
+import shutil
+import subprocess
 import sys
+import tarfile
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 import soundfile as sf
@@ -100,7 +107,11 @@ class Layer:
 class Spec:
     group: str                       # 'melodic' | 'bass' | 'piano'
     inst: str                        # sample dir name (matches the app's voice id)
-    base_url: str                    # source root; note paths are appended
+    # source root; note paths are appended. A few sources ship as a single archive
+    # rather than one URL per note — for those this is a zero-arg callable that
+    # downloads+extracts on first use (see fetch_archive) and returns a local
+    # `file://` root, resolved lazily in build() so `--list` stays offline/instant.
+    base_url: str | Callable[[], str]
     license: str                     # for the log + DATA_LICENSES.md
     layers: list[Layer] = field(default_factory=list)
     max_tail_s: float = MAX_TAIL_S   # per-instrument cap: pizz decays fast, pads ring
@@ -142,6 +153,9 @@ _CC0_VSCO = "VSCO 2 Community Edition (Versilian Studios) — CC0 / public domai
 _CC0_KARO = "Karoryfer Samples (D. Smolken) — CC0 / public domain"
 _CC0_DSMO = "D. Smolken — Otto Rubner double bass — CC0 / public domain"
 _CCBY_GS = "Greg Sullivan E-Pianos — CC BY 3.0 (attribution in DATA_LICENSES.md)"
+_CC0_FREEPATS_ORGAN = "FreePats project — Drawbar organ emulation (Roberto, from setBfree) — CC0"
+_CC0_FREEPATS_ACCORDION = "FreePats project — Button accordion HN (Jeff Stauffer; processed by michael02022) — CC0"
+_CC0_FREEPATS_GUITAR = "FreePats project — Spanish classical guitar (Roberto) — CC0"
 
 # Vibraphone: VCSL names middle C as C3, so its files sound an octave above their
 # label. At +12 the set lands on F3–E6, exactly the registry's vibraphone range.
@@ -287,13 +301,74 @@ SPECS: dict[str, Spec] = {
             }),
         ],
     ),
+
+    # ── Organ / accordion / guitar (FreePats, found 2026-08-04) ─────────────────
+    # These ship as one archive per instrument (not one URL per note), so base_url
+    # is a lazily-resolved callable: fetch_archive() only runs when build() reaches
+    # this spec, keeping --list offline. Every pitch below is the SFZ's own
+    # pitch_keycenter (not inferred from the filename), spot-verified against the
+    # audio by autocorrelation — see the 2026-08-04 LICENSE_AUDIT.md entry.
+    "drawbar_organ": Spec(
+        group="melodic", inst="drawbar_organ",
+        base_url=lambda: (fetch_archive(
+            "https://freepats.zenvoid.org/Organ/DrawbarOrganEmulation/"
+            "DrawbarOrganEmulation-SFZ-20190712.tar.xz",
+        ) / "DrawbarOrganEmulation-SFZ-20190712" / "samples").resolve().as_uri() + "/",
+        license=_CC0_FREEPATS_ORGAN, max_tail_s=5.0,
+        layers=[
+            # Single dynamic — an organ's timbre doesn't change with key velocity,
+            # only its drawbar registration (fixed per patch, not per-note).
+            Layer("main", 1.0, notes_map("{note}.wav", [
+                "C2", "E2", "G#2", "C3", "E3", "G#3", "C4", "E4", "G#4",
+                "C5", "E5", "G#5", "C6", "E6", "G#6", "C7",
+            ], shift=0)),
+        ],
+    ),
+    "accordion": Spec(
+        group="melodic", inst="accordion",
+        base_url=lambda: flatten_accordion(fetch_archive(
+            "https://github.com/freepats/button-accordion-HN/releases/download/"
+            "2024-03-29/ButtonAccordionHN-SFZ+WAV-20240329.7z",
+        )).resolve().as_uri() + "/",
+        license=_CC0_FREEPATS_ACCORDION, max_tail_s=3.0,
+        layers=[
+            # This library's filenames are one octave above sounding pitch (its
+            # own SFZ maps "C5.wav" to pitch_keycenter=60, i.e. real C4) — the
+            # same off-by-12 filename convention the module docstring warns
+            # about, here handled the normal way via shift rather than renaming.
+            Layer("main", 1.0, notes_map("{note}.wav", [
+                "B3", "D4", "F#4", "G4", "A4", "B4", "C5", "D5", "E5", "F#5",
+                "G5", "A5", "B5", "C6", "D6", "E6", "G6",
+            ], shift=-12)),
+        ],
+    ),
+    "acoustic_guitar_nylon": Spec(
+        group="melodic", inst="acoustic_guitar_nylon",
+        base_url=lambda: (fetch_archive(
+            "https://freepats.zenvoid.org/Guitar/SpanishClassicalGuitar/"
+            "SpanishClassicalGuitar-SFZ-20190618.7z",
+        ) / "SpanishClassicalGuitar-SFZ-20190618" / "samples").resolve().as_uri() + "/",
+        license=_CC0_FREEPATS_GUITAR, max_tail_s=4.5,
+        layers=[
+            # Natural plucked decay, one dynamic. G1–C6, 48 notes (not every
+            # semitone in every octave — exactly what the source ships; verified
+            # against the archive's actual file list, not assumed chromatic).
+            Layer("main", 1.0, notes_map("{note}.wav", [
+                "G1", "G#1", "A1", "A#1", "B1", "C2", "C#2", "D2", "D#2", "E2",
+                "F2", "G2", "A2", "B2", "C3", "D3", "E3", "F3", "F#3", "G3",
+                "G#3", "A3", "A#3", "B3", "C4", "C#4", "D4", "D#4", "E4", "F4",
+                "F#4", "G4", "A4", "A#4", "B4", "C5", "C#5", "D5", "D#5", "E5",
+                "F5", "F#5", "G5", "G#5", "A5", "A#5", "B5", "C6",
+            ], shift=0)),
+        ],
+    ),
 }
 
-# Still synth-only, for lack of a redistributable source (checked July 2026):
-#   clavinet, drawbar_organ, accordion, acoustic_guitar_nylon — no CC0/CC-BY
-#     multisample of a Clavinet, Hammond/drawbar organ, accordion or nylon-string
-#     guitar was found. VCSL's organs are pipe organs; the CC0 guitar libraries
-#     are all electric.
+# Still synth-only, for lack of a redistributable source (checked July 2026;
+# organ/accordion/guitar re-checked and sourced 2026-08-04, see above):
+#   clavinet — no CC0/CC-BY clavinet multisample found. FreePats lists one as
+#     "in development" (not yet released); the one clavinet SFZ found elsewhere
+#     (musical-artifacts.com) carries an unconfirmed/unknown license.
 #   synth_bass_1 — intentionally synthesized: it IS a synth, and the app's own
 #     oscillator is more honest (and tweakable) than a frozen sample of one.
 #   slap_bass_1 — aliased to electric_bass_finger in the frontend rather than
@@ -313,6 +388,53 @@ def fetch(url: str) -> Path:
     CACHE.mkdir(parents=True, exist_ok=True)
     urllib.request.urlretrieve(url, dest)
     return dest
+
+
+def fetch_archive(url: str) -> Path:
+    """Download a `.tar.xz` or `.7z` archive to the cache and extract it once
+    (skip if already extracted); return the extracted directory. Used by sources
+    that ship one archive per instrument rather than one URL per note — the
+    result still gets addressed through the normal `base_url`+`fetch()` path via
+    a `file://` URI, so the rest of the pipeline doesn't need to know the
+    difference."""
+    # A short hash, not the full quoted URL: fetch()'s own cache key embeds
+    # base_url verbatim, so a long extract-dir name here would double-encode
+    # into a filename past the filesystem's length limit.
+    key = hashlib.sha1(url.encode()).hexdigest()[:16]
+    archive_path = CACHE / f"{key}-{url.rsplit('/', 1)[-1]}"
+    extract_dir = CACHE / f"{key}-extracted"
+    if extract_dir.exists():
+        return extract_dir
+    CACHE.mkdir(parents=True, exist_ok=True)
+    if not archive_path.exists():
+        urllib.request.urlretrieve(url, archive_path)
+    extract_dir.mkdir(parents=True)
+    if url.endswith(".tar.xz"):
+        with tarfile.open(archive_path, "r:xz") as tf:
+            tf.extractall(extract_dir)
+    elif url.endswith(".7z"):
+        subprocess.run(["7z", "x", f"-o{extract_dir}", str(archive_path), "-y"],
+                        check=True, stdout=subprocess.DEVNULL)
+    else:
+        raise ValueError(f"fetch_archive: unsupported archive type: {url}")
+    return extract_dir
+
+
+def flatten_accordion(extracted: Path) -> Path:
+    """The accordion archive's WAV files are named "Button Accordion HN <note>.wav"
+    (with literal spaces, awkward in a file:// URL) inside a versioned subfolder.
+    Copy just the sustain samples (not the `rel/` release-trigger layer — this
+    engine has no release-trigger concept) into a flat `{note}.wav` layout
+    alongside it, matching every other spec's addressing."""
+    src_dir = next(extracted.glob("Button Accordion HN*"))
+    flat_dir = extracted / "flat"
+    if flat_dir.exists():
+        return flat_dir
+    flat_dir.mkdir()
+    for f in src_dir.glob("Button Accordion HN *.wav"):
+        note = f.stem.removeprefix("Button Accordion HN ")
+        shutil.copy(f, flat_dir / f"{note}.wav")
+    return flat_dir
 
 
 def load_trimmed(src: Path, max_tail_s: float) -> tuple[np.ndarray, int]:
@@ -348,6 +470,10 @@ def build(spec: Spec) -> None:
     out_dir = SAMPLES_DIR / spec.group / spec.inst
     print(f"\n=== {spec.inst} ({spec.group}) ===\n  source: {spec.license}")
 
+    # Archive-backed specs pass a zero-arg callable so downloading+extracting only
+    # happens for instruments actually being built, not at import time.
+    base_url = spec.base_url() if callable(spec.base_url) else spec.base_url
+
     # Pass 1 — decode everything, remembering which note each sample belongs to.
     # Gain is then computed PER NOTE rather than per file, so a soft layer stays
     # softer than a hard one: normalising each file on its own would flatten the
@@ -363,7 +489,7 @@ def build(spec: Spec) -> None:
             for i, r in enumerate(rels):
                 suffix = f"_rr{i + 1}" if len(rels) > 1 else ""
                 out_rel = f"{layer.name}/{note}{suffix}.mp3"
-                audio, sr = load_trimmed(fetch(spec.base_url + r), spec.max_tail_s)
+                audio, sr = load_trimmed(fetch(base_url + r), spec.max_tail_s)
                 decoded.append((note, out_rel, audio, sr, out_dir / out_rel))
                 out_rels.append(out_rel)
             urls[note] = out_rels if len(out_rels) > 1 else out_rels[0]

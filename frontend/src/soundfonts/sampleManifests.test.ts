@@ -55,6 +55,9 @@ const EXPECTED_SPAN: Record<string, [number, number]> = {
   'melodic/electric_piano_1': [27, 90],      // F1..E6
   'melodic/electric_piano_2': [31, 94],      // A1..Ab6
   'melodic/string_ensemble_1': [34, 88],     // C2..D6
+  'melodic/drawbar_organ': [36, 96],         // C2..C7
+  'melodic/accordion': [47, 79],             // B2..G5
+  'melodic/acoustic_guitar_nylon': [31, 84], // G1..C6
   'bass/acoustic_bass': [22, 59],            // C1..A3
   'bass/electric_bass_finger': [23, 65],     // Db1..Eb4
   'bass/electric_bass_pick': [23, 63],       // Db1..Db4
