@@ -283,9 +283,33 @@ slots → chromatic preview → SFZ → SF2 → pitch-detect.
   `window.electronAPI.instruments` and can never reach this code path. A manual check in an actual
   Chrome/Firefox/Safari browser build is the one verification step still outstanding.
 
-### 6.4 Finish the 4 synth-only voices
+### 6.4 Finish the 4 synth-only voices  🔶 3 of 4 shipped 2026-08-04
 Clavinet, drawbar organ, accordion, nylon guitar — if a CC0/CC-BY multisample source turns up
 (none found in the Phase 2 pass; [`LICENSE_AUDIT.md`](LICENSE_AUDIT.md) §6). Opportunistic.
+
+- **Drawbar organ, accordion, nylon guitar ✅ shipped 2026-08-04** — re-checked for new CC0
+  releases rather than retrying the same rejected sources, and found all three at the
+  [FreePats](https://freepats.zenvoid.org/) project (explicit CC0 1.0 dedications, read directly
+  off each page — no account or API needed). `scripts/build_velocity_samples.py` gained a
+  `fetch_archive()` step (these ship as one `.tar.xz`/`.7z` per instrument, not one URL per note;
+  needs the `7z` binary, dev-only); each source's own SFZ `pitch_keycenter` was used as ground
+  truth (not the filename) and spot-checked against the audio by autocorrelation, catching the
+  accordion set's octave-off filenames (`shift=-12`) the same way this project already handles
+  VCSL/VSCO. All three are single-dynamic (one velocity layer) — an organ's timbre doesn't change
+  with key velocity, and neither source recorded multiple dynamics. Wired into
+  `soundfonts/melodic.ts`'s `INSTRUMENT_VOLUME` (the same allowlist every other sampled voice
+  enrolls through) with a bespoke FX case each — Leslie-style tremolo for the organ, a light
+  chorus for the accordion's reed shimmer, plain room reverb for the guitar.
+  **Tests:** 3 new `EXPECTED_SPAN` entries in `sampleManifests.test.ts` (pitch-range + manifest
+  integrity, same guard every other shipped set gets).
+  **Verified:** live in the real Electron shell via `/run-genregrid` — all three load through the
+  real `getMelodicSamplerById` → FX chain → melodic bus path and register non-silent signal on the
+  master meter (-21 to -24 dB), zero console errors; each source MP3 also independently confirmed
+  non-silent via direct `decodeAudioData`. See `docs/LICENSE_AUDIT.md` §7 for the full sourcing
+  writeup.
+- **Clavinet still open** — FreePats lists one as "in development" (unreleased); the only other
+  clavinet SFZ found has an unconfirmed license. Next avenue: Freesound.org (free account,
+  manual CC0 curation — no API needed just to browse/download).
 
 ### 6.5 Mix polish: per-part tone + a master EQ  ✅ shipped 2026-08-03
 - **Why:** the mix has a limiter, per-style FX, sidechain, and loudness trims, but no user tone

@@ -1,0 +1,25 @@
+{
+  "layers": [
+    {
+      "maxVelocity": 1.0,
+      "urls": {
+        "C2": "main/C2.mp3",
+        "E2": "main/E2.mp3",
+        "Ab2": "main/Ab2.mp3",
+        "C3": "main/C3.mp3",
+        "E3": "main/E3.mp3",
+        "Ab3": "main/Ab3.mp3",
+        "C4": "main/C4.mp3",
+        "E4": "main/E4.mp3",
+        "Ab4": "main/Ab4.mp3",
+        "C5": "main/C5.mp3",
+        "E5": "main/E5.mp3",
+        "Ab5": "main/Ab5.mp3",
+        "C6": "main/C6.mp3",
+        "E6": "main/E6.mp3",
+        "Ab6": "main/Ab6.mp3",
+        "C7": "main/C7.mp3"
+      }
+    }
+  ]
+}

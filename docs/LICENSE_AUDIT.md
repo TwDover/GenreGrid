@@ -122,8 +122,50 @@ reading each repository's `LICENSE` file, not the GitHub badge alone.
 the voice we most wanted — is **CC BY-NC 4.0**. NonCommercial is incompatible with shipping
 here, so `electric_piano_1` uses the Pianet T instead.
 
-**Still synthesized, no clean source found:** clavinet, drawbar organ, accordion, nylon
-guitar. (`synth_bass_1` is synthesized deliberately — it is a synth.)
+**Still synthesized, no clean source found:** clavinet. (`synth_bass_1` is synthesized
+deliberately — it is a synth.)
+
+---
+
+## 7. Re-sourcing the remaining three voices (2026-08-04)
+
+Drawbar organ, accordion, and nylon guitar — all three still-synthesized voices from
+§6 that weren't a synth by choice — are re-sourced from the
+[FreePats](https://freepats.zenvoid.org/) project, found by checking for new CC0
+releases since the original 2026-07-23 pass rather than re-trying the same rejected
+sources. Each page's license statement was read directly (not just an aggregator
+badge), matching this audit's standard:
+
+| Voice | Source | License |
+|---|---|---|
+| `drawbar_organ` | FreePats — Drawbar Organ Emulation (Roberto, recorded from the setBfree software organ) | CC0 1.0 |
+| `accordion` | FreePats — Button Accordion HN (samples: Jeff Stauffer; sound bank: michael02022) | CC0 1.0 |
+| `acoustic_guitar_nylon` | FreePats — Spanish Classical Guitar (Roberto) | CC0 1.0 |
+
+Each source ships as a single archive (`.tar.xz` / `.7z`) rather than one URL per
+note, so `scripts/build_velocity_samples.py` gained a `fetch_archive()` step
+(download once, extract, address the extracted files through the same
+base-URL-plus-template machinery via a `file://` URI) — no change to the per-note
+fetch/normalise/encode pipeline itself.
+
+**Pitch verified two ways, not just trusted from the filename**, per this audit's own
+rule: each source SFZ's own `pitch_keycenter` opcode was read directly (not inferred
+from the filename), then spot-checked against the actual audio by autocorrelation
+pitch estimation. Two of three sources use the raw filename as the real pitch
+(`shift=0`); the accordion set's filenames are one octave above sounding pitch
+(its own SFZ maps `"C5.wav"` to `pitch_keycenter=60`, i.e. real C4) — the same
+octave-naming trap this audit already flags for VCSL/VSCO, applied here via `shift=-12`
+rather than by chance.
+
+**Not applicable to these three:** they're one-shot/sustained recordings with no
+per-note dynamics in the source (an organ's timbre doesn't change with key velocity,
+only its drawbar registration; the accordion and guitar sets are single-dynamic too),
+so each ships as one velocity layer rather than the multi-layer sets §6's voices got.
+
+**Clavinet remains unsourced.** FreePats lists one as "in development" (not yet
+released); the only other clavinet SFZ found (musical-artifacts.com) carries an
+unconfirmed/unknown license, so it fails this audit's bar the same way the University
+of Iowa MIS source did in §5.
 
 ---
 

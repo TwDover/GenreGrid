@@ -30,13 +30,15 @@ const MELODIC_SAMPLE_MAP: Record<string, string> = {
 // each one came from. Levels are hand-set because every set is peak-normalised per
 // note, so the source's own loudness is gone by the time it gets here.
 //
-// Still synthesized for want of a redistributable source: clavinet, drawbar_organ,
-// accordion, acoustic_guitar_nylon.
+// Still synthesized for want of a redistributable source: clavinet.
 const INSTRUMENT_VOLUME: Record<string, number> = {
   vibraphone: -6,          // VCSL CC0
   electric_piano_1: -8,    // Hohner Pianet T (CC-BY) standing in for a Rhodes
   electric_piano_2: -8,    // Wurlitzer EP200 (CC-BY) — the real thing for this voice
   string_ensemble_1: -12,  // VSCO 2 CE (CC0); sustained + stacked, so it needs the room
+  drawbar_organ: -9,       // FreePats (CC0) — a setBfree emulation, already fairly hot
+  accordion: -7,           // FreePats (CC0) — Button Accordion HN
+  acoustic_guitar_nylon: -6, // FreePats (CC0) — Spanish classical guitar
 }
 const DEFAULT_VOLUME = -6
 
@@ -82,6 +84,37 @@ async function buildFxChain(inst: string, out: Tone.ToneAudioNode): Promise<Tone
     case 'string_ensemble_1': {
       // A section is heard in a hall; the long tail is most of the sound.
       const reverb = new Tone.Reverb({ decay: 2.8, wet: 0.35 })
+      await reverb.generate()
+      reverb.connect(out)
+      return reverb
+    }
+
+    case 'drawbar_organ': {
+      // A Hammond's signature isn't the tone, it's the spinning Leslie cabinet —
+      // a fast tremolo/chorus does the job Tone has no rotary-speaker model for.
+      const reverb = new Tone.Reverb({ decay: 1.3, wet: 0.18 })
+      await reverb.generate()
+      reverb.connect(out)
+      const tremolo = new Tone.Tremolo({ frequency: 6, depth: 0.4, wet: 0.4 }).connect(reverb)
+      tremolo.start()
+      return tremolo
+    }
+
+    case 'accordion': {
+      // Real accordion reeds beat slightly against each other (musette tuning);
+      // a light chorus stands in for that without the sample needing dual reeds.
+      const reverb = new Tone.Reverb({ decay: 1.1, wet: 0.16 })
+      await reverb.generate()
+      reverb.connect(out)
+      const chorus = new Tone.Chorus({ frequency: 1.2, depth: 0.3, wet: 0.2 }).connect(reverb)
+      chorus.start()
+      return chorus
+    }
+
+    case 'acoustic_guitar_nylon': {
+      // A classical guitar wants room, not processing — nothing beyond a touch
+      // more space than the generic fallback for an intimate solo instrument.
+      const reverb = new Tone.Reverb({ decay: 1.6, wet: 0.22 })
       await reverb.generate()
       reverb.connect(out)
       return reverb
