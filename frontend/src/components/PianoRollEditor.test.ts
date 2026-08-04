@@ -503,6 +503,38 @@ describe('PianoRollEditor — MIDI recording', () => {
     wrapper.unmount()
   })
 
+  it('emits region-captured with notes relative to the region start on stop (roadmap 9.2 follow-up)', async () => {
+    const wrapper = mountEditor([melodic(60, 0.5)])
+    await clickFit(wrapper)
+    await recBtn(wrapper).trigger('click')
+    await flushPromises()
+    const region = player.toggle.mock.calls[0][4]   // the recording region passed to playback
+
+    recNoteCb!({ type: 'on', note: 67, velocity: 0.8 }); recNoteCb!({ type: 'off', note: 67, velocity: 0 })
+    await recBtn(wrapper).trigger('click')     // stop
+
+    const captured = wrapper.emitted('region-captured')
+    expect(captured).toHaveLength(1)
+    const payload = captured![0][0] as { startSec: number; endSec: number; notes: ParsedNote[] }
+    expect(payload.startSec).toBeCloseTo(region.start)
+    expect(payload.endSec).toBeCloseTo(region.end)
+    expect(payload.notes).toHaveLength(1)
+    expect(payload.notes[0].midi).toBe(67)
+    expect(payload.notes[0].velocity).toBeCloseTo(0.8)
+    expect(payload.notes[0].isPercussion).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('does not emit region-captured when nothing was played during the take', async () => {
+    const wrapper = mountEditor([melodic(60, 0.5)])
+    await clickFit(wrapper)
+    await recBtn(wrapper).trigger('click')
+    await flushPromises()
+    await recBtn(wrapper).trigger('click')     // stop with no notes captured
+    expect(wrapper.emitted('region-captured')).toBeFalsy()
+    wrapper.unmount()
+  })
+
   it('records drum pads as percussion hits into the part', async () => {
     const wrapper = mountEditor([{ midi: 36, time: 0, duration: 0.25, velocity: 0.9, isPercussion: true }])
     await clickFit(wrapper)

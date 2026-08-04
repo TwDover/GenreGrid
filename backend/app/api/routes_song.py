@@ -29,10 +29,13 @@ from app.models.schemas import (FileInfo, BuildSongRequest, BuildSongResponse,
                                 SetPartGainRequest, EditPartRequest, SongSectionDef,
                                 RollSongPartRequest, SongPartCandidate, KeepSongPartCandidateRequest,
                                 RebuildSongProgressionRequest, RearrangeSongSectionsRequest,
-                                AudioClipInfo)
+                                AudioClipInfo, PartAutomation,
+                                NoteRegionInfo, SaveNoteRegionRequest, MoveNoteRegionRequest,
+                                SetNoteRegionLoopRequest, NoteRegionMutationResponse)
 from app.services.style_loader import load_style
 from app.services.progression_import import parse_progression, ROMAN_TOKEN_RE
-from app.services.midi_writer import (NoteEvent, write_midi, rebuild_combined_from_parts, mido_key_signature)
+from app.services.midi_writer import (NoteEvent, write_midi, rebuild_combined_from_parts,
+                                      mido_key_signature, read_note_events)
 from app.core.config import EXPORTS_DIR
 from app.core.meter import parse_meter
 from app.core.arrangement import (
@@ -40,9 +43,10 @@ from app.core.arrangement import (
 )
 from app.services.mixdown import (
     _PART_CHANNELS, part_midi_meta,
-    _generate_part_cc, _generate_melody_expression_cc, _apply_automation_cc,
+    _generate_part_cc, _generate_melody_expression_cc, _apply_automation_cc, read_part_automation,
     _generate_808_pitch_bends, _drop_quiet, _scale_velocity, generate_build_sweeps, generate_section_crescendo,
 )
+from app.services.note_regions import expand_region, region_window, remove_expansion
 from app.api.routes_generate import _SAFE_PATH
 from app.services.generation import (
     _blend_styles,
@@ -342,8 +346,13 @@ def regenerate_song_part(req: RegenerateSongPartRequest):
 
     # An added part becomes a first-class member of the song so later
     # regenerations and undos treat it like any originally-built stem.
-    if is_new_part:
-        meta["parts"] = gen_parts
+    had_regions_for_part = any(r["part"] == req.part for r in meta.get("note_regions") or [])
+    if is_new_part or had_regions_for_part:
+        if is_new_part:
+            meta["parts"] = gen_parts
+        # This part's stem was just rewritten wholesale — any region on it
+        # points at notes that no longer exist.
+        _prune_stale_regions(meta, {req.part})
         meta_path.write_text(_json_module.dumps(meta))
 
     return FileInfo(part=req.part, filename=fname, url=f"/exports/{req.generation_id}/{fname}")
@@ -712,6 +721,65 @@ def set_part_gain(req: SetPartGainRequest):
                     url=f"/exports/{req.generation_id}/{req.part}.mid")
 
 
+def _write_part_stem_and_rebuild(output_dir, meta: dict, part: str,
+                                 events: list[NoteEvent], automation: PartAutomation | None) -> FileInfo:
+    """Write `events` as `part`'s stem (same tempo map, program, and CC treatment
+    as a hand edit) and rebuild song.mid from the on-disk stems.
+
+    Shared by /edit-part and the note-region endpoints (save/move/loop-change/
+    delete): the only difference between a hand edit and a region mutation is
+    how `events` and `automation` are built — a hand edit takes them straight
+    from the request, a region mutation builds them via expansion/removal math
+    (`app/services/note_regions.py`) plus a read-back of the part's own current
+    automation (`read_part_automation`) so a drawn curve survives.
+    """
+    bpm = meta.get("bpm", 120)
+    layout = _template_section_results(meta.get("template", "verse_chorus"), meta.get("key", "C"),
+                                       custom=meta.get("custom_template"))
+    tempo_map = _song_tempo_map(layout, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4")), intensity=meta.get("tempo_automation", 0.5))
+    total_bars = sum(s["bars"] for s in layout)
+
+    channel = 9 if part == "drums" else _PART_CHANNELS.get(part, 0)
+
+    # Same CC treatment as regenerate_song_part — pan/reverb per part, plus
+    # expression swells re-derived from the edited melody line. The style is loaded
+    # unconditionally: drums skip the CC pass but still need it for the GM program +
+    # track name below (part_midi_meta), so `style` must always be bound.
+    try:
+        style = load_style(meta["style_id"])
+    except (ValueError, KeyError):
+        style = None
+    part_cc = None
+    if part != "drums":
+        part_cc = _generate_part_cc(part, total_bars, channel, style=style)
+        if part == "melody":
+            part_cc = part_cc + _generate_melody_expression_cc(events, channel)
+        # An edited stem keeps its pre-chorus sweeps/crescendo too
+        for auto in (generate_build_sweeps(layout, [part]),
+                    generate_section_crescendo(layout, [part])):
+            part_cc = part_cc + auto.get(part, [])
+    # A hand-drawn volume/pan curve (roadmap 9.3) overlays on top of all of the above —
+    # including drums, which otherwise get no CC pass at all: every part now has its
+    # own output insert (Slice 1), so drums can carry automation too even though they
+    # skip the melodic pan/reverb/sweep treatment above. `[]` and `None` write
+    # identically (write_midi's cc_events check is falsy either way), so this stays
+    # byte-identical for drums when no automation is drawn.
+    part_cc = _apply_automation_cc(part_cc or [], automation, channel)
+
+    programs, track_names = part_midi_meta(style if style else {"id": meta.get("style_id", "")})
+    part_path = output_dir / f"{part}.mid"
+    write_midi(events, part_path, bpm=bpm, program=programs.get(part),
+               cc_events=part_cc, tempo_events=tempo_map,
+               track_name=track_names.get(part))
+
+    rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid", meter=parse_meter(meta.get("time_signature", "4/4")), tempo_events=tempo_map,
+                                markers=_section_markers(layout, meta.get("key", "C"), parse_meter(meta.get("time_signature", "4/4"))),
+                                key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")),
+                                track_names=track_names)
+    return FileInfo(part=part, filename=f"{part}.mid",
+                    url=f"/exports/{output_dir.name}/{part}.mid")
+
+
 @router.post("/edit-part", response_model=FileInfo)
 def edit_part(req: EditPartRequest):
     """Light note editing: replace a song stem's notes with a hand-edited list.
@@ -736,51 +804,9 @@ def edit_part(req: EditPartRequest):
     meta = _json_module.loads(meta_path.read_text())
     _snapshot_song(output_dir)   # version history: state before this mutation
 
-    bpm = meta.get("bpm", 120)
-    layout = _template_section_results(meta.get("template", "verse_chorus"), meta.get("key", "C"),
-                                       custom=meta.get("custom_template"))
-    tempo_map = _song_tempo_map(layout, bpm, ending_bars=1, meter=parse_meter(meta.get("time_signature", "4/4")), intensity=meta.get("tempo_automation", 0.5))
-    total_bars = sum(s["bars"] for s in layout)
-
     channel = 9 if req.part == "drums" else _PART_CHANNELS.get(req.part, 0)
     events = [NoteEvent(n.pitch, n.start, n.duration, n.velocity, channel) for n in req.notes]
-
-    # Same CC treatment as regenerate_song_part — pan/reverb per part, plus
-    # expression swells re-derived from the edited melody line. The style is loaded
-    # unconditionally: drums skip the CC pass but still need it for the GM program +
-    # track name below (part_midi_meta), so `style` must always be bound.
-    try:
-        style = load_style(meta["style_id"])
-    except (ValueError, KeyError):
-        style = None
-    part_cc = None
-    if req.part != "drums":
-        part_cc = _generate_part_cc(req.part, total_bars, channel, style=style)
-        if req.part == "melody":
-            part_cc = part_cc + _generate_melody_expression_cc(events, channel)
-        # An edited stem keeps its pre-chorus sweeps/crescendo too
-        for automation in (generate_build_sweeps(layout, [req.part]),
-                           generate_section_crescendo(layout, [req.part])):
-            part_cc = part_cc + automation.get(req.part, [])
-    # A hand-drawn volume/pan curve (roadmap 9.3) overlays on top of all of the above —
-    # including drums, which otherwise get no CC pass at all: every part now has its
-    # own output insert (Slice 1), so drums can carry automation too even though they
-    # skip the melodic pan/reverb/sweep treatment above. `[]` and `None` write
-    # identically (write_midi's cc_events check is falsy either way), so this stays
-    # byte-identical for drums when no automation is drawn.
-    part_cc = _apply_automation_cc(part_cc or [], req.automation, channel)
-
-    programs, track_names = part_midi_meta(style if style else {"id": meta.get("style_id", "")})
-    write_midi(events, part_path, bpm=bpm, program=programs.get(req.part),
-               cc_events=part_cc, tempo_events=tempo_map,
-               track_name=track_names.get(req.part))
-
-    rebuild_combined_from_parts(output_dir, bpm, combined_name="song.mid", meter=parse_meter(meta.get("time_signature", "4/4")), tempo_events=tempo_map,
-                                markers=_section_markers(layout, meta.get("key", "C"), parse_meter(meta.get("time_signature", "4/4"))),
-                                key_signature=mido_key_signature(meta.get("key", "C"), meta.get("scale", "minor")),
-                                track_names=track_names)
-    return FileInfo(part=req.part, filename=f"{req.part}.mid",
-                    url=f"/exports/{req.generation_id}/{req.part}.mid")
+    return _write_part_stem_and_rebuild(output_dir, meta, req.part, events, req.automation)
 
 
 # ── Recorded audio clip (roadmap 9.4) ────────────────────────────────────────
@@ -859,6 +885,228 @@ def delete_audio_clip(generation_id: str):
     return {"generation_id": generation_id, "deleted": True}
 
 
+# ── Movable/loopable MIDI regions (roadmap 9.2 follow-up) ───────────────────
+# A recorded take (roadmap 9.1) tracked as an independent region on a part's
+# timeline, distinct from the section it was recorded into. A region's own
+# `notes` are its exact captured content (relative to its start); the part's
+# on-disk stem always holds the *expansion* of that content — `loop_count`
+# copies starting at `start_bar` — merged in alongside anything else on the
+# part. Song mode only: loop mode's single continuous loop has no multi-bar
+# timeline for a region to meaningfully move along. Regions are created only
+# by finishing a recording take (not retroactively promoted from existing
+# notes) — see PianoRollEditor.vue/PartCard.vue on the frontend side.
+#
+# Known v1 limitation: hand-editing a note inside a region's span via the
+# ordinary piano roll "detaches" it from the region (move/loop-change won't
+# find an exact match and will leave it behind at the old position); loop
+# repeats are always uniform copies of the canonical recorded content, so a
+# hand-edit to one repeat only is overwritten back to that canonical snapshot
+# the next time the region moves or its loop count changes. Re-recording is
+# the clean fix for both.
+
+def _song_total_bars(meta: dict) -> int:
+    layout = _template_section_results(meta.get("template", "verse_chorus"), meta.get("key", "C"),
+                                       custom=meta.get("custom_template"))
+    return sum(s["bars"] for s in layout)
+
+
+def _region_channel(part: str) -> int:
+    return 9 if part == "drums" else _PART_CHANNELS.get(part, 0)
+
+
+def _region_note_events(notes: list[dict], channel: int) -> list[NoteEvent]:
+    return [NoteEvent(n["pitch"], n["start"], n["duration"], n["velocity"], channel) for n in notes]
+
+
+def _windows_overlap(a: tuple[float, float], b: tuple[float, float]) -> bool:
+    return a[0] < b[1] and b[0] < a[1]
+
+
+def _find_region(regions: list[dict], region_id: str) -> dict:
+    for r in regions:
+        if r["id"] == region_id:
+            return r
+    raise HTTPException(status_code=404, detail="Note region not found")
+
+
+def _remove_region_expansion(part_path, region: dict, channel: int) -> tuple[list[NoteEvent], PartAutomation]:
+    """Read a part's current notes + automation and strip out `region`'s
+    current expansion, bounded to its own window — the shared first step for
+    move/loop-change/delete."""
+    existing = read_note_events(part_path)
+    automation = read_part_automation(part_path)
+    window = region_window(region["start_bar"], region["bars"], region["loop_count"])
+    old_expansion = expand_region(_region_note_events(region["notes"], channel),
+                                  region["start_bar"], region["bars"], region["loop_count"])
+    remaining, _orphans = remove_expansion(existing, old_expansion, window)
+    return remaining, automation
+
+
+def _prune_stale_regions(meta: dict, parts_rewritten: set[str] | None) -> None:
+    """Drop note_regions for any part whose stem was just rewritten wholesale
+    (regen/rearrange) — those exact notes no longer exist, so a lingering
+    region entry would point at nothing. `parts_rewritten=None` clears every
+    region (a rearrange rebuilds the whole song's bar numbering, invalidating
+    every part's region positions at once)."""
+    regions = meta.get("note_regions")
+    if not regions:
+        return
+    meta["note_regions"] = [] if parts_rewritten is None else [
+        r for r in regions if r["part"] not in parts_rewritten]
+
+
+@router.post("/save-note-region", response_model=NoteRegionInfo)
+def save_note_region(req: SaveNoteRegionRequest):
+    """Register a just-recorded take as an independent region. Fires *after*
+    the take's own /edit-part save already persisted its notes — this call
+    only adds bookkeeping metadata, unless the new take's window overlaps an
+    existing region on the same part, in which case that region (and its
+    notes) is replaced first (mirrors the audio-clip "re-record replaces"
+    precedent)."""
+    if not _SAFE_PATH.match(req.generation_id):
+        raise HTTPException(status_code=400, detail="Invalid generation id")
+    if req.part not in _ALL_SONG_PARTS:
+        raise HTTPException(status_code=400, detail=f"Unknown part '{req.part}'")
+    output_dir = EXPORTS_DIR / req.generation_id
+    meta_path = output_dir / "song_meta.json"
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail="Song not found")
+    part_path = output_dir / f"{req.part}.mid"
+    if not part_path.exists():
+        raise HTTPException(status_code=404, detail=f"No {req.part} stem in this song")
+
+    meta = _json_module.loads(meta_path.read_text())
+    if req.start_bar + req.bars > _song_total_bars(meta):
+        raise HTTPException(status_code=400, detail="Region would extend past the end of the song")
+
+    _snapshot_song(output_dir)   # version history: state before this mutation
+
+    channel = _region_channel(req.part)
+    regions = list(meta.get("note_regions") or [])
+    new_window = region_window(req.start_bar, req.bars, 1)
+    overlap_ids = {r["id"] for r in regions if r["part"] == req.part and _windows_overlap(
+        region_window(r["start_bar"], r["bars"], r["loop_count"]), new_window)}
+
+    if overlap_ids:
+        existing = read_note_events(part_path)
+        automation = read_part_automation(part_path)
+        for r in [r for r in regions if r["id"] in overlap_ids]:
+            window = region_window(r["start_bar"], r["bars"], r["loop_count"])
+            old_expansion = expand_region(_region_note_events(r["notes"], channel),
+                                          r["start_bar"], r["bars"], r["loop_count"])
+            existing, _orphans = remove_expansion(existing, old_expansion, window)
+        _write_part_stem_and_rebuild(output_dir, meta, req.part, existing, automation)
+        regions = [r for r in regions if r["id"] not in overlap_ids]
+
+    region = NoteRegionInfo(id=uuid.uuid4().hex, part=req.part, start_bar=req.start_bar,
+                           bars=req.bars, loop_count=1, notes=req.notes)
+    regions.append(region.model_dump())
+    meta["note_regions"] = regions
+    meta_path.write_text(_json_module.dumps(meta))
+    return region
+
+
+@router.post("/move-note-region/{region_id}", response_model=NoteRegionMutationResponse)
+def move_note_region(region_id: str, req: MoveNoteRegionRequest):
+    """Drag a region to a new bar position: strip its current expansion out of
+    the part's stem and re-add it at the new position, preserving both any
+    other content on the part and any hand-drawn automation."""
+    if not _SAFE_PATH.match(req.generation_id):
+        raise HTTPException(status_code=400, detail="Invalid generation id")
+    output_dir = EXPORTS_DIR / req.generation_id
+    meta_path = output_dir / "song_meta.json"
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail="Song not found")
+    meta = _json_module.loads(meta_path.read_text())
+    regions = list(meta.get("note_regions") or [])
+    region = _find_region(regions, region_id)
+
+    if req.new_start_bar + region["bars"] * region["loop_count"] > _song_total_bars(meta):
+        raise HTTPException(status_code=400, detail="Region would extend past the end of the song")
+    part_path = output_dir / f"{region['part']}.mid"
+    if not part_path.exists():
+        raise HTTPException(status_code=404, detail=f"No {region['part']} stem in this song")
+
+    _snapshot_song(output_dir)   # version history: state before this mutation
+
+    channel = _region_channel(region["part"])
+    remaining, automation = _remove_region_expansion(part_path, region, channel)
+    new_expansion = expand_region(_region_note_events(region["notes"], channel),
+                                  req.new_start_bar, region["bars"], region["loop_count"])
+    file_info = _write_part_stem_and_rebuild(output_dir, meta, region["part"],
+                                             remaining + new_expansion, automation)
+
+    regions = [{**r, "start_bar": req.new_start_bar} if r["id"] == region_id else r for r in regions]
+    meta["note_regions"] = regions
+    meta_path.write_text(_json_module.dumps(meta))
+    return NoteRegionMutationResponse(file=file_info, regions=[NoteRegionInfo(**r) for r in regions])
+
+
+@router.post("/set-note-region-loop/{region_id}", response_model=NoteRegionMutationResponse)
+def set_note_region_loop(region_id: str, req: SetNoteRegionLoopRequest):
+    """Change how many times a region's content repeats."""
+    if not _SAFE_PATH.match(req.generation_id):
+        raise HTTPException(status_code=400, detail="Invalid generation id")
+    output_dir = EXPORTS_DIR / req.generation_id
+    meta_path = output_dir / "song_meta.json"
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail="Song not found")
+    meta = _json_module.loads(meta_path.read_text())
+    regions = list(meta.get("note_regions") or [])
+    region = _find_region(regions, region_id)
+
+    if region["start_bar"] + region["bars"] * req.loop_count > _song_total_bars(meta):
+        raise HTTPException(status_code=400, detail="Region would extend past the end of the song")
+    if len(region["notes"]) * req.loop_count > 2000:
+        raise HTTPException(status_code=400, detail="Looped region would have too many notes")
+    part_path = output_dir / f"{region['part']}.mid"
+    if not part_path.exists():
+        raise HTTPException(status_code=404, detail=f"No {region['part']} stem in this song")
+
+    _snapshot_song(output_dir)   # version history: state before this mutation
+
+    channel = _region_channel(region["part"])
+    remaining, automation = _remove_region_expansion(part_path, region, channel)
+    new_expansion = expand_region(_region_note_events(region["notes"], channel),
+                                  region["start_bar"], region["bars"], req.loop_count)
+    file_info = _write_part_stem_and_rebuild(output_dir, meta, region["part"],
+                                             remaining + new_expansion, automation)
+
+    regions = [{**r, "loop_count": req.loop_count} if r["id"] == region_id else r for r in regions]
+    meta["note_regions"] = regions
+    meta_path.write_text(_json_module.dumps(meta))
+    return NoteRegionMutationResponse(file=file_info, regions=[NoteRegionInfo(**r) for r in regions])
+
+
+@router.delete("/note-region/{generation_id}/{region_id}", response_model=NoteRegionMutationResponse)
+def delete_note_region(generation_id: str, region_id: str):
+    """Remove a region and its notes from the part."""
+    if not _SAFE_PATH.match(generation_id):
+        raise HTTPException(status_code=400, detail="Invalid generation id")
+    output_dir = EXPORTS_DIR / generation_id
+    meta_path = output_dir / "song_meta.json"
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail="Song not found")
+    meta = _json_module.loads(meta_path.read_text())
+    regions = list(meta.get("note_regions") or [])
+    region = _find_region(regions, region_id)
+
+    part_path = output_dir / f"{region['part']}.mid"
+    if not part_path.exists():
+        raise HTTPException(status_code=404, detail=f"No {region['part']} stem in this song")
+
+    _snapshot_song(output_dir)   # version history: state before this mutation
+
+    channel = _region_channel(region["part"])
+    remaining, automation = _remove_region_expansion(part_path, region, channel)
+    file_info = _write_part_stem_and_rebuild(output_dir, meta, region["part"], remaining, automation)
+
+    regions = [r for r in regions if r["id"] != region_id]
+    meta["note_regions"] = regions
+    meta_path.write_text(_json_module.dumps(meta))
+    return NoteRegionMutationResponse(file=file_info, regions=[NoteRegionInfo(**r) for r in regions])
+
+
 def _song_response_from_dir(d) -> BuildSongResponse | None:
     """Rehydrate a BuildSongResponse from a song export folder, or None if the
     folder isn't a complete song (missing meta/structure/stems)."""
@@ -888,6 +1136,7 @@ def _song_response_from_dir(d) -> BuildSongResponse | None:
         progression=meta.get("song_progression"),
         mixer=meta.get("mixer") or {},
         audio_clip=audio_clip,
+        note_regions=[NoteRegionInfo(**r) for r in meta.get("note_regions") or []],
     )
 
 
@@ -1211,6 +1460,10 @@ def regenerate_song_section(req: RegenerateSongSectionRequest):
         files = [f for f in files if f.part not in locked]
 
     meta["section_seeds"] = section_seeds
+    # Every unlocked part's stem was just rewritten wholesale — any region on
+    # one of them points at notes that no longer exist. Locked parts kept their
+    # exact pre-reroll bytes, so their regions (if any) are still valid.
+    _prune_stale_regions(meta, set(meta["parts"]) - set(locked))
     meta_path.write_text(_json_module.dumps(meta))
     (output_dir / "song_structure.json").write_text(_json_module.dumps(section_results, indent=2))
     return files
@@ -1312,6 +1565,11 @@ def rearrange_song_sections(req: RearrangeSongSectionsRequest):
     meta["custom_template"] = new_template
     meta["template"] = "custom"   # the named template no longer describes this layout
     meta["section_seeds"] = section_seeds
+    # A rearrange rebuilds every part across the whole song and renumbers every
+    # bar — nothing prior survives, so every region's position is invalidated
+    # (this is mostly belt-and-suspenders: a region-bearing part auto-locks on
+    # save, and rearrange is already blocked above while any part is locked).
+    _prune_stale_regions(meta, None)
     meta_path.write_text(_json_module.dumps(meta))
     (output_dir / "song_structure.json").write_text(_json_module.dumps(section_results, indent=2))
 
@@ -1321,4 +1579,5 @@ def rearrange_song_sections(req: RearrangeSongSectionsRequest):
         sections=[SongSectionResult(**s) for s in section_results],
         bpm=bpm, key=f"{meta.get('key', 'C')} {meta.get('scale', 'minor')}",
         progression=meta.get("song_progression") or meta.get("user_progression"),
+        note_regions=[],
     )

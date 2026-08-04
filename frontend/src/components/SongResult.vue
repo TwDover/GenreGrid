@@ -123,6 +123,24 @@
       </div>
       <div v-if="rearrangeBlocked" class="sr-error">Unlock {{ [...locked].join(', ') }} to edit the arrangement — a structural change can't preserve locked bar positions</div>
 
+      <!-- Note-region timeline strip (roadmap 9.2 follow-up) — a recorded MIDI
+           take (9.1) as an independent, draggable, loopable block per part,
+           distinct from the section blocks above (those reorder/resize whole
+           generative sections; a region is just repositioned within them). -->
+      <div v-if="regionRows.length" class="nr-tracks">
+        <NoteRegionTrack
+          v-for="row in regionRows"
+          :key="row.part"
+          :label="row.part.replace('_', ' ')"
+          :regions="row.regions"
+          :totalBars="result.total_bars"
+          :disabled="regionControlsDisabled"
+          @move="onRegionMove"
+          @set-loop="onRegionSetLoop"
+          @delete="onRegionDelete"
+        />
+      </div>
+
       <!-- Progression strip: roman numerals + concrete chords per bar, pinned
            across section re-rolls. Doubles as a theory-learning surface. -->
       <div v-if="progressionChips.length" class="sr-prog">
@@ -203,6 +221,7 @@
             @edited="onEdited"
             @undo="onUndo(file.part)"
             @gain="onGain"
+            @region-saved="onRegionSaved"
           />
           <CandidatePicker
             v-if="candidatePart === file.part && candidates.length"
@@ -253,9 +272,10 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onUnmounted } from 'vue'
-import type { BuildSongResponse, FileInfo, RearrangeSectionDef, AudioClipInfo } from '../types/midi'
+import type { BuildSongResponse, FileInfo, RearrangeSectionDef, AudioClipInfo, NoteRegionInfo } from '../types/midi'
 import { errorMessage } from '../utils/errors'
-import { downloadUrl, exportProjectUrl, regenerateSongPart, regenerateSongSection, rearrangeSongSections, undoSongPart, listSongVersions, restoreSongVersion, setPartGain, rollSongPartCandidates, keepSongPartCandidate, rebuildSongProgression, type SongVersion, type SongPartCandidate } from '../services/api'
+import { downloadUrl, exportProjectUrl, regenerateSongPart, regenerateSongSection, rearrangeSongSections, undoSongPart, listSongVersions, restoreSongVersion, setPartGain, rollSongPartCandidates, keepSongPartCandidate, rebuildSongProgression, moveNoteRegion, setNoteRegionLoop, deleteNoteRegion, type SongVersion, type SongPartCandidate } from '../services/api'
+import { regionsOverlap } from '../utils/noteRegionLayout'
 import { resolveProgression } from '../utils/chordResolver'
 import { FORMAT_EXT } from '../utils/audioEncoder'
 import { useExportFormat } from '../composables/useExportFormat'
@@ -269,6 +289,7 @@ import { useRenderQueue } from '../composables/useRenderQueue'
 import { useStyleCatalog } from '../composables/useStyleCatalog'
 import PartCard from './PartCard.vue'
 import AudioClipCard from './AudioClipCard.vue'
+import NoteRegionTrack from './NoteRegionTrack.vue'
 
 const props = defineProps<{ result: BuildSongResponse | null; label: string }>()
 const emit = defineEmits<{
@@ -372,6 +393,68 @@ watch(() => props.result?.generation_id, () => { localAudioClip.value = undefine
 const audioClip = computed(() => localAudioClip.value !== undefined ? localAudioClip.value : (props.result?.audio_clip ?? null))
 function onAudioClipSaved(clip: AudioClipInfo) { localAudioClip.value = clip }
 function onAudioClipDeleted() { localAudioClip.value = null }
+
+// Note regions (roadmap 9.2 follow-up — movable/loopable recorded takes):
+// same "prop is immutable" local-override pattern as the audio clip above.
+const localNoteRegions = ref<NoteRegionInfo[] | undefined>(undefined)   // undefined = defer to the prop
+watch(() => props.result?.generation_id, () => { localNoteRegions.value = undefined })
+const noteRegions = computed(() =>
+  localNoteRegions.value !== undefined ? localNoteRegions.value : (props.result?.note_regions ?? []))
+// One row per part that has ≥1 region, in the same order as the stem cards above.
+const regionRows = computed(() => bustedStems.value
+  .map(f => ({ part: f.part, regions: noteRegions.value.filter(r => r.part === f.part) }))
+  .filter(row => row.regions.length > 0))
+const regionControlsDisabled = computed(() =>
+  regenLoading.value !== null || rearrangeLoading.value || sectionRegenLoading.value !== null)
+
+// A just-recorded take lands here (PartCard's saveEdits already persisted its
+// notes via /edit-part before calling /save-note-region) — replace any region
+// on the same part that overlapped the new take's window (re-recording over
+// an existing region replaces it, mirroring the audio-clip precedent), same
+// overlap rule the backend used to decide this server-side.
+function onRegionSaved(part: string, region: NoteRegionInfo) {
+  const current = localNoteRegions.value ?? noteRegions.value
+  localNoteRegions.value = [...current.filter(r => !(r.part === part && regionsOverlap(r, region))), region]
+}
+
+async function onRegionMove(regionId: string, newStartBar: number) {
+  if (!props.result) return
+  const part = noteRegions.value.find(r => r.id === regionId)?.part
+  try {
+    const resp = await moveNoteRegion(regionId, { generation_id: props.result.generation_id, new_start_bar: newStartBar })
+    localNoteRegions.value = resp.regions
+    if (part) { const v = Date.now(); versions[part] = v; versions.song = v }
+  } catch (e) {
+    toast(errorMessage(e) ?? 'Moving the region failed', 'error')
+    logError('Move note region', e)
+  }
+}
+
+async function onRegionSetLoop(regionId: string, loopCount: number) {
+  if (!props.result) return
+  const part = noteRegions.value.find(r => r.id === regionId)?.part
+  try {
+    const resp = await setNoteRegionLoop(regionId, { generation_id: props.result.generation_id, loop_count: loopCount })
+    localNoteRegions.value = resp.regions
+    if (part) { const v = Date.now(); versions[part] = v; versions.song = v }
+  } catch (e) {
+    toast(errorMessage(e) ?? 'Changing the loop count failed', 'error')
+    logError('Set note region loop', e)
+  }
+}
+
+async function onRegionDelete(regionId: string) {
+  if (!props.result) return
+  const part = noteRegions.value.find(r => r.id === regionId)?.part
+  try {
+    const resp = await deleteNoteRegion(props.result.generation_id, regionId)
+    localNoteRegions.value = resp.regions
+    if (part) { const v = Date.now(); versions[part] = v; versions.song = v }
+  } catch (e) {
+    toast(errorMessage(e) ?? 'Deleting the region failed', 'error')
+    logError('Delete note region', e)
+  }
+}
 
 const stemFiles = computed(() => [
   ...(props.result?.files ?? []).filter(f => f.part !== 'song'),
@@ -1078,6 +1161,9 @@ async function exportSongWav() {
 .sr-tl-insert option { background: var(--sunken); color: var(--text); }
 .sr-tl-insert:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent); }
 .sr-tl-insert:disabled { opacity: 0.5; cursor: wait; }
+
+/* Note-region timeline strip (roadmap 9.2 follow-up) */
+.nr-tracks { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
 
 /* Progression strip */
 .sr-prog { display: flex; flex-direction: column; gap: 0.3rem; }

@@ -161,6 +161,7 @@ const emit = defineEmits<{
   (e: 'automation-changed', automation: PartAutomation, dirty: boolean): void
   (e: 'save'): void
   (e: 'close'): void
+  (e: 'region-captured', payload: { startSec: number; endSec: number; notes: ParsedNote[] }): void
 }>()
 
 const GUTTER_W = 54
@@ -1271,6 +1272,17 @@ function stopRecord(): void {
   // Quantize each captured note's start to the snap grid.
   for (const n of capturedRec) n.time = snapBeat(n.time / secPerBeat.value) * secPerBeat.value
   const captured = capturedRec.length
+  // Snapshot the take as an independent, movable/loopable region (roadmap 9.2
+  // follow-up) before the capture buffer/region window are cleared below —
+  // relative to the region's own start, in seconds (PartCard converts to beats
+  // on save, the same way it already converts ordinary note edits).
+  if (captured > 0 && recRegion) {
+    const region = recRegion
+    emit('region-captured', {
+      startSec: region.start, endSec: region.end,
+      notes: capturedRec.map(n => ({ ...n, time: n.time - region.start })),
+    })
+  }
   capturedRec = []
   recording.value = false
   recRegion = null

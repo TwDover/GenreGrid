@@ -124,8 +124,9 @@
       :sections="sections"
       @notes-changed="onNotesChanged"
       @automation-changed="onAutomationChanged"
+      @region-captured="onRegionCaptured"
       @save="saveEdits"
-      @close="showEditor = false"
+      @close="closeEditor"
     />
   </div>
 </template>
@@ -134,9 +135,9 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { Midi } from '@tonejs/midi'
 import type { Header } from '@tonejs/midi'
-import type { FileInfo } from '../types/midi'
+import type { FileInfo, NoteRegionInfo } from '../types/midi'
 import { errorMessage } from '../utils/errors'
-import { downloadUrl, editPart } from '../services/api'
+import { downloadUrl, editPart, saveNoteRegion } from '../services/api'
 import { useMidiPlayer, PLAYER_PARTS, type ParsedNote, type PlayerPart, type PartAutomation } from '../composables/useMidiPlayer'
 import { useDownloadPrompt } from '../composables/useDownloadPrompt'
 import { useExportFormat } from '../composables/useExportFormat'
@@ -173,6 +174,7 @@ const emit = defineEmits<{
   (e: 'undo'): void
   (e: 'gain', part: string, gain: number): void
   (e: 'edited', part: string): void
+  (e: 'region-saved', part: string, region: NoteRegionInfo): void
 }>()
 
 const saving = ref(false)
@@ -236,6 +238,12 @@ const editError = ref('')
 const secondsPerBeat = ref(0.5)
 let midiHeader: Header | null = null   // tempo map of the current file (seconds ↔ ticks)
 
+// A just-finished recording take (roadmap 9.2 follow-up: movable/loopable
+// regions), pending registration until the take's own note edit is actually
+// saved — see saveEdits(). Cleared once registered or once the editor closes
+// without saving (a discarded take should not leave a stale pending region).
+const pendingRegion = ref<{ startSec: number; endSec: number; notes: ParsedNote[] } | null>(null)
+
 function onNotesChanged(notes: ParsedNote[], dirty: boolean) {
   editedNotes.value = notes
   editDirty.value = dirty
@@ -246,6 +254,16 @@ function onAutomationChanged(automation: PartAutomation, dirty: boolean) {
   editedAutomation.value = automation
   editDirty.value = dirty
   if (dirty) editError.value = ''
+}
+
+function onRegionCaptured(payload: { startSec: number; endSec: number; notes: ParsedNote[] }) {
+  pendingRegion.value = payload
+}
+
+function closeEditor() {
+  showEditor.value = false
+  // A pending take that's closed without saving is discarded, not registered.
+  pendingRegion.value = null
 }
 
 async function saveEdits() {
@@ -297,6 +315,37 @@ async function saveEdits() {
     editorRef.value?.markSaved()
     emit('edited', props.file.part)   // hand-edited parts auto-lock so a section re-roll won't discard them
     await cacheTempFile(props.file.url)   // re-verify + refresh caches / drag temp file
+
+    // Register a just-recorded take as an independent, movable/loopable region
+    // (roadmap 9.2 follow-up) now that its notes actually landed in the stem —
+    // registering any earlier (e.g. right when recording stops) risks a region
+    // for content that's later discarded via Undo instead of saved. A failure
+    // here shouldn't roll back the note save that already succeeded: the part
+    // is correctly edited either way, just without the draggable region.
+    if (pendingRegion.value) {
+      const take = pendingRegion.value
+      pendingRegion.value = null
+      try {
+        const startBeat = Math.max(0, toBeats(take.startSec))
+        const endBeat = toBeats(take.endSec)
+        const region = await saveNoteRegion({
+          generation_id: genId, part: props.file.part,
+          start_bar: Math.floor(startBeat / 4), bars: Math.max(1, Math.ceil((endBeat - startBeat) / 4)),
+          notes: take.notes.map(n => {
+            const s = Math.max(0, toBeats(take.startSec + n.time) - startBeat)
+            const e = toBeats(take.startSec + n.time + n.duration) - startBeat
+            return {
+              pitch: Math.max(0, Math.min(127, Math.round(n.midi))),
+              start: +s.toFixed(4), duration: +Math.max(0.01, e - s).toFixed(4),
+              velocity: Math.max(1, Math.min(127, Math.round(n.velocity * 127))),
+            }
+          }),
+        })
+        emit('region-saved', props.file.part, region)
+      } catch (e) {
+        logError('Save note region', e)
+      }
+    }
   } catch (e) {
     // Keep the edits on screen; surface the failure via the button title.
     editError.value = errorMessage(e) ?? 'Save failed'

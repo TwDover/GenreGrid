@@ -599,6 +599,225 @@ def test_edit_part_drums_can_carry_volume_pan_automation():
     assert volume_cc == [(0.0, 102)]   # round(0.8 * 127)
 
 
+# ── Note regions (roadmap 9.2 follow-up) — movable/loopable recorded takes ──
+# A region is registered via /save-note-region *after* the take's own notes
+# already landed in the stem via /edit-part (mirrors the real frontend flow:
+# PianoRollEditor captures a take, PartCard.saveEdits() calls editPart() first,
+# then saveNoteRegion() once that succeeds). These tests simulate that by
+# calling edit_part with the pre-existing notes plus a small synthetic "take"
+# at a known absolute position, then registering that take as a region.
+
+def _add_region_via_edit_part(generation_id, part, start_bar, bars, notes_rel):
+    """Simulate a recorded take landing in the stem (edit_part) and then being
+    registered as a region (save_note_region) — the real two-call frontend
+    flow. Returns the created NoteRegionInfo.
+
+    Mirrors PartCard.saveEdits(), which always resends the part's *current*
+    automation on every save (`editedAutomation.value ?? midiData.value?.automation`)
+    so a plain note edit never silently wipes a previously-drawn curve — read it
+    back here too, otherwise this fixture would exercise a save flow the real
+    frontend never actually performs.
+    """
+    from app.models.schemas import EditPartRequest, EditedNote, SaveNoteRegionRequest
+    from app.services.mixdown import read_part_automation
+    from app.api.routes_song import edit_part, save_note_region
+
+    d = EXPORTS_DIR / generation_id
+    part_path = d / f"{part}.mid"
+    before = _read_stem_notes(part_path)
+    current_automation = read_part_automation(part_path)
+    start_beat = start_bar * 4
+    abs_notes = [EditedNote(pitch=p, start=start_beat + s, duration=du, velocity=v)
+                for p, s, du, v in notes_rel]
+    all_notes = [EditedNote(pitch=p, start=s, duration=du, velocity=v) for p, s, du, v in before] + abs_notes
+    edit_part(EditPartRequest(generation_id=generation_id, part=part, notes=all_notes,
+                              automation=current_automation))
+
+    rel = [EditedNote(pitch=p, start=s, duration=du, velocity=v) for p, s, du, v in notes_rel]
+    return save_note_region(SaveNoteRegionRequest(
+        generation_id=generation_id, part=part, start_bar=start_bar, bars=bars, notes=rel))
+
+
+def test_save_note_region_registers_metadata_and_appears_in_song_response():
+    from app.api.routes_song import _song_response_from_dir
+
+    r = _song(seed=201)
+    d = EXPORTS_DIR / r.generation_id
+    region = _add_region_via_edit_part(r.generation_id, "melody", start_bar=2, bars=1,
+                                       notes_rel=[(67, 0.0, 1.0, 100), (69, 1.0, 1.0, 100)])
+
+    assert region.part == "melody" and region.start_bar == 2 and region.bars == 1
+    assert region.loop_count == 1 and len(region.notes) == 2
+
+    resp = _song_response_from_dir(d)
+    assert len(resp.note_regions) == 1
+    assert resp.note_regions[0].id == region.id
+
+
+def test_move_note_region_shifts_its_notes_and_leaves_the_rest_alone():
+    from app.models.schemas import MoveNoteRegionRequest
+    from app.api.routes_song import move_note_region
+
+    r = _song(seed=202)
+    d = EXPORTS_DIR / r.generation_id
+    region = _add_region_via_edit_part(r.generation_id, "melody", start_bar=2, bars=1,
+                                       notes_rel=[(67, 0.0, 1.0, 100), (69, 1.0, 1.0, 100)])
+    # Snapshot the *post-round-trip* note set (write_midi quantizes durations to
+    # the nearest tick, so comparing against pre-round-trip values would flag
+    # sub-tick float drift as a false "note changed" — capture the baseline
+    # after the one round trip every note has already been through.
+    before = set(_read_stem_notes(d / "melody.mid"))
+    region_notes_old_pos = {(67, 8.0, 1.0, 100), (69, 9.0, 1.0, 100)}
+    assert region_notes_old_pos <= before
+
+    resp = move_note_region(region.id, MoveNoteRegionRequest(generation_id=r.generation_id, new_start_bar=5))
+    assert resp.file.part == "melody"
+    assert resp.regions[0].start_bar == 5
+
+    after = set(_read_stem_notes(d / "melody.mid"))
+    # Old absolute position (beats 8/9) is gone; new position (beats 20/21) is present.
+    assert region_notes_old_pos.isdisjoint(after)
+    assert (67, 20.0, 1.0, 100) in after and (69, 21.0, 1.0, 100) in after
+    # Everything else the song already had (i.e. not this region) is untouched, to
+    # within one-tick tolerance. Confirmed (via a throwaway script, not specific to
+    # this feature) that two plain /edit-part round trips with NO region math at
+    # all already drift a handful of notes by exactly one tick (~0.002 beat) —
+    # pre-existing note-pairing behavior of the write/read round trip on
+    # overlapping-duration notes, not something this feature introduces. A tight
+    # decimal-round comparison would flag that pre-existing drift as a false
+    # "note changed", so compare with an explicit beat tolerance instead.
+    def _approx_in(note, pool):
+        p, s, du, v = note
+        return any(p == p2 and v == v2 and abs(s - s2) < 0.01 and abs(du - du2) < 0.01
+                  for p2, s2, du2, v2 in pool)
+    untouched = before - region_notes_old_pos
+    assert all(_approx_in(n, after) for n in untouched)
+
+
+def test_move_note_region_preserves_drawn_automation():
+    """Regression guard for the automation-erasure gap found during planning:
+    moving/looping a region must not silently wipe a hand-drawn volume/pan
+    curve on that part, since the shared rewrite path regenerates CC from
+    scratch unless the caller explicitly reads back and re-applies it."""
+    from app.models.schemas import EditPartRequest, EditedNote, PartAutomation, AutomationPoint, MoveNoteRegionRequest
+    from app.api.routes_song import edit_part, move_note_region
+
+    r = _song(seed=203)
+    d = EXPORTS_DIR / r.generation_id
+    automation = PartAutomation(
+        volume=[AutomationPoint(beat=0.0, value=1.0), AutomationPoint(beat=4.0, value=0.5)],
+        pan=[AutomationPoint(beat=0.0, value=0.2), AutomationPoint(beat=8.0, value=0.9)],
+    )
+    before = _read_stem_notes(d / "melody.mid")
+    notes = [EditedNote(pitch=p, start=s, duration=du, velocity=v) for p, s, du, v in before]
+    edit_part(EditPartRequest(generation_id=r.generation_id, part="melody", notes=notes, automation=automation))
+
+    region = _add_region_via_edit_part(r.generation_id, "melody", start_bar=6, bars=1,
+                                       notes_rel=[(72, 0.0, 1.0, 100)])
+    move_note_region(region.id, MoveNoteRegionRequest(generation_id=r.generation_id, new_start_bar=10))
+
+    assert _read_stem_cc(d / "melody.mid", 7) == [(0.0, 127), (4.0, 64)]
+    assert _read_stem_cc(d / "melody.mid", 10) == [(0.0, 25), (8.0, 114)]   # round(0.2*127), round(0.9*127)
+
+
+def test_move_note_region_rejects_out_of_bounds():
+    import pytest
+    from fastapi import HTTPException
+    from app.models.schemas import MoveNoteRegionRequest
+    from app.api.routes_song import move_note_region
+
+    r = _song(seed=204)   # compact template: 41 total bars (incl. the 1-bar ending)
+    region = _add_region_via_edit_part(r.generation_id, "melody", start_bar=2, bars=1,
+                                       notes_rel=[(67, 0.0, 1.0, 100)])
+    with pytest.raises(HTTPException) as exc:
+        move_note_region(region.id, MoveNoteRegionRequest(generation_id=r.generation_id, new_start_bar=100))
+    assert exc.value.status_code == 400
+
+
+def test_set_note_region_loop_repeats_the_recorded_content():
+    from app.models.schemas import SetNoteRegionLoopRequest
+    from app.api.routes_song import set_note_region_loop
+
+    r = _song(seed=205)
+    d = EXPORTS_DIR / r.generation_id
+    region = _add_region_via_edit_part(r.generation_id, "melody", start_bar=2, bars=1,
+                                       notes_rel=[(67, 0.0, 1.0, 100)])
+
+    resp = set_note_region_loop(region.id, SetNoteRegionLoopRequest(generation_id=r.generation_id, loop_count=3))
+    assert resp.regions[0].loop_count == 3
+
+    after = set(_read_stem_notes(d / "melody.mid"))
+    # Repeats at start_bar 2, 3, 4 (bars=1 apart) → beats 8, 12, 16.
+    assert (67, 8.0, 1.0, 100) in after
+    assert (67, 12.0, 1.0, 100) in after
+    assert (67, 16.0, 1.0, 100) in after
+
+
+def test_delete_note_region_removes_notes_and_metadata():
+    from app.api.routes_song import delete_note_region, _song_response_from_dir
+
+    r = _song(seed=206)
+    d = EXPORTS_DIR / r.generation_id
+    region = _add_region_via_edit_part(r.generation_id, "melody", start_bar=2, bars=1,
+                                       notes_rel=[(67, 0.0, 1.0, 100), (69, 1.0, 1.0, 100)])
+
+    resp = delete_note_region(r.generation_id, region.id)
+    assert resp.regions == []
+
+    after = set(_read_stem_notes(d / "melody.mid"))
+    assert (67, 8.0, 1.0, 100) not in after and (69, 9.0, 1.0, 100) not in after
+    assert _song_response_from_dir(d).note_regions == []
+
+
+def test_save_note_region_overlap_replaces_existing_region():
+    from app.api.routes_song import _song_response_from_dir
+
+    r = _song(seed=207)
+    d = EXPORTS_DIR / r.generation_id
+    _add_region_via_edit_part(r.generation_id, "melody", start_bar=2, bars=2,
+                              notes_rel=[(67, 0.0, 1.0, 100)])
+    # A re-recorded take over an overlapping span (bars 3-4 overlaps bars 2-3).
+    second = _add_region_via_edit_part(r.generation_id, "melody", start_bar=3, bars=2,
+                                       notes_rel=[(70, 0.0, 1.0, 100)])
+
+    regions = _song_response_from_dir(d).note_regions
+    assert len(regions) == 1 and regions[0].id == second.id
+
+    after = set(_read_stem_notes(d / "melody.mid"))
+    assert (67, 8.0, 1.0, 100) not in after    # the replaced take's note is gone
+    assert (70, 12.0, 1.0, 100) in after       # the new take's note is present
+
+
+def test_regenerate_song_part_prunes_the_stale_region_on_that_part():
+    from app.models.schemas import RegenerateSongPartRequest
+    from app.api.routes_song import regenerate_song_part, _song_response_from_dir
+
+    r = _song(seed=208)
+    d = EXPORTS_DIR / r.generation_id
+    _add_region_via_edit_part(r.generation_id, "melody", start_bar=2, bars=1,
+                              notes_rel=[(67, 0.0, 1.0, 100)])
+    assert len(_song_response_from_dir(d).note_regions) == 1
+
+    regenerate_song_part(RegenerateSongPartRequest(generation_id=r.generation_id, part="melody"))
+    assert _song_response_from_dir(d).note_regions == []
+
+
+def test_rearrange_song_sections_prunes_all_regions():
+    from app.models.schemas import RearrangeSongSectionsRequest
+    from app.api.routes_song import rearrange_song_sections, _song_response_from_dir
+
+    r = _rearrange_song(seed=209)
+    d = EXPORTS_DIR / r.generation_id
+    _add_region_via_edit_part(r.generation_id, "melody", start_bar=1, bars=1,
+                              notes_rel=[(67, 0.0, 1.0, 100)])
+    assert len(_song_response_from_dir(d).note_regions) == 1
+
+    real = [s for s in r.sections if s.section_type != "ending"]
+    defs = [_def_from_result(s, i) for i, s in enumerate(reversed(real))]
+    rearrange_song_sections(RearrangeSongSectionsRequest(generation_id=r.generation_id, sections=defs))
+    assert _song_response_from_dir(d).note_regions == []
+
+
 def test_song_tempo_map_intensity():
     """The tempo-automation knob scales the chorus push, pre-chorus lean and
     ending ritardando: 0 = flat, 0.5 = the classic subtle default, 1 = double."""

@@ -14,6 +14,9 @@ import { shallowMount, flushPromises, type VueWrapper } from '@vue/test-utils'
 // SongResult.vue touches so it mounts headless (mirrors PartCard.test.ts).
 const rearrangeSongSections = vi.fn()
 const regenerateSongSection = vi.fn()
+const moveNoteRegion = vi.fn()
+const setNoteRegionLoop = vi.fn()
+const deleteNoteRegion = vi.fn()
 vi.mock('../services/api', () => ({
   downloadUrl: (u: string) => u,
   exportProjectUrl: (id: string) => `/exports/${id}.ggproj`,
@@ -27,6 +30,9 @@ vi.mock('../services/api', () => ({
   rollSongPartCandidates: vi.fn(),
   keepSongPartCandidate: vi.fn(),
   rebuildSongProgression: vi.fn(),
+  moveNoteRegion: (...a: unknown[]) => moveNoteRegion(...a),
+  setNoteRegionLoop: (...a: unknown[]) => setNoteRegionLoop(...a),
+  deleteNoteRegion: (...a: unknown[]) => deleteNoteRegion(...a),
 }))
 vi.mock('../composables/useMidiPlayer', () => ({
   useMidiPlayer: () => ({
@@ -69,9 +75,18 @@ const rearrangedResult: BuildSongResponse = {
   files: fakeResult.files,
 }
 
+const fakeRegion = {
+  id: 'r1', part: 'melody', start_bar: 2, bars: 1, loop_count: 1,
+  notes: [{ pitch: 67, start: 0, duration: 1, velocity: 100 }],
+}
+const resultWithRegion: BuildSongResponse = { ...fakeResult, note_regions: [fakeRegion] }
+
 beforeEach(() => {
   rearrangeSongSections.mockReset().mockResolvedValue(rearrangedResult)
   regenerateSongSection.mockReset().mockResolvedValue([])
+  moveNoteRegion.mockReset()
+  setNoteRegionLoop.mockReset()
+  deleteNoteRegion.mockReset()
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }))
 })
 
@@ -213,5 +228,87 @@ describe('SongResult — timeline rearrange (roadmap 9.2, slice A)', () => {
     await flushPromises()
 
     expect(rearrangeSongSections).not.toHaveBeenCalled()
+  })
+})
+
+describe('SongResult — note regions (roadmap 9.2 follow-up)', () => {
+  const mountWithRegion = () => shallowMount(SongResult, { props: { result: resultWithRegion, label: 'My Song' } })
+  const regionTrack = (w: VueWrapper) => w.findComponent({ name: 'NoteRegionTrack' })
+
+  it('renders a region row only for parts that have a region', async () => {
+    const wrapper = mountWithRegion()
+    await flushPromises()
+    const track = regionTrack(wrapper)
+    expect(track.exists()).toBe(true)
+    expect(track.props('regions')).toEqual([fakeRegion])
+    expect(track.props('totalBars')).toBe(resultWithRegion.total_bars)
+  })
+
+  it('renders no region row when the song has none', async () => {
+    const wrapper = mountResult()
+    await flushPromises()
+    expect(regionTrack(wrapper).exists()).toBe(false)
+  })
+
+  it('moves a region and refreshes the part/song cache-bust version', async () => {
+    moveNoteRegion.mockResolvedValue({
+      file: { part: 'melody', filename: 'melody.mid', url: '/exports/abcd1234/melody.mid' },
+      regions: [{ ...fakeRegion, start_bar: 5 }],
+    })
+    const wrapper = mountWithRegion()
+    await flushPromises()
+    await regionTrack(wrapper).vm.$emit('move', 'r1', 5)
+    await flushPromises()
+
+    expect(moveNoteRegion).toHaveBeenCalledWith('r1', { generation_id: 'abcd1234', new_start_bar: 5 })
+    expect(regionTrack(wrapper).props('regions')).toEqual([{ ...fakeRegion, start_bar: 5 }])
+  })
+
+  it('changes a region loop count', async () => {
+    setNoteRegionLoop.mockResolvedValue({
+      file: { part: 'melody', filename: 'melody.mid', url: '/exports/abcd1234/melody.mid' },
+      regions: [{ ...fakeRegion, loop_count: 3 }],
+    })
+    const wrapper = mountWithRegion()
+    await flushPromises()
+    await regionTrack(wrapper).vm.$emit('set-loop', 'r1', 3)
+    await flushPromises()
+
+    expect(setNoteRegionLoop).toHaveBeenCalledWith('r1', { generation_id: 'abcd1234', loop_count: 3 })
+    expect(regionTrack(wrapper).props('regions')).toEqual([{ ...fakeRegion, loop_count: 3 }])
+  })
+
+  it('deletes a region, removing its row', async () => {
+    deleteNoteRegion.mockResolvedValue({
+      file: { part: 'melody', filename: 'melody.mid', url: '/exports/abcd1234/melody.mid' },
+      regions: [],
+    })
+    const wrapper = mountWithRegion()
+    await flushPromises()
+    await regionTrack(wrapper).vm.$emit('delete', 'r1')
+    await flushPromises()
+
+    expect(deleteNoteRegion).toHaveBeenCalledWith('abcd1234', 'r1')
+    expect(regionTrack(wrapper).exists()).toBe(false)
+  })
+
+  it('replaces an overlapping region client-side when a part reports a newly-saved take', async () => {
+    const wrapper = mountWithRegion()
+    await flushPromises()
+    const partCard = wrapper.findComponent({ name: 'PartCard' })
+    const replacement = { id: 'r2', part: 'melody', start_bar: 2, bars: 2, loop_count: 1, notes: [] }
+    await partCard.vm.$emit('region-saved', 'melody', replacement)
+    await flushPromises()
+
+    // r1 (bars 2-3) overlaps r2 (bars 2-4) on the same part -> replaced, not stacked.
+    expect(regionTrack(wrapper).props('regions')).toEqual([replacement])
+  })
+
+  it('does not disable region controls just because a part is locked', async () => {
+    const wrapper = mountWithRegion()
+    const partCard = wrapper.findComponent({ name: 'PartCard' })
+    await partCard.vm.$emit('toggle-lock', 'melody')
+    await flushPromises()
+    expect(regionTrack(wrapper).props('disabled')).toBe(false)
   })
 })

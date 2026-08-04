@@ -12,8 +12,10 @@ balance, and the CC/pitch-bend expression generators applied to finished parts.
 Split out of routes_generate.py so mixing concerns live apart from the HTTP
 endpoints and arrangement planning (see app/core/arrangement.py).
 """
+import mido
+
 from app.services.midi_writer import NoteEvent, ControlEvent, PitchBendEvent
-from app.models.schemas import PartAutomation
+from app.models.schemas import PartAutomation, AutomationPoint
 
 
 # Fallback GM program per part, for user-authored custom styles that ship no
@@ -171,6 +173,37 @@ def _apply_automation_cc(cc: list[ControlEvent], automation: PartAutomation | No
         out = out + [ControlEvent(control=7, value=round(p.value * 127), start=p.beat, channel=channel)
                       for p in automation.volume]
     return out
+
+
+def read_part_automation(path) -> PartAutomation:
+    """The inverse of `_apply_automation_cc`: read a stem's *current* CC7/CC10
+    breakpoints back into a PartAutomation, so a rewrite that doesn't come from
+    /edit-part (e.g. a note-region move) can pass them straight through instead
+    of silently dropping a hand-drawn curve.
+
+    CC7 is unambiguous — `_generate_part_cc` never writes it, so any CC7 present
+    is a drawn volume curve. CC10 needs one bit of care: `_generate_part_cc`
+    always writes exactly one default pan point, so a *single* CC10 point is
+    just that default (decodes to no pan automation — the base generator
+    reproduces the identical point on rewrite); more than one means a drawn
+    pan curve.
+    """
+    mid = mido.MidiFile(str(path))
+    tpb = mid.ticks_per_beat
+    cc7: list[AutomationPoint] = []
+    cc10: list[AutomationPoint] = []
+    for track in mid.tracks:
+        t = 0
+        for msg in track:
+            t += msg.time
+            if msg.type != "control_change":
+                continue
+            beat = t / tpb
+            if msg.control == 7:
+                cc7.append(AutomationPoint(beat=beat, value=msg.value / 127))
+            elif msg.control == 10:
+                cc10.append(AutomationPoint(beat=beat, value=msg.value / 127))
+    return PartAutomation(volume=cc7, pan=cc10 if len(cc10) > 1 else [])
 
 
 def _generate_melody_expression_cc(events: list[NoteEvent], channel: int) -> list[ControlEvent]:

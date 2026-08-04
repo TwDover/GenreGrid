@@ -92,6 +92,31 @@ export interface AudioClipInfo {
   bars: number
 }
 
+/** A recorded MIDI take (roadmap 9.1) tracked as an independent, draggable,
+ * loopable region on a part's timeline (roadmap 9.2 follow-up) — distinct from
+ * the section it was recorded into. `notes` are the take's exact captured
+ * content, relative to the region's own start (beat 0 = region start); the
+ * part's stem always holds the *expansion* of that content (`loop_count`
+ * copies starting at `start_bar`), merged in alongside anything else on the
+ * part. Created only by finishing a recording take — see PianoRollEditor.vue/
+ * PartCard.vue. */
+export interface NoteRegionInfo {
+  id: string
+  part: string
+  start_bar: number
+  bars: number
+  loop_count: number
+  notes: { pitch: number; start: number; duration: number; velocity: number }[]
+}
+
+/** Returned by the region endpoints that rewrite a part's stem (move/
+ * loop-change/delete) — the rewritten stem plus the generation's full,
+ * current region list. */
+export interface NoteRegionMutationResponse {
+  file: FileInfo
+  regions: NoteRegionInfo[]
+}
+
 export interface GenerateSummary {
   key: string
   key_root: string
@@ -202,6 +227,7 @@ export interface BuildSongResponse {
   progression?: string[] | null   // resolved roman-numeral progression (shown + lockable)
   mixer?: Record<string, number> | null   // per-part gain, 1.0 = generated balance
   audio_clip?: AudioClipInfo | null   // recorded take (roadmap 9.4), if any
+  note_regions?: NoteRegionInfo[] | null   // movable/loopable MIDI regions (roadmap 9.2 follow-up), if any
 }
 
 export interface LibraryEntry {
