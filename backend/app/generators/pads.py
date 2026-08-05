@@ -96,19 +96,30 @@ def generate_pads(
         roman = progression[window % prog_len]
 
         chord = roman_to_chord(roman, key, scale, octave=5)
-        pcs = sorted({p % 12 for p in chord})
+        core_pcs = {p % 12 for p in chord}
+        pcs = sorted(core_pcs)
         if color_9th_prob > 0 and should_trigger(color_9th_prob):
-            pcs = sorted(set(pcs) | {(chord[0] + 14) % 12})
+            pcs = sorted(core_pcs | {(chord[0] + 14) % 12})
 
         # Place each chord tone at the register position nearest the previous
         # bar's voicing (nearest the register center on the first bar). Every
         # voice moves at most a tritone bar-to-bar, so the layer sits still
-        # while the harmony changes under it.
+        # while the harmony changes under it. Core (triad) tones are placed
+        # first and never displaced; the color 9th is placed last and, if its
+        # nearest register slot lands a half-step from a core tone already
+        # voiced (e.g. a minor triad's b3 sitting next to its own added 9th —
+        # shimmer reading as mud instead), it's nudged to another octave
+        # within the register or dropped if there's no room to spread.
         voiced: list[int] = []
-        for pc in pcs:
+        for pc in sorted(pcs, key=lambda pc: pc not in core_pcs):
             candidates = [p for p in range(reg_low, reg_high + 1) if p % 12 == pc]
             if not candidates:
                 continue
+            if pc not in core_pcs:
+                clean = [c for c in candidates if not any(abs(c - v) % 12 in (1, 11) for v in voiced)]
+                if not clean:
+                    continue  # tension has no room to spread — drop it
+                candidates = clean
             if prev_pitches:
                 pick = min(candidates, key=lambda p: min(abs(p - q) for q in prev_pitches))
             else:
