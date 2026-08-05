@@ -211,9 +211,36 @@
           <div class="field">
             <label>Build around my melody <span class="hint">becomes the song's hook, key auto-detected</span></label>
             <div class="melody-row">
-              <input ref="melodyInput" type="file" accept=".mid,.midi" class="melody-file" @change="onMelodyFile" />
+              <input ref="melodyInput" type="file" accept=".mid,.midi" class="melody-file" :disabled="hasHummedNotes" @change="onMelodyFile" />
               <button v-if="melodyFile" class="btn btn-icon melody-clear" @click="clearMelodyFile" title="Remove file">✕</button>
             </div>
+          </div>
+
+          <div class="field">
+            <label>…or hum/whistle it <span class="hint">records from your mic, then pitch-detects a hook from the take</span></label>
+            <div class="melody-row">
+              <template v-if="pitchDetect.isRecording.value">
+                <span class="hum-status">● Recording…</span>
+                <div class="hum-meter" title="Input level — if this never moves, the wrong device is likely selected">
+                  <div class="hum-meter-fill" :style="{ width: Math.round(humLevel * 100) + '%' }" />
+                </div>
+                <button class="btn btn-icon" @click="stopHumming" title="Stop and detect the melody">■ Stop</button>
+              </template>
+              <template v-else>
+                <select v-if="humDevices.length > 1" v-model="humDeviceId" class="hum-device-select" :disabled="!!melodyFile" title="Input device to record with">
+                  <option :value="undefined">Default mic</option>
+                  <option v-for="(d, i) in humDevices" :key="d.deviceId" :value="d.deviceId">{{ d.label || `Microphone ${i + 1}` }}</option>
+                </select>
+                <button class="btn btn-icon" :disabled="!!melodyFile || pitchDetect.processing.value" @click="startHumming" title="Record a melody by humming or whistling">
+                  <span v-if="pitchDetect.processing.value">Detecting…</span>
+                  <span v-else>● Rec</span>
+                </button>
+                <span v-if="hasHummedNotes" class="hum-captured">🎤 {{ pitchDetect.notes.value.length }} notes captured</span>
+                <button v-if="hasHummedNotes" class="btn btn-icon melody-clear" @click="clearHummedNotes" title="Discard the hummed take">✕</button>
+              </template>
+            </div>
+            <div v-if="pitchDetect.detectError.value" class="hum-error">{{ pitchDetect.detectError.value }}</div>
+            <div v-if="pitchDetect.recordError.value" class="hum-error">{{ pitchDetect.recordError.value }}</div>
           </div>
 
           <div class="field">
@@ -224,8 +251,8 @@
               v-model="form.progression_text"
               type="text"
               class="prog-input"
-              :disabled="!!melodyFile"
-              :placeholder="melodyFile ? 'derived from your melody' : 'e.g. Am F C G'"
+              :disabled="!!melodyFile || hasHummedNotes"
+              :placeholder="(melodyFile || hasHummedNotes) ? 'derived from your melody' : 'e.g. Am F C G'"
               title="Pins the song's harmony, bypassing the style's progression pool. Left blank, the style picks the progression."
             />
           </div>
@@ -247,6 +274,7 @@
         <span v-if="loading" class="sb-spinner">●</span>
         <span v-if="loading">Building song…</span>
         <span v-else-if="melodyFile">Build Song Around My Melody</span>
+        <span v-else-if="hasHummedNotes">Build Song Around My Hummed Melody</span>
         <span v-else-if="grooveFile">Build Song On My Groove</span>
         <span v-else>Build Full Song</span>
       </button>
@@ -256,11 +284,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import type { StyleInfo, BuildSongRequest, BuildSongResponse } from '../types/midi'
 import { errorMessage } from '../utils/errors'
-import { buildSong, buildSongFromMelody, buildSongFromGroove } from '../services/api'
+import { buildSong, buildSongFromMelody, buildSongFromGroove, buildSongFromNotes } from '../services/api'
 import { logError } from '../composables/useErrorLog'
+import { usePitchDetect } from '../composables/usePitchDetect'
 
 const props = defineProps<{ styles: StyleInfo[] }>()
 const emit = defineEmits<{
@@ -413,10 +442,39 @@ const melodyFile = ref<File | null>(null)
 
 function onMelodyFile(e: Event) {
   melodyFile.value = (e.target as HTMLInputElement).files?.[0] ?? null
+  if (melodyFile.value) clearHummedNotes()   // the two melody sources are mutually exclusive
 }
 function clearMelodyFile() {
   melodyFile.value = null
   if (melodyInput.value) melodyInput.value.value = ''
+}
+
+// ── Hum/whistle a melody (roadmap 8.2) ───────────────────────────────────────
+const pitchDetect = usePitchDetect()
+const humDevices = ref<MediaDeviceInfo[]>([])
+const humDeviceId = ref<string | undefined>(undefined)
+const humLevel = ref(0)
+const hasHummedNotes = computed(() => pitchDetect.notes.value.length > 0)
+let humLevelTimer: ReturnType<typeof setInterval> | null = null
+
+onMounted(async () => {
+  try { humDevices.value = await pitchDetect.listInputDevices() } catch { /* picker just stays empty */ }
+})
+
+async function startHumming() {
+  clearMelodyFile()   // the two melody sources are mutually exclusive
+  try {
+    await pitchDetect.start(humDeviceId.value)
+    humLevelTimer = setInterval(() => { humLevel.value = pitchDetect.getLevel() }, 100)
+  } catch { /* pitchDetect.recordError already carries the message */ }
+}
+async function stopHumming() {
+  if (humLevelTimer) { clearInterval(humLevelTimer); humLevelTimer = null }
+  humLevel.value = 0
+  await pitchDetect.stopAndDetect(form.value.bpm)
+}
+function clearHummedNotes() {
+  pitchDetect.reset()
 }
 
 // ── Groove import ────────────────────────────────────────────────────────────
@@ -451,6 +509,26 @@ async function generate() {
         tempo_automation: form.value.tempo_automation,
       })
       emit('built', result, `${templateLabel.value} (your melody)`)
+      return
+    }
+    if (hasHummedNotes.value) {
+      // Key/scale come from the hummed melody (detected server-side, same as
+      // an uploaded melody file) — the form's are ignored except bpm, which
+      // was already used client-side to quantize the take.
+      const result = await buildSongFromNotes(pitchDetect.notes.value, {
+        style_id: form.value.style_id,
+        template: form.value.template === 'custom' ? 'verse_chorus' : form.value.template,
+        parts: form.value.parts,
+        complexity: form.value.complexity,
+        variation: form.value.variation,
+        humanize: form.value.humanize,
+        use_priors: form.value.use_priors,
+        chorus_key_shift: form.value.chorus_key_shift,
+        final_chorus_lift: form.value.final_chorus_lift,
+        tempo_automation: form.value.tempo_automation,
+        bpm: form.value.bpm,
+      })
+      emit('built', result, `${templateLabel.value} (your hummed melody)`)
       return
     }
     if (grooveFile.value) {
@@ -583,6 +661,12 @@ async function generate() {
   color: var(--accent); padding: 0.3rem 0.6rem; cursor: pointer; margin-right: 0.5rem;
 }
 .melody-clear:hover { color: var(--bad); border-color: var(--bad); }
+.hum-status { color: var(--bad); font-size: var(--t-meta); font-style: italic; }
+.hum-device-select { max-width: 12rem; font-size: var(--t-meta); }
+.hum-meter { width: 80px; height: 8px; border-radius: 4px; background: var(--ground); overflow: hidden; flex-shrink: 0; }
+.hum-meter-fill { height: 100%; background: var(--accent); transition: width 0.1s linear; }
+.hum-captured { font-size: var(--t-meta); color: var(--ink-dim); }
+.hum-error { color: var(--bad); font-size: var(--t-meta); margin-top: var(--s2); }
 .prog-input { width: 100%; font-family: var(--f-mono); font-size: var(--t-meta); }
 .prog-input:disabled { opacity: 0.5; cursor: not-allowed; }
 .field label code { font-family: var(--f-mono); font-size: 0.92em; color: var(--accent); }

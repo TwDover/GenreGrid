@@ -8,7 +8,7 @@
  * version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
  * <https://www.gnu.org/licenses/> for details.
  */
-import type { StyleInfo, StyleConfig, GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, LibraryEntry, BatchGenerateRequest, BuildSongRequest, BuildSongResponse, RearrangeSectionDef, AudioClipInfo, NoteRegionInfo, NoteRegionMutationResponse } from '../types/midi'
+import type { StyleInfo, StyleConfig, GenerateRequest, RegeneratePartRequest, GenerateResponse, FileInfo, LibraryEntry, BatchGenerateRequest, BuildSongRequest, BuildSongResponse, RearrangeSectionDef, AudioClipInfo, NoteRegionInfo, NoteRegionMutationResponse, HummedNote } from '../types/midi'
 
 const BASE_URL = (() => {
   if (typeof window !== 'undefined' && window.electronAPI?.apiPort) {
@@ -181,6 +181,27 @@ export async function buildSongFromMelody(
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.detail ?? 'Melody import failed')
+  }
+  return res.json()
+}
+
+export async function buildSongFromNotes(
+  notes: HummedNote[],
+  params: {
+    style_id: string; template: string; parts: string[]
+    complexity: number; variation: number; humanize: number
+    use_priors?: boolean; chorus_key_shift?: number; final_chorus_lift?: number
+    tempo_automation?: number; bpm?: number; seed?: number
+  },
+): Promise<BuildSongResponse> {
+  const res = await fetch(`${BASE_URL}/build-song-from-notes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ notes, ...params }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? 'Building from your hummed melody failed')
   }
   return res.json()
 }
