@@ -631,11 +631,14 @@ def generate_melody(
     # Replace long notes on downbeats with 4-note descending scale runs.
     # Chord tones land on the downbeat (first note), passing tones on upbeats —
     # the characteristic bebop rhythm that makes jazz lines swing.
+    # "Strong beat" is the meter's, not a fixed 4/4 downbeat-and-2: in 3/4 or 7/8
+    # the old `% 4` math wandered across the bar and started runs on weak beats.
+    strong_positions = meter.strong_positions
     if bebop_run_prob > 0:
         bebop_expanded: List[NoteEvent] = []
         for note in raw:
-            beat_in_bar = round(note.start % 4, 3)
-            is_strong = beat_in_bar < 0.06 or abs(beat_in_bar - 2.0) < 0.06
+            beat_in_bar = round(note.start % beats_per_bar, 3)
+            is_strong = any(abs(beat_in_bar - p) < 0.06 for p in strong_positions)
             if is_strong and note.duration >= 0.9 and should_trigger(bebop_run_prob):
                 idx = next((i for i, n in enumerate(scale_notes) if n == note.pitch), -1)
                 if idx >= 3:
@@ -657,11 +660,10 @@ def generate_melody(
         # Build a set of beat positions already occupied so we don't collide
         occupied: set[float] = {round(n.start, 3) for n in raw}
         run_notes: List[NoteEvent] = []
-        beats_per_bar_inner = 4
         for note in raw:
             # Only add runs before chord-downbeat notes on strong beats
-            beat_in_bar = round(note.start % beats_per_bar_inner, 3)
-            if beat_in_bar > 0.05 and abs(beat_in_bar - 2.0) > 0.05:
+            beat_in_bar = round(note.start % beats_per_bar, 3)
+            if not any(abs(beat_in_bar - p) <= 0.05 for p in strong_positions):
                 continue
             if not should_trigger(run_prob):
                 continue

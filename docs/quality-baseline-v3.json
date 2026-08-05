@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-04T21:45:50",
- "git_commit": "e44e7ed",
+ "generated_at": "2026-08-04T22:37:09",
+ "git_commit": "54b5655",
  "python": "3.12.3",
  "green_threshold": 0.82,
  "max_attempts": 5,
@@ -40,13 +40,14 @@
   "lofi": 68,
   "reggaeton": 4,
   "rnb": 11,
+  "rock": 1,
   "samba": 9,
   "soul": 4,
   "synthwave": 2,
   "techno": 3,
   "trap_soul": 3
  },
- "elapsed_s": 62.2,
+ "elapsed_s": 48.9,
  "config": {
   "seeds": [
    886523225,
@@ -1640,18 +1641,18 @@
    "all": {
     "n": 192,
     "errors": 0,
-    "total": 0.8149,
-    "green_rate": 0.0,
-    "attempts": 5.0,
+    "total": 0.9001,
+    "green_rate": 0.6875,
+    "attempts": 2.4219,
     "dims": {
-     "harmonic": 0.9607,
-     "separation": 0.9055,
-     "rhythm": 0.5129,
-     "contour": 0.852,
-     "density": 0.8359,
-     "mix": 0.9375,
-     "style_match": 0.9011,
-     "hook": 0.7284
+     "harmonic": 0.9508,
+     "separation": 0.8989,
+     "rhythm": 0.9362,
+     "contour": 0.8383,
+     "density": 0.8344,
+     "mix": 0.9371,
+     "style_match": 0.9022,
+     "hook": 0.7864
     },
     "dim_n": {
      "style_match": 64,
@@ -1662,18 +1663,18 @@
     "cinematic": {
      "n": 32,
      "errors": 0,
-     "total": 0.8007,
-     "green_rate": 0.0,
-     "attempts": 5.0,
+     "total": 0.9183,
+     "green_rate": 0.5625,
+     "attempts": 2.9375,
      "dims": {
-      "harmonic": 0.9685,
-      "separation": 0.9092,
-      "rhythm": 0.4442,
-      "contour": 0.8636,
-      "density": 0.8328,
-      "mix": 0.935,
+      "harmonic": 0.9654,
+      "separation": 0.9145,
+      "rhythm": 1.0,
+      "contour": 0.8495,
+      "density": 0.8253,
+      "mix": 0.9364,
       "style_match": null,
-      "hook": 0.7266
+      "hook": 0.7763
      },
      "dim_n": {
       "style_match": 0,
@@ -1683,18 +1684,18 @@
     "epic_orchestral": {
      "n": 32,
      "errors": 0,
-     "total": 0.7941,
-     "green_rate": 0.0,
-     "attempts": 5.0,
+     "total": 0.9121,
+     "green_rate": 0.5,
+     "attempts": 3.125,
      "dims": {
-      "harmonic": 0.9716,
-      "separation": 0.8775,
-      "rhythm": 0.4431,
-      "contour": 0.8292,
-      "density": 0.8314,
-      "mix": 0.9297,
+      "harmonic": 0.9684,
+      "separation": 0.877,
+      "rhythm": 1.0,
+      "contour": 0.828,
+      "density": 0.8189,
+      "mix": 0.9262,
       "style_match": null,
-      "hook": 0.7352
+      "hook": 0.7925
      },
      "dim_n": {
       "style_match": 0,
@@ -1704,18 +1705,18 @@
     "funk": {
      "n": 32,
      "errors": 0,
-     "total": 0.8129,
-     "green_rate": 0.0,
-     "attempts": 5.0,
+     "total": 0.8816,
+     "green_rate": 0.5312,
+     "attempts": 2.75,
      "dims": {
-      "harmonic": 0.9687,
-      "separation": 0.9037,
-      "rhythm": 0.5087,
-      "contour": 0.8581,
-      "density": 0.8297,
+      "harmonic": 0.959,
+      "separation": 0.9084,
+      "rhythm": 0.8421,
+      "contour": 0.8212,
+      "density": 0.822,
       "mix": 0.94,
       "style_match": null,
-      "hook": 0.7273
+      "hook": 0.7852
      },
      "dim_n": {
       "style_match": 0,
@@ -1725,18 +1726,18 @@
     "jazz": {
      "n": 32,
      "errors": 0,
-     "total": 0.8182,
-     "green_rate": 0.0,
-     "attempts": 5.0,
+     "total": 0.8937,
+     "green_rate": 0.9688,
+     "attempts": 1.8125,
      "dims": {
-      "harmonic": 0.944,
-      "separation": 0.9098,
-      "rhythm": 0.5149,
-      "contour": 0.8498,
-      "density": 0.8247,
+      "harmonic": 0.9217,
+      "separation": 0.8796,
+      "rhythm": 0.9364,
+      "contour": 0.8501,
+      "density": 0.8576,
       "mix": 0.94,
-      "style_match": 0.8995,
-      "hook": 0.7341
+      "style_match": 0.8956,
+      "hook": 0.7906
      },
      "dim_n": {
       "style_match": 32,
@@ -1746,18 +1747,18 @@
     "lofi": {
      "n": 32,
      "errors": 0,
-     "total": 0.8412,
-     "green_rate": 0.0,
-     "attempts": 5.0,
+     "total": 0.9103,
+     "green_rate": 0.8125,
+     "attempts": 1.9062,
      "dims": {
-      "harmonic": 0.9553,
-      "separation": 0.9328,
-      "rhythm": 0.5974,
-      "contour": 0.8653,
-      "density": 0.8494,
+      "harmonic": 0.9503,
+      "separation": 0.9095,
+      "rhythm": 0.9727,
+      "contour": 0.8405,
+      "density": 0.8369,
       "mix": 0.94,
-      "style_match": 0.9027,
-      "hook": 0.7196
+      "style_match": 0.9089,
+      "hook": 0.7937
      },
      "dim_n": {
       "style_match": 32,
@@ -1767,18 +1768,18 @@
     "rock": {
      "n": 32,
      "errors": 0,
-     "total": 0.8222,
-     "green_rate": 0.0,
-     "attempts": 5.0,
+     "total": 0.8846,
+     "green_rate": 0.75,
+     "attempts": 2.0,
      "dims": {
-      "harmonic": 0.9563,
-      "separation": 0.9002,
-      "rhythm": 0.5688,
-      "contour": 0.846,
-      "density": 0.8476,
+      "harmonic": 0.9404,
+      "separation": 0.9043,
+      "rhythm": 0.866,
+      "contour": 0.8404,
+      "density": 0.8459,
       "mix": 0.94,
       "style_match": null,
-      "hook": 0.7277
+      "hook": 0.7803
      },
      "dim_n": {
       "style_match": 0,
@@ -17758,37 +17759,37 @@
     "style": "rock",
     "seed": 886523225,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.846,
+    "attempts": 1,
+    "green": true,
+    "total": 0.876,
     "dims": {
-     "harmonic": 0.958,
-     "separation": 0.898,
-     "rhythm": 0.711,
-     "contour": 0.85,
-     "density": 0.844,
+     "harmonic": 0.896,
+     "separation": 0.971,
+     "rhythm": 0.886,
+     "contour": 0.829,
+     "density": 0.835,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.678
+     "hook": 0.703
     },
-    "hash": "bf2401e5529c8337"
+    "hash": "f19c6e1d3df8afb7"
    },
    {
     "style": "rock",
     "seed": 579061791,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.846,
+    "attempts": 1,
+    "green": true,
+    "total": 0.899,
     "dims": {
      "harmonic": 0.932,
      "separation": 0.959,
-     "rhythm": 0.654,
+     "rhythm": 0.9,
      "contour": 0.929,
-     "density": 0.848,
+     "density": 0.845,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.695
+     "hook": 0.722
     },
     "hash": "5ab6882d7d3ca5c4"
    },
@@ -17796,37 +17797,37 @@
     "style": "rock",
     "seed": 835807632,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.851,
+    "attempts": 1,
+    "green": true,
+    "total": 0.89,
     "dims": {
-     "harmonic": 0.971,
-     "separation": 0.929,
-     "rhythm": 0.705,
-     "contour": 0.807,
-     "density": 0.837,
+     "harmonic": 0.928,
+     "separation": 0.903,
+     "rhythm": 0.901,
+     "contour": 0.923,
+     "density": 0.842,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.706
+     "hook": 0.728
     },
-    "hash": "ec545a6f410a13d3"
+    "hash": "386c0d88912c0225"
    },
    {
     "style": "rock",
     "seed": 1366488993,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.851,
+    "attempts": 1,
+    "green": true,
+    "total": 0.894,
     "dims": {
      "harmonic": 0.957,
      "separation": 0.888,
-     "rhythm": 0.651,
+     "rhythm": 0.888,
      "contour": 0.944,
-     "density": 0.818,
+     "density": 0.842,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.799
+     "hook": 0.727
     },
     "hash": "51ab5534958dc77f"
    },
@@ -17834,132 +17835,132 @@
     "style": "rock",
     "seed": 174352462,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.853,
+    "attempts": 1,
+    "green": true,
+    "total": 0.87,
     "dims": {
-     "harmonic": 0.948,
-     "separation": 0.878,
-     "rhythm": 0.692,
-     "contour": 0.949,
-     "density": 0.846,
+     "harmonic": 0.89,
+     "separation": 0.883,
+     "rhythm": 0.881,
+     "contour": 0.775,
+     "density": 0.845,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.748
+     "hook": 0.822
     },
-    "hash": "20a5ed469989cbb7"
+    "hash": "c8c3c91fdcc86e6f"
    },
    {
     "style": "rock",
     "seed": 1754323835,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.842,
+    "attempts": 1,
+    "green": true,
+    "total": 0.889,
     "dims": {
-     "harmonic": 0.931,
-     "separation": 0.877,
-     "rhythm": 0.737,
-     "contour": 0.773,
-     "density": 0.846,
+     "harmonic": 0.947,
+     "separation": 0.871,
+     "rhythm": 0.894,
+     "contour": 0.802,
+     "density": 0.832,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.743
+     "hook": 0.845
     },
-    "hash": "6aa092c03539ab7c"
+    "hash": "49d579a08eebed8c"
    },
    {
     "style": "rock",
     "seed": 1447369345,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.846,
+    "attempts": 1,
+    "green": true,
+    "total": 0.895,
     "dims": {
-     "harmonic": 0.912,
-     "separation": 0.932,
-     "rhythm": 0.686,
-     "contour": 0.961,
-     "density": 0.818,
+     "harmonic": 0.968,
+     "separation": 0.875,
+     "rhythm": 0.89,
+     "contour": 0.878,
+     "density": 0.851,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.723
+     "hook": 0.763
     },
-    "hash": "88b23766d106246a"
+    "hash": "053ef846005232b5"
    },
    {
     "style": "rock",
     "seed": 436100216,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.854,
+    "attempts": 1,
+    "green": true,
+    "total": 0.884,
     "dims": {
-     "harmonic": 1.0,
-     "separation": 0.9,
-     "rhythm": 0.715,
-     "contour": 0.666,
-     "density": 0.844,
+     "harmonic": 0.909,
+     "separation": 0.855,
+     "rhythm": 0.89,
+     "contour": 0.92,
+     "density": 0.851,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.79
+     "hook": 0.802
     },
-    "hash": "a7cad672ef4bcb7c"
+    "hash": "918365fa8e4cf69f"
    },
    {
     "style": "rock",
     "seed": 886523225,
     "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.778,
+    "attempts": 1,
+    "green": true,
+    "total": 0.878,
     "dims": {
-     "harmonic": 0.939,
-     "separation": 0.879,
-     "rhythm": 0.368,
-     "contour": 0.839,
-     "density": 0.848,
+     "harmonic": 0.896,
+     "separation": 0.971,
+     "rhythm": 0.895,
+     "contour": 0.829,
+     "density": 0.835,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.779
+     "hook": 0.703
     },
-    "hash": "3f42063eb1800477"
+    "hash": "5608604326aa10ee"
    },
    {
     "style": "rock",
     "seed": 579061791,
     "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.792,
+    "attempts": 1,
+    "green": true,
+    "total": 0.897,
     "dims": {
-     "harmonic": 0.931,
-     "separation": 0.891,
-     "rhythm": 0.406,
-     "contour": 0.944,
-     "density": 0.827,
+     "harmonic": 0.932,
+     "separation": 0.959,
+     "rhythm": 0.891,
+     "contour": 0.929,
+     "density": 0.845,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.777
+     "hook": 0.722
     },
-    "hash": "cd9a271ac2404c79"
+    "hash": "d0dd5ea80d509d0a"
    },
    {
     "style": "rock",
     "seed": 835807632,
     "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.791,
+    "attempts": 1,
+    "green": true,
+    "total": 0.886,
     "dims": {
      "harmonic": 0.928,
      "separation": 0.903,
-     "rhythm": 0.434,
+     "rhythm": 0.882,
      "contour": 0.923,
-     "density": 0.818,
+     "density": 0.842,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.724
+     "hook": 0.728
     },
     "hash": "ff31fee46f595a2a"
    },
@@ -17967,18 +17968,18 @@
     "style": "rock",
     "seed": 1366488993,
     "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.789,
+    "attempts": 1,
+    "green": true,
+    "total": 0.893,
     "dims": {
      "harmonic": 0.957,
      "separation": 0.888,
-     "rhythm": 0.35,
+     "rhythm": 0.884,
      "contour": 0.944,
-     "density": 0.818,
+     "density": 0.842,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.799
+     "hook": 0.727
     },
     "hash": "90bb0c415cb883d3"
    },
@@ -17986,37 +17987,37 @@
     "style": "rock",
     "seed": 174352462,
     "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.81,
+    "attempts": 1,
+    "green": true,
+    "total": 0.871,
     "dims": {
-     "harmonic": 0.948,
-     "separation": 0.878,
-     "rhythm": 0.479,
-     "contour": 0.949,
-     "density": 0.846,
+     "harmonic": 0.89,
+     "separation": 0.883,
+     "rhythm": 0.885,
+     "contour": 0.775,
+     "density": 0.845,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.748
+     "hook": 0.822
     },
-    "hash": "521cfd6275080afb"
+    "hash": "40424a6da9c00a45"
    },
    {
     "style": "rock",
     "seed": 1754323835,
     "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.774,
+    "attempts": 1,
+    "green": true,
+    "total": 0.885,
     "dims": {
      "harmonic": 0.947,
      "separation": 0.871,
-     "rhythm": 0.381,
+     "rhythm": 0.871,
      "contour": 0.802,
-     "density": 0.838,
+     "density": 0.832,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.74
+     "hook": 0.845
     },
     "hash": "859a1095491a5a32"
    },
@@ -18024,18 +18025,18 @@
     "style": "rock",
     "seed": 1447369345,
     "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.788,
+    "attempts": 1,
+    "green": true,
+    "total": 0.895,
     "dims": {
      "harmonic": 0.968,
      "separation": 0.875,
-     "rhythm": 0.389,
+     "rhythm": 0.889,
      "contour": 0.878,
-     "density": 0.834,
+     "density": 0.851,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.741
+     "hook": 0.763
     },
     "hash": "d331ada85bb9be3e"
    },
@@ -18043,132 +18044,132 @@
     "style": "rock",
     "seed": 436100216,
     "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.784,
+    "attempts": 1,
+    "green": true,
+    "total": 0.882,
     "dims": {
-     "harmonic": 1.0,
-     "separation": 0.9,
-     "rhythm": 0.373,
-     "contour": 0.666,
-     "density": 0.844,
+     "harmonic": 0.909,
+     "separation": 0.855,
+     "rhythm": 0.879,
+     "contour": 0.92,
+     "density": 0.851,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.79
+     "hook": 0.802
     },
-    "hash": "b636f0054f09c6e3"
+    "hash": "41fb45dffde28cb6"
    },
    {
     "style": "rock",
     "seed": 886523225,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.82,
+    "attempts": 1,
+    "green": true,
+    "total": 0.894,
     "dims": {
-     "harmonic": 0.962,
-     "separation": 0.912,
-     "rhythm": 0.565,
-     "contour": 0.833,
-     "density": 0.863,
+     "harmonic": 0.973,
+     "separation": 0.957,
+     "rhythm": 0.902,
+     "contour": 0.616,
+     "density": 0.845,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.678
+     "hook": 0.839
     },
-    "hash": "13c15149d70e0999"
+    "hash": "7ff7f74d8c03e934"
    },
    {
     "style": "rock",
     "seed": 579061791,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.803,
+    "attempts": 1,
+    "green": true,
+    "total": 0.879,
     "dims": {
-     "harmonic": 0.961,
-     "separation": 0.91,
-     "rhythm": 0.482,
-     "contour": 0.823,
-     "density": 0.858,
+     "harmonic": 0.919,
+     "separation": 0.957,
+     "rhythm": 0.862,
+     "contour": 0.723,
+     "density": 0.838,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.699
+     "hook": 0.829
     },
-    "hash": "85fde0aefbd75eb8"
+    "hash": "833a8c95cfe05ad5"
    },
    {
     "style": "rock",
     "seed": 835807632,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.815,
+    "attempts": 1,
+    "green": true,
+    "total": 0.886,
     "dims": {
-     "harmonic": 0.968,
-     "separation": 0.969,
-     "rhythm": 0.467,
-     "contour": 0.934,
-     "density": 0.852,
+     "harmonic": 0.961,
+     "separation": 0.925,
+     "rhythm": 0.884,
+     "contour": 0.769,
+     "density": 0.824,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.655
+     "hook": 0.76
     },
-    "hash": "97d877c8beff8439"
+    "hash": "b2dbd458024bab7f"
    },
    {
     "style": "rock",
     "seed": 1366488993,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.808,
+    "attempts": 1,
+    "green": true,
+    "total": 0.891,
     "dims": {
-     "harmonic": 0.992,
-     "separation": 0.915,
-     "rhythm": 0.55,
-     "contour": 0.641,
-     "density": 0.852,
+     "harmonic": 0.933,
+     "separation": 0.889,
+     "rhythm": 0.893,
+     "contour": 0.911,
+     "density": 0.84,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.688
+     "hook": 0.777
     },
-    "hash": "45d5c2995c2f1664"
+    "hash": "d2751bccb6a3287c"
    },
    {
     "style": "rock",
     "seed": 174352462,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.823,
+    "attempts": 1,
+    "green": true,
+    "total": 0.865,
     "dims": {
-     "harmonic": 0.973,
-     "separation": 0.899,
-     "rhythm": 0.534,
-     "contour": 0.845,
-     "density": 0.879,
+     "harmonic": 0.899,
+     "separation": 0.866,
+     "rhythm": 0.881,
+     "contour": 0.739,
+     "density": 0.838,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.734
+     "hook": 0.817
     },
-    "hash": "8f379c52ee0841c2"
+    "hash": "6930e7114b140eee"
    },
    {
     "style": "rock",
     "seed": 1754323835,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.812,
+    "attempts": 1,
+    "green": true,
+    "total": 0.902,
     "dims": {
      "harmonic": 0.953,
      "separation": 0.875,
-     "rhythm": 0.547,
+     "rhythm": 0.879,
      "contour": 0.9,
-     "density": 0.843,
+     "density": 0.834,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.677
+     "hook": 0.882
     },
     "hash": "0be6925f60c2064d"
    },
@@ -18176,39 +18177,39 @@
     "style": "rock",
     "seed": 1447369345,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.823,
+    "attempts": 1,
+    "green": true,
+    "total": 0.903,
     "dims": {
-     "harmonic": 0.965,
-     "separation": 0.904,
-     "rhythm": 0.544,
-     "contour": 0.85,
-     "density": 0.869,
+     "harmonic": 0.968,
+     "separation": 0.908,
+     "rhythm": 0.889,
+     "contour": 0.804,
+     "density": 0.829,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.734
+     "hook": 0.884
     },
-    "hash": "1a7365b6b9d9e196"
+    "hash": "c511571dc5b7e714"
    },
    {
     "style": "rock",
     "seed": 436100216,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.81,
+    "attempts": 1,
+    "green": true,
+    "total": 0.893,
     "dims": {
-     "harmonic": 0.981,
-     "separation": 0.897,
-     "rhythm": 0.548,
-     "contour": 0.83,
-     "density": 0.836,
+     "harmonic": 0.954,
+     "separation": 0.884,
+     "rhythm": 0.887,
+     "contour": 0.833,
+     "density": 0.847,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.623
+     "hook": 0.818
     },
-    "hash": "d3bbebb03eeecad7"
+    "hash": "1cc4270cffa44b5f"
    },
    {
     "style": "rock",
@@ -18216,18 +18217,18 @@
     "meter": "5/4",
     "attempts": 5,
     "green": false,
-    "total": 0.842,
+    "total": 0.878,
     "dims": {
-     "harmonic": 0.97,
-     "separation": 0.883,
-     "rhythm": 0.686,
-     "contour": 0.758,
-     "density": 0.879,
+     "harmonic": 0.966,
+     "separation": 0.892,
+     "rhythm": 0.798,
+     "contour": 0.759,
+     "density": 0.866,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.723
+     "hook": 0.848
     },
-    "hash": "d3b31e0ece979bf7"
+    "hash": "dc58767816fd485a"
    },
    {
     "style": "rock",
@@ -18235,18 +18236,18 @@
     "meter": "5/4",
     "attempts": 5,
     "green": false,
-    "total": 0.843,
+    "total": 0.87,
     "dims": {
-     "harmonic": 0.945,
-     "separation": 0.906,
-     "rhythm": 0.685,
-     "contour": 0.813,
-     "density": 0.873,
+     "harmonic": 0.956,
+     "separation": 0.916,
+     "rhythm": 0.803,
+     "contour": 0.752,
+     "density": 0.876,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.73
+     "hook": 0.757
     },
-    "hash": "d44de0f2d2809c54"
+    "hash": "ff945949ed8768da"
    },
    {
     "style": "rock",
@@ -18254,16 +18255,16 @@
     "meter": "5/4",
     "attempts": 5,
     "green": false,
-    "total": 0.847,
+    "total": 0.878,
     "dims": {
      "harmonic": 0.974,
      "separation": 0.903,
-     "rhythm": 0.643,
+     "rhythm": 0.806,
      "contour": 0.841,
-     "density": 0.845,
+     "density": 0.856,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.776
+     "hook": 0.746
     },
     "hash": "e7e34d3edd311a9b"
    },
@@ -18273,16 +18274,16 @@
     "meter": "5/4",
     "attempts": 5,
     "green": false,
-    "total": 0.838,
+    "total": 0.883,
     "dims": {
      "harmonic": 0.955,
      "separation": 0.899,
-     "rhythm": 0.646,
+     "rhythm": 0.806,
      "contour": 0.849,
-     "density": 0.862,
+     "density": 0.87,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.715
+     "hook": 0.822
     },
     "hash": "847a8852cabf14b5"
    },
@@ -18292,16 +18293,16 @@
     "meter": "5/4",
     "attempts": 5,
     "green": false,
-    "total": 0.841,
+    "total": 0.876,
     "dims": {
      "harmonic": 0.961,
      "separation": 0.909,
-     "rhythm": 0.661,
+     "rhythm": 0.804,
      "contour": 0.805,
-     "density": 0.863,
+     "density": 0.864,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.718
+     "hook": 0.772
     },
     "hash": "51b5592dc5cd8a15"
    },
@@ -18311,18 +18312,18 @@
     "meter": "5/4",
     "attempts": 5,
     "green": false,
-    "total": 0.818,
+    "total": 0.867,
     "dims": {
-     "harmonic": 0.904,
-     "separation": 0.872,
-     "rhythm": 0.655,
-     "contour": 0.769,
-     "density": 0.857,
+     "harmonic": 0.94,
+     "separation": 0.915,
+     "rhythm": 0.807,
+     "contour": 0.793,
+     "density": 0.847,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.751
+     "hook": 0.758
     },
-    "hash": "94ebe3702881261e"
+    "hash": "3c861a38eafb142d"
    },
    {
     "style": "rock",
@@ -18330,18 +18331,18 @@
     "meter": "5/4",
     "attempts": 5,
     "green": false,
-    "total": 0.83,
+    "total": 0.879,
     "dims": {
-     "harmonic": 0.961,
-     "separation": 0.855,
-     "rhythm": 0.654,
-     "contour": 0.842,
-     "density": 0.87,
+     "harmonic": 0.976,
+     "separation": 0.88,
+     "rhythm": 0.804,
+     "contour": 0.884,
+     "density": 0.872,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.669
+     "hook": 0.731
     },
-    "hash": "5e46df159e87776d"
+    "hash": "e067ac4252e1e3ef"
    },
    {
     "style": "rock",
@@ -18349,16 +18350,16 @@
     "meter": "5/4",
     "attempts": 5,
     "green": false,
-    "total": 0.843,
+    "total": 0.879,
     "dims": {
      "harmonic": 0.95,
      "separation": 0.954,
-     "rhythm": 0.605,
+     "rhythm": 0.802,
      "contour": 0.916,
-     "density": 0.847,
+     "density": 0.836,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.737
+     "hook": 0.705
     },
     "hash": "a65a78a1eb1ae725"
    },
@@ -18366,476 +18367,476 @@
     "style": "jazz",
     "seed": 886523225,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.852,
+    "attempts": 2,
+    "green": true,
+    "total": 0.919,
     "dims": {
-     "harmonic": 0.956,
-     "separation": 0.899,
-     "rhythm": 0.653,
-     "contour": 0.886,
-     "density": 0.828,
+     "harmonic": 0.989,
+     "separation": 0.863,
+     "rhythm": 0.972,
+     "contour": 0.784,
+     "density": 0.883,
      "mix": 0.94,
-     "style_match": 0.889,
-     "hook": 0.791
+     "style_match": 0.877,
+     "hook": 0.899
     },
-    "hash": "a7b4136eb162e3d1"
+    "hash": "f6d0dead83df999c"
    },
    {
     "style": "jazz",
     "seed": 579061791,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.825,
+    "attempts": 1,
+    "green": true,
+    "total": 0.877,
     "dims": {
-     "harmonic": 0.95,
-     "separation": 0.91,
-     "rhythm": 0.565,
-     "contour": 0.931,
-     "density": 0.818,
+     "harmonic": 0.884,
+     "separation": 0.87,
+     "rhythm": 0.968,
+     "contour": 0.688,
+     "density": 0.864,
      "mix": 0.94,
-     "style_match": 0.852,
-     "hook": 0.685
+     "style_match": 0.813,
+     "hook": 0.89
     },
-    "hash": "79181c733815196d"
+    "hash": "0586b9edbc180a73"
    },
    {
     "style": "jazz",
     "seed": 835807632,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.849,
-    "dims": {
-     "harmonic": 0.936,
-     "separation": 0.956,
-     "rhythm": 0.623,
-     "contour": 0.907,
-     "density": 0.81,
-     "mix": 0.94,
-     "style_match": 0.92,
-     "hook": 0.746
-    },
-    "hash": "c6896190e3909990"
-   },
-   {
-    "style": "jazz",
-    "seed": 1366488993,
-    "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.845,
-    "dims": {
-     "harmonic": 0.952,
-     "separation": 0.921,
-     "rhythm": 0.63,
-     "contour": 0.898,
-     "density": 0.818,
-     "mix": 0.94,
-     "style_match": 0.884,
-     "hook": 0.742
-    },
-    "hash": "8cb875fa4f15db25"
-   },
-   {
-    "style": "jazz",
-    "seed": 174352462,
-    "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.83,
-    "dims": {
-     "harmonic": 0.911,
-     "separation": 0.955,
-     "rhythm": 0.61,
-     "contour": 0.726,
-     "density": 0.83,
-     "mix": 0.94,
-     "style_match": 0.914,
-     "hook": 0.78
-    },
-    "hash": "e1f03ec63de1ea22"
-   },
-   {
-    "style": "jazz",
-    "seed": 1754323835,
-    "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.833,
-    "dims": {
-     "harmonic": 0.981,
-     "separation": 0.959,
-     "rhythm": 0.591,
-     "contour": 0.597,
-     "density": 0.818,
-     "mix": 0.94,
-     "style_match": 0.896,
-     "hook": 0.802
-    },
-    "hash": "5b573344b73e3949"
-   },
-   {
-    "style": "jazz",
-    "seed": 1447369345,
-    "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.844,
-    "dims": {
-     "harmonic": 0.893,
-     "separation": 0.917,
-     "rhythm": 0.662,
-     "contour": 0.872,
-     "density": 0.832,
-     "mix": 0.94,
-     "style_match": 0.906,
-     "hook": 0.805
-    },
-    "hash": "383a54c6b15e3d06"
-   },
-   {
-    "style": "jazz",
-    "seed": 436100216,
-    "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.839,
-    "dims": {
-     "harmonic": 0.979,
-     "separation": 0.848,
-     "rhythm": 0.624,
-     "contour": 0.769,
-     "density": 0.806,
-     "mix": 0.94,
-     "style_match": 0.936,
-     "hook": 0.775
-    },
-    "hash": "e630a71603e2ca2a"
-   },
-   {
-    "style": "jazz",
-    "seed": 886523225,
-    "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.804,
-    "dims": {
-     "harmonic": 0.959,
-     "separation": 0.937,
-     "rhythm": 0.427,
-     "contour": 0.886,
-     "density": 0.782,
-     "mix": 0.94,
-     "style_match": 0.856,
-     "hook": 0.745
-    },
-    "hash": "847033cf20acb870"
-   },
-   {
-    "style": "jazz",
-    "seed": 579061791,
-    "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.79,
-    "dims": {
-     "harmonic": 0.919,
-     "separation": 0.955,
-     "rhythm": 0.381,
-     "contour": 0.929,
-     "density": 0.784,
-     "mix": 0.94,
-     "style_match": 0.895,
-     "hook": 0.676
-    },
-    "hash": "34e5f101a14479e3"
-   },
-   {
-    "style": "jazz",
-    "seed": 835807632,
-    "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.811,
-    "dims": {
-     "harmonic": 0.936,
-     "separation": 0.998,
-     "rhythm": 0.426,
-     "contour": 0.937,
-     "density": 0.764,
-     "mix": 0.94,
-     "style_match": 0.904,
-     "hook": 0.708
-    },
-    "hash": "8e0ef2754fdc3724"
-   },
-   {
-    "style": "jazz",
-    "seed": 1366488993,
-    "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.817,
-    "dims": {
-     "harmonic": 0.931,
-     "separation": 0.957,
-     "rhythm": 0.497,
-     "contour": 0.878,
-     "density": 0.79,
-     "mix": 0.94,
-     "style_match": 0.874,
-     "hook": 0.759
-    },
-    "hash": "69d1056637a3b1c5"
-   },
-   {
-    "style": "jazz",
-    "seed": 174352462,
-    "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.784,
-    "dims": {
-     "harmonic": 0.911,
-     "separation": 0.99,
-     "rhythm": 0.381,
-     "contour": 0.726,
-     "density": 0.784,
-     "mix": 0.94,
-     "style_match": 0.914,
-     "hook": 0.736
-    },
-    "hash": "cf21a60953ef3593"
-   },
-   {
-    "style": "jazz",
-    "seed": 1754323835,
-    "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.793,
-    "dims": {
-     "harmonic": 0.979,
-     "separation": 0.999,
-     "rhythm": 0.406,
-     "contour": 0.597,
-     "density": 0.772,
-     "mix": 0.94,
-     "style_match": 0.896,
-     "hook": 0.735
-    },
-    "hash": "dbc02d665a15da9c"
-   },
-   {
-    "style": "jazz",
-    "seed": 1447369345,
-    "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.793,
-    "dims": {
-     "harmonic": 0.916,
-     "separation": 0.915,
-     "rhythm": 0.403,
-     "contour": 0.9,
-     "density": 0.778,
-     "mix": 0.94,
-     "style_match": 0.879,
-     "hook": 0.773
-    },
-    "hash": "09e08a137e12403f"
-   },
-   {
-    "style": "jazz",
-    "seed": 436100216,
-    "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.799,
+    "attempts": 1,
+    "green": true,
+    "total": 0.897,
     "dims": {
      "harmonic": 0.946,
-     "separation": 0.887,
-     "rhythm": 0.429,
-     "contour": 0.903,
-     "density": 0.776,
+     "separation": 0.867,
+     "rhythm": 0.966,
+     "contour": 0.768,
+     "density": 0.867,
      "mix": 0.94,
-     "style_match": 0.906,
-     "hook": 0.721
+     "style_match": 0.919,
+     "hook": 0.76
     },
-    "hash": "bcd7c90760c60abb"
+    "hash": "5b1779cc28feb665"
+   },
+   {
+    "style": "jazz",
+    "seed": 1366488993,
+    "meter": "3/4",
+    "attempts": 1,
+    "green": true,
+    "total": 0.904,
+    "dims": {
+     "harmonic": 0.937,
+     "separation": 0.893,
+     "rhythm": 0.987,
+     "contour": 0.717,
+     "density": 0.859,
+     "mix": 0.94,
+     "style_match": 0.915,
+     "hook": 0.829
+    },
+    "hash": "29a42ebf976abfd3"
+   },
+   {
+    "style": "jazz",
+    "seed": 174352462,
+    "meter": "3/4",
+    "attempts": 1,
+    "green": true,
+    "total": 0.877,
+    "dims": {
+     "harmonic": 0.834,
+     "separation": 0.862,
+     "rhythm": 0.973,
+     "contour": 0.864,
+     "density": 0.867,
+     "mix": 0.94,
+     "style_match": 0.901,
+     "hook": 0.762
+    },
+    "hash": "6b8d949019f4fe16"
+   },
+   {
+    "style": "jazz",
+    "seed": 1754323835,
+    "meter": "3/4",
+    "attempts": 1,
+    "green": true,
+    "total": 0.887,
+    "dims": {
+     "harmonic": 0.896,
+     "separation": 0.874,
+     "rhythm": 0.986,
+     "contour": 0.957,
+     "density": 0.859,
+     "mix": 0.94,
+     "style_match": 0.817,
+     "hook": 0.701
+    },
+    "hash": "69ccc0b6feea771b"
+   },
+   {
+    "style": "jazz",
+    "seed": 1447369345,
+    "meter": "3/4",
+    "attempts": 1,
+    "green": true,
+    "total": 0.903,
+    "dims": {
+     "harmonic": 0.916,
+     "separation": 0.879,
+     "rhythm": 0.979,
+     "contour": 0.9,
+     "density": 0.875,
+     "mix": 0.94,
+     "style_match": 0.879,
+     "hook": 0.78
+    },
+    "hash": "6033ff5645e60db2"
+   },
+   {
+    "style": "jazz",
+    "seed": 436100216,
+    "meter": "3/4",
+    "attempts": 1,
+    "green": true,
+    "total": 0.916,
+    "dims": {
+     "harmonic": 0.956,
+     "separation": 0.902,
+     "rhythm": 0.973,
+     "contour": 0.808,
+     "density": 0.875,
+     "mix": 0.94,
+     "style_match": 0.933,
+     "hook": 0.814
+    },
+    "hash": "cafd54e89e9913a9"
+   },
+   {
+    "style": "jazz",
+    "seed": 886523225,
+    "meter": "6/8",
+    "attempts": 1,
+    "green": true,
+    "total": 0.883,
+    "dims": {
+     "harmonic": 0.932,
+     "separation": 0.84,
+     "rhythm": 0.982,
+     "contour": 0.918,
+     "density": 0.821,
+     "mix": 0.94,
+     "style_match": 0.932,
+     "hook": 0.551
+    },
+    "hash": "c550ca21dd12bbd2"
+   },
+   {
+    "style": "jazz",
+    "seed": 579061791,
+    "meter": "6/8",
+    "attempts": 2,
+    "green": true,
+    "total": 0.917,
+    "dims": {
+     "harmonic": 0.92,
+     "separation": 0.955,
+     "rhythm": 0.969,
+     "contour": 0.926,
+     "density": 0.84,
+     "mix": 0.94,
+     "style_match": 0.91,
+     "hook": 0.814
+    },
+    "hash": "41a8b8936d969970"
+   },
+   {
+    "style": "jazz",
+    "seed": 835807632,
+    "meter": "6/8",
+    "attempts": 3,
+    "green": true,
+    "total": 0.905,
+    "dims": {
+     "harmonic": 0.935,
+     "separation": 0.849,
+     "rhythm": 0.983,
+     "contour": 0.914,
+     "density": 0.834,
+     "mix": 0.94,
+     "style_match": 0.93,
+     "hook": 0.752
+    },
+    "hash": "1e470b58c0a82088"
+   },
+   {
+    "style": "jazz",
+    "seed": 1366488993,
+    "meter": "6/8",
+    "attempts": 2,
+    "green": true,
+    "total": 0.906,
+    "dims": {
+     "harmonic": 0.909,
+     "separation": 0.925,
+     "rhythm": 0.974,
+     "contour": 0.81,
+     "density": 0.837,
+     "mix": 0.94,
+     "style_match": 0.907,
+     "hook": 0.86
+    },
+    "hash": "d12c82dfbf3796c7"
+   },
+   {
+    "style": "jazz",
+    "seed": 174352462,
+    "meter": "6/8",
+    "attempts": 2,
+    "green": true,
+    "total": 0.891,
+    "dims": {
+     "harmonic": 0.859,
+     "separation": 0.925,
+     "rhythm": 0.972,
+     "contour": 0.73,
+     "density": 0.829,
+     "mix": 0.94,
+     "style_match": 0.924,
+     "hook": 0.885
+    },
+    "hash": "b1362517126cf555"
+   },
+   {
+    "style": "jazz",
+    "seed": 1754323835,
+    "meter": "6/8",
+    "attempts": 1,
+    "green": true,
+    "total": 0.893,
+    "dims": {
+     "harmonic": 0.881,
+     "separation": 0.91,
+     "rhythm": 0.986,
+     "contour": 0.92,
+     "density": 0.829,
+     "mix": 0.94,
+     "style_match": 0.821,
+     "hook": 0.803
+    },
+    "hash": "7167080dfc02786f"
+   },
+   {
+    "style": "jazz",
+    "seed": 1447369345,
+    "meter": "6/8",
+    "attempts": 1,
+    "green": true,
+    "total": 0.912,
+    "dims": {
+     "harmonic": 0.932,
+     "separation": 0.915,
+     "rhythm": 0.981,
+     "contour": 0.893,
+     "density": 0.837,
+     "mix": 0.94,
+     "style_match": 0.859,
+     "hook": 0.853
+    },
+    "hash": "01de4b98c47c0faf"
+   },
+   {
+    "style": "jazz",
+    "seed": 436100216,
+    "meter": "6/8",
+    "attempts": 1,
+    "green": true,
+    "total": 0.917,
+    "dims": {
+     "harmonic": 0.952,
+     "separation": 0.942,
+     "rhythm": 0.966,
+     "contour": 0.809,
+     "density": 0.829,
+     "mix": 0.94,
+     "style_match": 0.96,
+     "hook": 0.807
+    },
+    "hash": "8f6154b77884496b"
    },
    {
     "style": "jazz",
     "seed": 886523225,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.803,
+    "attempts": 3,
+    "green": true,
+    "total": 0.908,
     "dims": {
      "harmonic": 0.945,
-     "separation": 0.904,
-     "rhythm": 0.462,
-     "contour": 0.899,
-     "density": 0.849,
+     "separation": 0.85,
+     "rhythm": 0.99,
+     "contour": 0.9,
+     "density": 0.853,
      "mix": 0.94,
-     "style_match": 0.874,
-     "hook": 0.652
+     "style_match": 0.903,
+     "hook": 0.777
     },
-    "hash": "dd1f226817dc3469"
+    "hash": "3ebc9ec8910c150d"
    },
    {
     "style": "jazz",
     "seed": 579061791,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.793,
+    "attempts": 2,
+    "green": true,
+    "total": 0.885,
     "dims": {
-     "harmonic": 0.932,
-     "separation": 0.911,
-     "rhythm": 0.395,
-     "contour": 0.878,
-     "density": 0.826,
+     "harmonic": 0.903,
+     "separation": 0.894,
+     "rhythm": 0.888,
+     "contour": 0.891,
+     "density": 0.871,
      "mix": 0.94,
-     "style_match": 0.907,
-     "hook": 0.693
+     "style_match": 0.865,
+     "hook": 0.806
     },
-    "hash": "4d46fd80f5ad3c91"
+    "hash": "1d912f01c238cacc"
    },
    {
     "style": "jazz",
     "seed": 835807632,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.807,
+    "attempts": 1,
+    "green": true,
+    "total": 0.882,
     "dims": {
-     "harmonic": 0.991,
-     "separation": 0.838,
-     "rhythm": 0.479,
-     "contour": 0.924,
-     "density": 0.816,
+     "harmonic": 0.911,
+     "separation": 0.867,
+     "rhythm": 0.895,
+     "contour": 0.899,
+     "density": 0.862,
      "mix": 0.94,
-     "style_match": 0.86,
-     "hook": 0.652
+     "style_match": 0.89,
+     "hook": 0.755
     },
-    "hash": "8b4251a48d9bb12d"
+    "hash": "b3b344d44b2fbccc"
    },
    {
     "style": "jazz",
     "seed": 1366488993,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.809,
+    "attempts": 1,
+    "green": true,
+    "total": 0.904,
     "dims": {
-     "harmonic": 0.975,
-     "separation": 0.913,
-     "rhythm": 0.411,
-     "contour": 0.913,
-     "density": 0.822,
+     "harmonic": 0.943,
+     "separation": 0.901,
+     "rhythm": 0.992,
+     "contour": 0.811,
+     "density": 0.846,
      "mix": 0.94,
-     "style_match": 0.885,
-     "hook": 0.72
+     "style_match": 0.915,
+     "hook": 0.733
     },
-    "hash": "1fcb43eb85c2823c"
+    "hash": "5036fd54df9dc3cf"
    },
    {
     "style": "jazz",
     "seed": 174352462,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.83,
+    "attempts": 1,
+    "green": true,
+    "total": 0.898,
     "dims": {
-     "harmonic": 0.98,
-     "separation": 0.946,
-     "rhythm": 0.467,
-     "contour": 0.877,
-     "density": 0.849,
+     "harmonic": 0.941,
+     "separation": 0.863,
+     "rhythm": 0.981,
+     "contour": 0.862,
+     "density": 0.841,
      "mix": 0.94,
-     "style_match": 0.924,
-     "hook": 0.738
+     "style_match": 0.858,
+     "hook": 0.772
     },
-    "hash": "2c5ffc295e415cff"
+    "hash": "b885f6ddafd004be"
    },
    {
     "style": "jazz",
     "seed": 1754323835,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.816,
+    "attempts": 1,
+    "green": true,
+    "total": 0.895,
     "dims": {
-     "harmonic": 0.967,
-     "separation": 0.911,
-     "rhythm": 0.459,
-     "contour": 0.818,
-     "density": 0.849,
+     "harmonic": 0.89,
+     "separation": 0.869,
+     "rhythm": 0.983,
+     "contour": 0.929,
+     "density": 0.834,
      "mix": 0.94,
-     "style_match": 0.916,
-     "hook": 0.747
+     "style_match": 0.882,
+     "hook": 0.777
     },
-    "hash": "9e36ca71dd3aeb2a"
+    "hash": "0b7fce84e39fd675"
    },
    {
     "style": "jazz",
     "seed": 1447369345,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.8,
+    "attempts": 1,
+    "green": true,
+    "total": 0.895,
     "dims": {
-     "harmonic": 0.94,
-     "separation": 0.902,
-     "rhythm": 0.463,
-     "contour": 0.907,
-     "density": 0.812,
+     "harmonic": 0.903,
+     "separation": 0.878,
+     "rhythm": 0.988,
+     "contour": 0.777,
+     "density": 0.871,
      "mix": 0.94,
-     "style_match": 0.869,
-     "hook": 0.663
+     "style_match": 0.906,
+     "hook": 0.788
     },
-    "hash": "842462481909a97b"
+    "hash": "2ecf9571ddc88b5f"
    },
    {
     "style": "jazz",
     "seed": 436100216,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.8,
+    "attempts": 3,
+    "green": true,
+    "total": 0.885,
     "dims": {
-     "harmonic": 0.954,
-     "separation": 0.896,
-     "rhythm": 0.441,
-     "contour": 0.796,
-     "density": 0.822,
+     "harmonic": 0.9,
+     "separation": 0.894,
+     "rhythm": 0.893,
+     "contour": 0.821,
+     "density": 0.881,
      "mix": 0.94,
-     "style_match": 0.918,
-     "hook": 0.705
+     "style_match": 0.855,
+     "hook": 0.869
     },
-    "hash": "a12545ccb410c0a9"
+    "hash": "69fe411591844cd9"
    },
    {
     "style": "jazz",
     "seed": 886523225,
     "meter": "5/4",
     "attempts": 5,
-    "green": false,
-    "total": 0.825,
+    "green": true,
+    "total": 0.887,
     "dims": {
-     "harmonic": 0.935,
+     "harmonic": 0.936,
      "separation": 0.866,
-     "rhythm": 0.573,
+     "rhythm": 0.872,
      "contour": 0.887,
-     "density": 0.858,
+     "density": 0.867,
      "mix": 0.94,
-     "style_match": 0.9,
-     "hook": 0.72
+     "style_match": 0.893,
+     "hook": 0.794
     },
-    "hash": "a2289f7729dc2b08"
+    "hash": "cfc27cf7221682b5"
    },
    {
     "style": "jazz",
@@ -18843,132 +18844,132 @@
     "meter": "5/4",
     "attempts": 5,
     "green": false,
-    "total": 0.829,
+    "total": 0.881,
     "dims": {
      "harmonic": 0.963,
      "separation": 0.867,
-     "rhythm": 0.602,
+     "rhythm": 0.808,
      "contour": 0.877,
-     "density": 0.852,
+     "density": 0.862,
      "mix": 0.94,
      "style_match": 0.828,
-     "hook": 0.725
+     "hook": 0.864
     },
-    "hash": "c0415c6913d24e3e"
+    "hash": "edcd81d859ce13c6"
    },
    {
     "style": "jazz",
     "seed": 835807632,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.818,
+    "attempts": 1,
+    "green": true,
+    "total": 0.892,
     "dims": {
-     "harmonic": 0.894,
-     "separation": 0.921,
-     "rhythm": 0.564,
-     "contour": 0.858,
-     "density": 0.848,
+     "harmonic": 0.952,
+     "separation": 0.836,
+     "rhythm": 0.875,
+     "contour": 0.818,
+     "density": 0.889,
      "mix": 0.94,
-     "style_match": 0.926,
-     "hook": 0.691
+     "style_match": 0.938,
+     "hook": 0.821
     },
-    "hash": "10bc506c551a5193"
+    "hash": "d2a66e6a04f5afbd"
    },
    {
     "style": "jazz",
     "seed": 1366488993,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.828,
+    "attempts": 4,
+    "green": true,
+    "total": 0.892,
     "dims": {
-     "harmonic": 0.958,
+     "harmonic": 0.964,
      "separation": 0.866,
-     "rhythm": 0.526,
+     "rhythm": 0.836,
      "contour": 0.864,
-     "density": 0.879,
+     "density": 0.883,
      "mix": 0.94,
-     "style_match": 0.912,
-     "hook": 0.76
+     "style_match": 0.904,
+     "hook": 0.836
     },
-    "hash": "bf917cb79dc62552"
+    "hash": "1a9e02bd8c75f7f8"
    },
    {
     "style": "jazz",
     "seed": 174352462,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.825,
+    "attempts": 1,
+    "green": true,
+    "total": 0.868,
     "dims": {
-     "harmonic": 0.93,
-     "separation": 0.858,
-     "rhythm": 0.589,
-     "contour": 0.759,
-     "density": 0.889,
+     "harmonic": 0.95,
+     "separation": 0.821,
+     "rhythm": 0.827,
+     "contour": 0.893,
+     "density": 0.854,
      "mix": 0.94,
-     "style_match": 0.919,
-     "hook": 0.761
+     "style_match": 0.93,
+     "hook": 0.671
     },
-    "hash": "0657ca5a71c02e81"
+    "hash": "07bb6d7b288988a8"
    },
    {
     "style": "jazz",
     "seed": 1754323835,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.83,
+    "attempts": 3,
+    "green": true,
+    "total": 0.884,
     "dims": {
-     "harmonic": 0.896,
+     "harmonic": 0.933,
      "separation": 0.881,
-     "rhythm": 0.585,
-     "contour": 0.861,
-     "density": 0.895,
+     "rhythm": 0.847,
+     "contour": 0.874,
+     "density": 0.88,
      "mix": 0.94,
-     "style_match": 0.939,
-     "hook": 0.765
+     "style_match": 0.941,
+     "hook": 0.734
     },
-    "hash": "7c188f0bb9cc27fa"
+    "hash": "ba3aca15d6693b2e"
    },
    {
     "style": "jazz",
     "seed": 1447369345,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.829,
+    "attempts": 1,
+    "green": true,
+    "total": 0.848,
     "dims": {
-     "harmonic": 0.966,
-     "separation": 0.768,
-     "rhythm": 0.613,
-     "contour": 0.877,
-     "density": 0.852,
+     "harmonic": 0.842,
+     "separation": 0.86,
+     "rhythm": 0.841,
+     "contour": 0.841,
+     "density": 0.857,
      "mix": 0.94,
-     "style_match": 0.939,
-     "hook": 0.703
+     "style_match": 0.912,
+     "hook": 0.706
     },
-    "hash": "3d3a9613c394e1fe"
+    "hash": "3f8cfff3fbc7d896"
    },
    {
     "style": "jazz",
     "seed": 436100216,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.831,
+    "attempts": 3,
+    "green": true,
+    "total": 0.889,
     "dims": {
-     "harmonic": 0.926,
+     "harmonic": 0.94,
      "separation": 0.862,
-     "rhythm": 0.54,
-     "contour": 0.857,
-     "density": 0.883,
+     "rhythm": 0.833,
+     "contour": 0.852,
+     "density": 0.886,
      "mix": 0.94,
-     "style_match": 0.947,
-     "hook": 0.817
+     "style_match": 0.941,
+     "hook": 0.837
     },
-    "hash": "604448be56385d71"
+    "hash": "84623b9b69fee2f3"
    },
    {
     "style": "cinematic",
@@ -18976,16 +18977,16 @@
     "meter": "3/4",
     "attempts": 5,
     "green": false,
-    "total": 0.852,
+    "total": 0.927,
     "dims": {
      "harmonic": 0.977,
      "separation": 0.96,
-     "rhythm": 0.651,
+     "rhythm": 1.0,
      "contour": 0.905,
-     "density": 0.817,
+     "density": 0.789,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.699
+     "hook": 0.754
     },
     "hash": "8c9139364c95a918"
    },
@@ -18995,18 +18996,18 @@
     "meter": "3/4",
     "attempts": 5,
     "green": false,
-    "total": 0.829,
+    "total": 0.921,
     "dims": {
-     "harmonic": 0.994,
-     "separation": 0.865,
-     "rhythm": 0.566,
-     "contour": 0.887,
-     "density": 0.822,
+     "harmonic": 0.95,
+     "separation": 0.927,
+     "rhythm": 1.0,
+     "contour": 0.861,
+     "density": 0.805,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.741
+     "hook": 0.829
     },
-    "hash": "80e51cf0cda8f2fc"
+    "hash": "618dadb30baab41a"
    },
    {
     "style": "cinematic",
@@ -19014,16 +19015,16 @@
     "meter": "3/4",
     "attempts": 5,
     "green": false,
-    "total": 0.84,
+    "total": 0.923,
     "dims": {
      "harmonic": 0.919,
      "separation": 0.968,
-     "rhythm": 0.566,
+     "rhythm": 1.0,
      "contour": 0.897,
-     "density": 0.838,
+     "density": 0.817,
      "mix": 0.919,
      "style_match": 0.0,
-     "hook": 0.885
+     "hook": 0.85
     },
     "hash": "ed91047622700231"
    },
@@ -19031,18 +19032,18 @@
     "style": "cinematic",
     "seed": 1366488993,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.845,
+    "attempts": 2,
+    "green": true,
+    "total": 0.918,
     "dims": {
      "harmonic": 0.981,
      "separation": 0.871,
-     "rhythm": 0.615,
+     "rhythm": 1.0,
      "contour": 0.916,
-     "density": 0.849,
+     "density": 0.832,
      "mix": 0.925,
      "style_match": 0.0,
-     "hook": 0.78
+     "hook": 0.742
     },
     "hash": "d49a0d7d1ff14406"
    },
@@ -19052,16 +19053,16 @@
     "meter": "3/4",
     "attempts": 5,
     "green": false,
-    "total": 0.859,
+    "total": 0.924,
     "dims": {
      "harmonic": 0.969,
      "separation": 0.972,
-     "rhythm": 0.651,
+     "rhythm": 1.0,
      "contour": 0.884,
-     "density": 0.816,
+     "density": 0.788,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.782
+     "hook": 0.747
     },
     "hash": "eba54b500943981a"
    },
@@ -19069,18 +19070,18 @@
     "style": "cinematic",
     "seed": 1754323835,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.819,
+    "attempts": 3,
+    "green": true,
+    "total": 0.906,
     "dims": {
      "harmonic": 0.937,
      "separation": 0.84,
-     "rhythm": 0.606,
+     "rhythm": 1.0,
      "contour": 0.894,
-     "density": 0.851,
+     "density": 0.835,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.714
+     "hook": 0.779
     },
     "hash": "ebfd32beb7924e49"
    },
@@ -19090,18 +19091,18 @@
     "meter": "3/4",
     "attempts": 5,
     "green": false,
-    "total": 0.837,
+    "total": 0.92,
     "dims": {
-     "harmonic": 0.971,
-     "separation": 0.88,
-     "rhythm": 0.651,
-     "contour": 0.862,
-     "density": 0.827,
-     "mix": 0.94,
+     "harmonic": 0.959,
+     "separation": 0.913,
+     "rhythm": 1.0,
+     "contour": 0.826,
+     "density": 0.815,
+     "mix": 0.936,
      "style_match": 0.0,
-     "hook": 0.7
+     "hook": 0.84
     },
-    "hash": "8bd5e966a01fc761"
+    "hash": "d69dccd3c3b530cf"
    },
    {
     "style": "cinematic",
@@ -19109,18 +19110,18 @@
     "meter": "3/4",
     "attempts": 5,
     "green": false,
-    "total": 0.845,
+    "total": 0.918,
     "dims": {
-     "harmonic": 0.991,
-     "separation": 0.886,
-     "rhythm": 0.651,
-     "contour": 0.861,
-     "density": 0.834,
+     "harmonic": 0.985,
+     "separation": 0.922,
+     "rhythm": 1.0,
+     "contour": 0.832,
+     "density": 0.793,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.712
+     "hook": 0.754
     },
-    "hash": "b023630d2f608bcd"
+    "hash": "2da0027ac608395b"
    },
    {
     "style": "cinematic",
@@ -19128,16 +19129,16 @@
     "meter": "6/8",
     "attempts": 5,
     "green": false,
-    "total": 0.719,
+    "total": 0.927,
     "dims": {
      "harmonic": 0.977,
      "separation": 0.96,
-     "rhythm": 0.0,
+     "rhythm": 1.0,
      "contour": 0.905,
-     "density": 0.817,
+     "density": 0.789,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.699
+     "hook": 0.754
     },
     "hash": "cd8a42bf72301701"
    },
@@ -19147,18 +19148,18 @@
     "meter": "6/8",
     "attempts": 5,
     "green": false,
-    "total": 0.715,
+    "total": 0.921,
     "dims": {
      "harmonic": 0.95,
-     "separation": 0.91,
-     "rhythm": 0.0,
-     "contour": 0.94,
-     "density": 0.82,
+     "separation": 0.927,
+     "rhythm": 1.0,
+     "contour": 0.861,
+     "density": 0.805,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.764
+     "hook": 0.829
     },
-    "hash": "4cc49a770d3f468c"
+    "hash": "ad39556f12bf8a21"
    },
    {
     "style": "cinematic",
@@ -19166,16 +19167,16 @@
     "meter": "6/8",
     "attempts": 5,
     "green": false,
-    "total": 0.724,
+    "total": 0.923,
     "dims": {
      "harmonic": 0.919,
      "separation": 0.968,
-     "rhythm": 0.0,
+     "rhythm": 1.0,
      "contour": 0.897,
-     "density": 0.838,
+     "density": 0.817,
      "mix": 0.919,
      "style_match": 0.0,
-     "hook": 0.885
+     "hook": 0.85
     },
     "hash": "d1498285850d2bad"
    },
@@ -19183,18 +19184,18 @@
     "style": "cinematic",
     "seed": 1366488993,
     "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.718,
+    "attempts": 2,
+    "green": true,
+    "total": 0.918,
     "dims": {
      "harmonic": 0.981,
      "separation": 0.871,
-     "rhythm": 0.0,
+     "rhythm": 1.0,
      "contour": 0.916,
-     "density": 0.849,
+     "density": 0.832,
      "mix": 0.925,
      "style_match": 0.0,
-     "hook": 0.78
+     "hook": 0.742
     },
     "hash": "b4d6ff2c052ebce1"
    },
@@ -19204,16 +19205,16 @@
     "meter": "6/8",
     "attempts": 5,
     "green": false,
-    "total": 0.725,
+    "total": 0.924,
     "dims": {
      "harmonic": 0.969,
      "separation": 0.972,
-     "rhythm": 0.0,
+     "rhythm": 1.0,
      "contour": 0.884,
-     "density": 0.816,
+     "density": 0.788,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.782
+     "hook": 0.747
     },
     "hash": "a109f34ab5f23d48"
    },
@@ -19221,18 +19222,18 @@
     "style": "cinematic",
     "seed": 1754323835,
     "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.695,
+    "attempts": 3,
+    "green": true,
+    "total": 0.906,
     "dims": {
      "harmonic": 0.937,
      "separation": 0.84,
-     "rhythm": 0.0,
+     "rhythm": 1.0,
      "contour": 0.894,
-     "density": 0.851,
+     "density": 0.835,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.714
+     "hook": 0.779
     },
     "hash": "fb0319d8ed7e7b47"
    },
@@ -19242,16 +19243,16 @@
     "meter": "6/8",
     "attempts": 5,
     "green": false,
-    "total": 0.709,
+    "total": 0.92,
     "dims": {
      "harmonic": 0.959,
      "separation": 0.913,
-     "rhythm": 0.0,
+     "rhythm": 1.0,
      "contour": 0.826,
-     "density": 0.836,
+     "density": 0.815,
      "mix": 0.936,
      "style_match": 0.0,
-     "hook": 0.771
+     "hook": 0.84
     },
     "hash": "dce1a3a25dee97e4"
    },
@@ -19261,35 +19262,35 @@
     "meter": "6/8",
     "attempts": 5,
     "green": false,
-    "total": 0.714,
+    "total": 0.918,
     "dims": {
-     "harmonic": 0.953,
-     "separation": 0.952,
-     "rhythm": 0.0,
-     "contour": 0.92,
-     "density": 0.825,
+     "harmonic": 0.985,
+     "separation": 0.922,
+     "rhythm": 1.0,
+     "contour": 0.832,
+     "density": 0.793,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.707
+     "hook": 0.754
     },
-    "hash": "f971dc0119cf972c"
+    "hash": "b0f5286252858658"
    },
    {
     "style": "cinematic",
     "seed": 886523225,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.795,
+    "attempts": 1,
+    "green": true,
+    "total": 0.929,
     "dims": {
      "harmonic": 0.984,
      "separation": 0.959,
-     "rhythm": 0.359,
+     "rhythm": 1.0,
      "contour": 0.893,
-     "density": 0.835,
+     "density": 0.825,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.702
+     "hook": 0.733
     },
     "hash": "621608a8dae3dea3"
    },
@@ -19297,18 +19298,18 @@
     "style": "cinematic",
     "seed": 579061791,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.782,
+    "attempts": 1,
+    "green": true,
+    "total": 0.903,
     "dims": {
      "harmonic": 0.971,
      "separation": 0.926,
-     "rhythm": 0.392,
+     "rhythm": 1.0,
      "contour": 0.752,
-     "density": 0.837,
+     "density": 0.828,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.709
+     "hook": 0.686
     },
     "hash": "78385789847edc54"
    },
@@ -19316,37 +19317,37 @@
     "style": "cinematic",
     "seed": 835807632,
     "meter": "7/8",
-    "attempts": 5,
+    "attempts": 2,
     "green": false,
-    "total": 0.803,
+    "total": 0.913,
     "dims": {
-     "harmonic": 0.963,
-     "separation": 0.9,
-     "rhythm": 0.539,
-     "contour": 0.879,
-     "density": 0.832,
-     "mix": 0.937,
+     "harmonic": 0.933,
+     "separation": 0.971,
+     "rhythm": 1.0,
+     "contour": 0.809,
+     "density": 0.819,
+     "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.58
+     "hook": 0.765
     },
-    "hash": "4a26413fe22c9b14"
+    "hash": "cece3764bfe1cfb6"
    },
    {
     "style": "cinematic",
     "seed": 1366488993,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.801,
+    "attempts": 2,
+    "green": true,
+    "total": 0.919,
     "dims": {
      "harmonic": 0.99,
      "separation": 0.879,
-     "rhythm": 0.452,
+     "rhythm": 1.0,
      "contour": 0.844,
-     "density": 0.858,
+     "density": 0.852,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.691
+     "hook": 0.746
     },
     "hash": "da71a27130863ccf"
    },
@@ -19354,37 +19355,37 @@
     "style": "cinematic",
     "seed": 174352462,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.794,
+    "attempts": 1,
+    "green": true,
+    "total": 0.911,
     "dims": {
-     "harmonic": 0.986,
-     "separation": 0.972,
-     "rhythm": 0.359,
-     "contour": 0.817,
-     "density": 0.817,
-     "mix": 0.889,
+     "harmonic": 0.934,
+     "separation": 0.895,
+     "rhythm": 1.0,
+     "contour": 0.73,
+     "density": 0.866,
+     "mix": 0.921,
      "style_match": 0.0,
-     "hook": 0.794
+     "hook": 0.891
     },
-    "hash": "3bad3937704c5a64"
+    "hash": "cff8ff355f6d5e1c"
    },
    {
     "style": "cinematic",
     "seed": 1754323835,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.782,
+    "attempts": 3,
+    "green": true,
+    "total": 0.91,
     "dims": {
      "harmonic": 0.984,
      "separation": 0.827,
-     "rhythm": 0.392,
+     "rhythm": 1.0,
      "contour": 0.893,
-     "density": 0.834,
+     "density": 0.825,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.697
+     "hook": 0.729
     },
     "hash": "a5e683aa4ca82845"
    },
@@ -19392,18 +19393,18 @@
     "style": "cinematic",
     "seed": 1447369345,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.788,
+    "attempts": 2,
+    "green": true,
+    "total": 0.921,
     "dims": {
      "harmonic": 0.973,
      "separation": 0.919,
-     "rhythm": 0.392,
+     "rhythm": 1.0,
      "contour": 0.797,
-     "density": 0.832,
+     "density": 0.822,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.738
+     "hook": 0.822
     },
     "hash": "b34f9e114151a25d"
    },
@@ -19411,37 +19412,37 @@
     "style": "cinematic",
     "seed": 436100216,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.816,
+    "attempts": 3,
+    "green": true,
+    "total": 0.937,
     "dims": {
-     "harmonic": 0.983,
-     "separation": 0.861,
-     "rhythm": 0.539,
-     "contour": 0.925,
-     "density": 0.814,
+     "harmonic": 0.99,
+     "separation": 0.943,
+     "rhythm": 1.0,
+     "contour": 0.853,
+     "density": 0.827,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.675
+     "hook": 0.84
     },
-    "hash": "8c83403ff2b9d788"
+    "hash": "bba0a4c7158ed7a6"
    },
    {
     "style": "cinematic",
     "seed": 886523225,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.863,
+    "attempts": 1,
+    "green": true,
+    "total": 0.933,
     "dims": {
      "harmonic": 0.967,
      "separation": 0.949,
-     "rhythm": 0.743,
+     "rhythm": 1.0,
      "contour": 0.815,
-     "density": 0.85,
+     "density": 0.86,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.708
+     "hook": 0.858
     },
     "hash": "7c3cc7f43813b936"
    },
@@ -19449,94 +19450,94 @@
     "style": "cinematic",
     "seed": 579061791,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.861,
+    "attempts": 1,
+    "green": true,
+    "total": 0.923,
     "dims": {
-     "harmonic": 0.98,
-     "separation": 0.91,
-     "rhythm": 0.743,
-     "contour": 0.851,
-     "density": 0.844,
+     "harmonic": 0.986,
+     "separation": 0.921,
+     "rhythm": 1.0,
+     "contour": 0.909,
+     "density": 0.839,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.688
+     "hook": 0.694
     },
-    "hash": "b31b2198a5e78410"
+    "hash": "98fb51c122d5abda"
    },
    {
     "style": "cinematic",
     "seed": 835807632,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.857,
+    "attempts": 1,
+    "green": true,
+    "total": 0.927,
     "dims": {
-     "harmonic": 0.997,
-     "separation": 0.9,
-     "rhythm": 0.743,
-     "contour": 0.748,
-     "density": 0.845,
+     "harmonic": 0.95,
+     "separation": 0.968,
+     "rhythm": 1.0,
+     "contour": 0.874,
+     "density": 0.874,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.7
+     "hook": 0.751
     },
-    "hash": "e6f73559df231271"
+    "hash": "4a7ab069f5731968"
    },
    {
     "style": "cinematic",
     "seed": 1366488993,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.842,
+    "attempts": 1,
+    "green": true,
+    "total": 0.91,
     "dims": {
-     "harmonic": 0.991,
-     "separation": 0.904,
-     "rhythm": 0.667,
-     "contour": 0.721,
-     "density": 0.856,
+     "harmonic": 0.996,
+     "separation": 0.893,
+     "rhythm": 1.0,
+     "contour": 0.761,
+     "density": 0.828,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.729
+     "hook": 0.72
     },
-    "hash": "63d6eb03b2701b11"
+    "hash": "c8cce71826115b09"
    },
    {
     "style": "cinematic",
     "seed": 174352462,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.852,
+    "attempts": 1,
+    "green": true,
+    "total": 0.909,
     "dims": {
-     "harmonic": 0.961,
-     "separation": 0.906,
-     "rhythm": 0.743,
-     "contour": 0.92,
-     "density": 0.81,
-     "mix": 0.926,
+     "harmonic": 0.968,
+     "separation": 0.887,
+     "rhythm": 1.0,
+     "contour": 0.823,
+     "density": 0.856,
+     "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.638
+     "hook": 0.707
     },
-    "hash": "02ee806413c77118"
+    "hash": "cd672da3230b442d"
    },
    {
     "style": "cinematic",
     "seed": 1754323835,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.862,
+    "attempts": 1,
+    "green": true,
+    "total": 0.903,
     "dims": {
      "harmonic": 0.955,
      "separation": 0.888,
-     "rhythm": 0.811,
+     "rhythm": 1.0,
      "contour": 0.761,
-     "density": 0.842,
+     "density": 0.854,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.731
+     "hook": 0.742
     },
     "hash": "96858d4466faa447"
    },
@@ -19544,18 +19545,18 @@
     "style": "cinematic",
     "seed": 1447369345,
     "meter": "5/4",
-    "attempts": 5,
+    "attempts": 2,
     "green": false,
-    "total": 0.831,
+    "total": 0.918,
     "dims": {
      "harmonic": 0.989,
      "separation": 0.84,
-     "rhythm": 0.64,
+     "rhythm": 1.0,
      "contour": 0.865,
-     "density": 0.799,
+     "density": 0.819,
      "mix": 0.925,
      "style_match": 0.0,
-     "hook": 0.713
+     "hook": 0.814
     },
     "hash": "eb827e1023bea196"
    },
@@ -19563,20 +19564,20 @@
     "style": "cinematic",
     "seed": 436100216,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.847,
+    "attempts": 1,
+    "green": true,
+    "total": 0.905,
     "dims": {
-     "harmonic": 0.933,
-     "separation": 0.925,
-     "rhythm": 0.743,
-     "contour": 0.865,
-     "density": 0.838,
+     "harmonic": 0.968,
+     "separation": 0.852,
+     "rhythm": 1.0,
+     "contour": 0.774,
+     "density": 0.867,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.643
+     "hook": 0.755
     },
-    "hash": "a90a26cda3f7473b"
+    "hash": "03a2d61a7ce108dd"
    },
    {
     "style": "lofi",
@@ -19584,35 +19585,35 @@
     "meter": "3/4",
     "attempts": 5,
     "green": false,
-    "total": 0.854,
+    "total": 0.914,
     "dims": {
-     "harmonic": 0.952,
-     "separation": 0.898,
-     "rhythm": 0.707,
-     "contour": 0.902,
-     "density": 0.838,
+     "harmonic": 0.942,
+     "separation": 0.878,
+     "rhythm": 0.988,
+     "contour": 0.852,
+     "density": 0.798,
      "mix": 0.94,
-     "style_match": 0.867,
-     "hook": 0.716
+     "style_match": 0.933,
+     "hook": 0.858
     },
-    "hash": "0222c0c64de45cac"
+    "hash": "b0631cd1b5a7051e"
    },
    {
     "style": "lofi",
     "seed": 579061791,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.85,
+    "attempts": 2,
+    "green": true,
+    "total": 0.913,
     "dims": {
      "harmonic": 0.98,
      "separation": 0.929,
-     "rhythm": 0.677,
+     "rhythm": 0.977,
      "contour": 0.9,
-     "density": 0.847,
+     "density": 0.829,
      "mix": 0.94,
      "style_match": 0.761,
-     "hook": 0.74
+     "hook": 0.84
     },
     "hash": "08bb83841dd02b23"
    },
@@ -19620,37 +19621,37 @@
     "style": "lofi",
     "seed": 835807632,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.865,
+    "attempts": 1,
+    "green": true,
+    "total": 0.906,
     "dims": {
-     "harmonic": 0.967,
-     "separation": 0.966,
-     "rhythm": 0.695,
-     "contour": 0.85,
-     "density": 0.828,
+     "harmonic": 0.96,
+     "separation": 0.879,
+     "rhythm": 0.982,
+     "contour": 0.698,
+     "density": 0.839,
      "mix": 0.94,
-     "style_match": 0.911,
-     "hook": 0.734
+     "style_match": 0.91,
+     "hook": 0.858
     },
-    "hash": "7f8cf7cce6cf8761"
+    "hash": "cfc2a876abbbf938"
    },
    {
     "style": "lofi",
     "seed": 1366488993,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.862,
+    "attempts": 1,
+    "green": true,
+    "total": 0.914,
     "dims": {
      "harmonic": 0.972,
      "separation": 0.887,
-     "rhythm": 0.693,
+     "rhythm": 0.985,
      "contour": 0.867,
-     "density": 0.844,
+     "density": 0.825,
      "mix": 0.94,
      "style_match": 0.944,
-     "hook": 0.735
+     "hook": 0.736
     },
     "hash": "053c8fe6d9d1dc3e"
    },
@@ -19658,37 +19659,37 @@
     "style": "lofi",
     "seed": 174352462,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.855,
+    "attempts": 3,
+    "green": true,
+    "total": 0.911,
     "dims": {
-     "harmonic": 0.959,
-     "separation": 0.988,
-     "rhythm": 0.653,
-     "contour": 0.815,
-     "density": 0.846,
+     "harmonic": 0.948,
+     "separation": 0.838,
+     "rhythm": 0.984,
+     "contour": 0.839,
+     "density": 0.842,
      "mix": 0.94,
-     "style_match": 0.885,
-     "hook": 0.737
+     "style_match": 0.923,
+     "hook": 0.858
     },
-    "hash": "4201efde9776c3db"
+    "hash": "f21c356a8622533a"
    },
    {
     "style": "lofi",
     "seed": 1754323835,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.87,
+    "attempts": 2,
+    "green": true,
+    "total": 0.924,
     "dims": {
      "harmonic": 0.975,
      "separation": 0.967,
-     "rhythm": 0.718,
+     "rhythm": 0.988,
      "contour": 0.849,
-     "density": 0.854,
+     "density": 0.839,
      "mix": 0.94,
      "style_match": 0.939,
-     "hook": 0.666
+     "hook": 0.727
     },
     "hash": "08fffd3f8e611a2e"
    },
@@ -19696,39 +19697,39 @@
     "style": "lofi",
     "seed": 1447369345,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.846,
+    "attempts": 3,
+    "green": true,
+    "total": 0.904,
     "dims": {
-     "harmonic": 0.925,
-     "separation": 0.939,
-     "rhythm": 0.7,
-     "contour": 0.923,
-     "density": 0.829,
+     "harmonic": 0.881,
+     "separation": 0.948,
+     "rhythm": 0.976,
+     "contour": 0.927,
+     "density": 0.838,
      "mix": 0.94,
-     "style_match": 0.848,
-     "hook": 0.68
+     "style_match": 0.929,
+     "hook": 0.749
     },
-    "hash": "59eee7a988eb74ca"
+    "hash": "8c445f4d2cd7bee9"
    },
    {
     "style": "lofi",
     "seed": 436100216,
     "meter": "3/4",
-    "attempts": 5,
+    "attempts": 3,
     "green": false,
-    "total": 0.862,
+    "total": 0.921,
     "dims": {
-     "harmonic": 0.988,
-     "separation": 0.919,
-     "rhythm": 0.708,
-     "contour": 0.867,
-     "density": 0.841,
+     "harmonic": 0.986,
+     "separation": 0.952,
+     "rhythm": 0.975,
+     "contour": 0.863,
+     "density": 0.801,
      "mix": 0.94,
-     "style_match": 0.838,
-     "hook": 0.739
+     "style_match": 0.921,
+     "hook": 0.753
     },
-    "hash": "289d987f43e5fa04"
+    "hash": "63d431f6a362b5ad"
    },
    {
     "style": "lofi",
@@ -19736,73 +19737,73 @@
     "meter": "6/8",
     "attempts": 5,
     "green": false,
-    "total": 0.807,
+    "total": 0.903,
     "dims": {
-     "harmonic": 0.952,
-     "separation": 0.898,
-     "rhythm": 0.454,
-     "contour": 0.902,
-     "density": 0.838,
+     "harmonic": 0.942,
+     "separation": 0.878,
+     "rhythm": 0.952,
+     "contour": 0.852,
+     "density": 0.798,
      "mix": 0.94,
-     "style_match": 0.867,
-     "hook": 0.716
+     "style_match": 0.933,
+     "hook": 0.818
     },
-    "hash": "996fe48ab58c3500"
+    "hash": "a7ac96c4049ff4fb"
    },
    {
     "style": "lofi",
     "seed": 579061791,
     "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.802,
+    "attempts": 2,
+    "green": true,
+    "total": 0.904,
     "dims": {
-     "harmonic": 0.951,
-     "separation": 0.873,
-     "rhythm": 0.462,
-     "contour": 0.711,
-     "density": 0.823,
+     "harmonic": 0.98,
+     "separation": 0.929,
+     "rhythm": 0.928,
+     "contour": 0.9,
+     "density": 0.829,
      "mix": 0.94,
-     "style_match": 0.9,
-     "hook": 0.811
+     "style_match": 0.761,
+     "hook": 0.84
     },
-    "hash": "2b31a68cbb49e396"
+    "hash": "2105510e61232abd"
    },
    {
     "style": "lofi",
     "seed": 835807632,
     "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.818,
+    "attempts": 1,
+    "green": true,
+    "total": 0.894,
     "dims": {
-     "harmonic": 0.967,
-     "separation": 0.966,
-     "rhythm": 0.438,
-     "contour": 0.85,
-     "density": 0.828,
+     "harmonic": 0.96,
+     "separation": 0.879,
+     "rhythm": 0.931,
+     "contour": 0.698,
+     "density": 0.839,
      "mix": 0.94,
-     "style_match": 0.911,
-     "hook": 0.734
+     "style_match": 0.91,
+     "hook": 0.833
     },
-    "hash": "24cbfd9934e27397"
+    "hash": "d081d9a31885b977"
    },
    {
     "style": "lofi",
     "seed": 1366488993,
     "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.817,
+    "attempts": 1,
+    "green": true,
+    "total": 0.907,
     "dims": {
      "harmonic": 0.972,
      "separation": 0.887,
-     "rhythm": 0.435,
+     "rhythm": 0.94,
      "contour": 0.867,
-     "density": 0.844,
+     "density": 0.825,
      "mix": 0.94,
      "style_match": 0.944,
-     "hook": 0.755
+     "hook": 0.745
     },
     "hash": "f56416f2091858b9"
    },
@@ -19810,37 +19811,37 @@
     "style": "lofi",
     "seed": 174352462,
     "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.812,
+    "attempts": 3,
+    "green": true,
+    "total": 0.897,
     "dims": {
-     "harmonic": 0.959,
-     "separation": 0.988,
-     "rhythm": 0.42,
-     "contour": 0.815,
-     "density": 0.846,
+     "harmonic": 0.948,
+     "separation": 0.838,
+     "rhythm": 0.946,
+     "contour": 0.839,
+     "density": 0.842,
      "mix": 0.94,
-     "style_match": 0.885,
-     "hook": 0.737
+     "style_match": 0.93,
+     "hook": 0.783
     },
-    "hash": "f3275bd29d4285ac"
+    "hash": "d52347bc65f6ff68"
    },
    {
     "style": "lofi",
     "seed": 1754323835,
     "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.824,
+    "attempts": 2,
+    "green": true,
+    "total": 0.916,
     "dims": {
      "harmonic": 0.975,
      "separation": 0.967,
-     "rhythm": 0.453,
+     "rhythm": 0.946,
      "contour": 0.849,
-     "density": 0.854,
+     "density": 0.839,
      "mix": 0.94,
      "style_match": 0.939,
-     "hook": 0.693
+     "hook": 0.727
     },
     "hash": "396ac8253b4454a7"
    },
@@ -19848,37 +19849,37 @@
     "style": "lofi",
     "seed": 1447369345,
     "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.799,
+    "attempts": 3,
+    "green": true,
+    "total": 0.897,
     "dims": {
-     "harmonic": 0.925,
-     "separation": 0.939,
-     "rhythm": 0.44,
-     "contour": 0.923,
-     "density": 0.829,
+     "harmonic": 0.881,
+     "separation": 0.948,
+     "rhythm": 0.934,
+     "contour": 0.927,
+     "density": 0.838,
      "mix": 0.94,
-     "style_match": 0.848,
-     "hook": 0.681
+     "style_match": 0.929,
+     "hook": 0.751
     },
-    "hash": "155734ba430efce6"
+    "hash": "e9b0b50b63b65606"
    },
    {
     "style": "lofi",
     "seed": 436100216,
     "meter": "6/8",
-    "attempts": 5,
+    "attempts": 3,
     "green": false,
-    "total": 0.817,
+    "total": 0.911,
     "dims": {
      "harmonic": 0.986,
      "separation": 0.952,
-     "rhythm": 0.41,
+     "rhythm": 0.92,
      "contour": 0.863,
-     "density": 0.826,
+     "density": 0.801,
      "mix": 0.94,
      "style_match": 0.921,
-     "hook": 0.726
+     "hook": 0.761
     },
     "hash": "f7670fb62f9e7926"
    },
@@ -19886,227 +19887,227 @@
     "style": "lofi",
     "seed": 886523225,
     "meter": "7/8",
-    "attempts": 5,
+    "attempts": 2,
     "green": false,
-    "total": 0.829,
+    "total": 0.917,
     "dims": {
-     "harmonic": 0.937,
-     "separation": 0.903,
-     "rhythm": 0.572,
-     "contour": 0.892,
-     "density": 0.842,
+     "harmonic": 0.956,
+     "separation": 0.909,
+     "rhythm": 0.989,
+     "contour": 0.818,
+     "density": 0.819,
      "mix": 0.94,
-     "style_match": 0.901,
-     "hook": 0.711
+     "style_match": 0.897,
+     "hook": 0.867
     },
-    "hash": "4e287d2df665b57e"
+    "hash": "25bf9d5e50079853"
    },
    {
     "style": "lofi",
     "seed": 579061791,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.83,
+    "attempts": 1,
+    "green": true,
+    "total": 0.905,
     "dims": {
-     "harmonic": 0.974,
-     "separation": 0.919,
-     "rhythm": 0.501,
-     "contour": 0.864,
-     "density": 0.857,
+     "harmonic": 0.901,
+     "separation": 0.857,
+     "rhythm": 0.984,
+     "contour": 0.823,
+     "density": 0.833,
      "mix": 0.94,
-     "style_match": 0.94,
-     "hook": 0.703
+     "style_match": 0.896,
+     "hook": 0.94
     },
-    "hash": "41fb2e2ebfce2ee9"
+    "hash": "a41f8aa114b8aa6f"
    },
    {
     "style": "lofi",
     "seed": 835807632,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.822,
+    "attempts": 1,
+    "green": true,
+    "total": 0.927,
     "dims": {
-     "harmonic": 0.927,
-     "separation": 0.946,
-     "rhythm": 0.535,
-     "contour": 0.906,
-     "density": 0.841,
+     "harmonic": 0.972,
+     "separation": 0.882,
+     "rhythm": 0.996,
+     "contour": 0.826,
+     "density": 0.851,
      "mix": 0.94,
-     "style_match": 0.864,
-     "hook": 0.706
+     "style_match": 0.926,
+     "hook": 0.882
     },
-    "hash": "fcc62afba331c75f"
+    "hash": "136b5e3bf8ba8c9f"
    },
    {
     "style": "lofi",
     "seed": 1366488993,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.815,
+    "attempts": 1,
+    "green": true,
+    "total": 0.902,
     "dims": {
-     "harmonic": 0.914,
-     "separation": 0.893,
-     "rhythm": 0.53,
-     "contour": 0.93,
-     "density": 0.854,
+     "harmonic": 0.934,
+     "separation": 0.888,
+     "rhythm": 0.995,
+     "contour": 0.868,
+     "density": 0.842,
      "mix": 0.94,
-     "style_match": 0.897,
-     "hook": 0.676
+     "style_match": 0.896,
+     "hook": 0.725
     },
-    "hash": "5acfd94910ecca8d"
+    "hash": "2be66675f3bf14b5"
    },
    {
     "style": "lofi",
     "seed": 174352462,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.828,
+    "attempts": 1,
+    "green": true,
+    "total": 0.909,
     "dims": {
-     "harmonic": 0.959,
-     "separation": 0.99,
-     "rhythm": 0.504,
-     "contour": 0.865,
-     "density": 0.844,
+     "harmonic": 0.966,
+     "separation": 0.902,
+     "rhythm": 0.997,
+     "contour": 0.788,
+     "density": 0.827,
      "mix": 0.94,
-     "style_match": 0.903,
-     "hook": 0.68
+     "style_match": 0.906,
+     "hook": 0.76
     },
-    "hash": "3881021de70a24b9"
+    "hash": "27bc691d5dee295f"
    },
    {
     "style": "lofi",
     "seed": 1754323835,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.837,
+    "attempts": 2,
+    "green": true,
+    "total": 0.92,
     "dims": {
-     "harmonic": 0.996,
-     "separation": 0.923,
-     "rhythm": 0.554,
-     "contour": 0.825,
-     "density": 0.841,
+     "harmonic": 0.976,
+     "separation": 0.963,
+     "rhythm": 0.993,
+     "contour": 0.754,
+     "density": 0.846,
      "mix": 0.94,
-     "style_match": 0.904,
-     "hook": 0.71
+     "style_match": 0.888,
+     "hook": 0.812
     },
-    "hash": "4a628a1da793d9e2"
+    "hash": "f60cb4bb9fd46990"
    },
    {
     "style": "lofi",
     "seed": 1447369345,
     "meter": "7/8",
-    "attempts": 5,
+    "attempts": 2,
     "green": false,
-    "total": 0.813,
+    "total": 0.898,
     "dims": {
-     "harmonic": 0.93,
-     "separation": 0.912,
-     "rhythm": 0.472,
-     "contour": 0.859,
-     "density": 0.879,
+     "harmonic": 0.94,
+     "separation": 0.903,
+     "rhythm": 0.995,
+     "contour": 0.741,
+     "density": 0.801,
      "mix": 0.94,
-     "style_match": 0.948,
-     "hook": 0.683
+     "style_match": 0.919,
+     "hook": 0.76
     },
-    "hash": "f2cc997e405f2adb"
+    "hash": "89dbf0ad0bd5280a"
    },
    {
     "style": "lofi",
     "seed": 436100216,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.827,
+    "attempts": 3,
+    "green": true,
+    "total": 0.914,
     "dims": {
-     "harmonic": 0.952,
-     "separation": 0.928,
-     "rhythm": 0.52,
-     "contour": 0.916,
-     "density": 0.829,
+     "harmonic": 0.907,
+     "separation": 0.936,
+     "rhythm": 0.985,
+     "contour": 0.858,
+     "density": 0.856,
      "mix": 0.94,
-     "style_match": 0.91,
-     "hook": 0.7
+     "style_match": 0.906,
+     "hook": 0.858
     },
-    "hash": "042e7f678ec55b24"
+    "hash": "32aa5aec1934a36b"
    },
    {
     "style": "lofi",
     "seed": 886523225,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.866,
+    "attempts": 1,
+    "green": true,
+    "total": 0.902,
     "dims": {
-     "harmonic": 0.94,
-     "separation": 0.916,
-     "rhythm": 0.731,
-     "contour": 0.797,
-     "density": 0.899,
+     "harmonic": 0.95,
+     "separation": 0.924,
+     "rhythm": 0.975,
+     "contour": 0.786,
+     "density": 0.857,
      "mix": 0.94,
-     "style_match": 0.93,
-     "hook": 0.763
+     "style_match": 0.916,
+     "hook": 0.698
     },
-    "hash": "83217934c4b7448e"
+    "hash": "7f605991ea4b12ad"
    },
    {
     "style": "lofi",
     "seed": 579061791,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.863,
+    "attempts": 1,
+    "green": true,
+    "total": 0.894,
     "dims": {
-     "harmonic": 0.932,
-     "separation": 0.917,
-     "rhythm": 0.734,
-     "contour": 0.812,
-     "density": 0.882,
+     "harmonic": 0.946,
+     "separation": 0.856,
+     "rhythm": 0.967,
+     "contour": 0.798,
+     "density": 0.86,
      "mix": 0.94,
-     "style_match": 0.948,
-     "hook": 0.729
+     "style_match": 0.874,
+     "hook": 0.775
     },
-    "hash": "599f76d5db2f8305"
+    "hash": "fd008435025ccf49"
    },
    {
     "style": "lofi",
     "seed": 835807632,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.872,
+    "attempts": 1,
+    "green": true,
+    "total": 0.923,
     "dims": {
-     "harmonic": 0.952,
-     "separation": 0.887,
-     "rhythm": 0.769,
-     "contour": 0.904,
-     "density": 0.835,
+     "harmonic": 0.963,
+     "separation": 0.893,
+     "rhythm": 0.98,
+     "contour": 0.852,
+     "density": 0.876,
      "mix": 0.94,
-     "style_match": 0.919,
-     "hook": 0.745
+     "style_match": 0.928,
+     "hook": 0.833
     },
-    "hash": "88e1879315dfc4ab"
+    "hash": "08a1c8901ed68fca"
    },
    {
     "style": "lofi",
     "seed": 1366488993,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.87,
+    "attempts": 1,
+    "green": true,
+    "total": 0.916,
     "dims": {
      "harmonic": 0.921,
      "separation": 0.911,
-     "rhythm": 0.768,
+     "rhythm": 0.986,
      "contour": 0.895,
-     "density": 0.873,
+     "density": 0.879,
      "mix": 0.94,
      "style_match": 0.96,
-     "hook": 0.7
+     "hook": 0.755
     },
     "hash": "bd3b37ef2f70cac8"
    },
@@ -20114,75 +20115,75 @@
     "style": "lofi",
     "seed": 174352462,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.873,
+    "attempts": 1,
+    "green": true,
+    "total": 0.922,
     "dims": {
-     "harmonic": 0.991,
-     "separation": 0.969,
-     "rhythm": 0.685,
-     "contour": 0.866,
-     "density": 0.87,
+     "harmonic": 0.938,
+     "separation": 0.923,
+     "rhythm": 0.982,
+     "contour": 0.875,
+     "density": 0.862,
      "mix": 0.94,
-     "style_match": 0.913,
-     "hook": 0.713
+     "style_match": 0.926,
+     "hook": 0.841
     },
-    "hash": "7b7ab2029c537f3f"
+    "hash": "181887cf49b56bd0"
    },
    {
     "style": "lofi",
     "seed": 1754323835,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.875,
+    "attempts": 1,
+    "green": true,
+    "total": 0.914,
     "dims": {
-     "harmonic": 0.954,
-     "separation": 0.961,
-     "rhythm": 0.701,
-     "contour": 0.864,
-     "density": 0.899,
+     "harmonic": 0.964,
+     "separation": 0.943,
+     "rhythm": 0.981,
+     "contour": 0.897,
+     "density": 0.822,
      "mix": 0.94,
      "style_match": 0.9,
-     "hook": 0.796
+     "hook": 0.711
     },
-    "hash": "1b7e99cb0c81cef8"
+    "hash": "d797595271afb854"
    },
    {
     "style": "lofi",
     "seed": 1447369345,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.864,
+    "attempts": 1,
+    "green": true,
+    "total": 0.895,
     "dims": {
-     "harmonic": 0.897,
-     "separation": 0.947,
-     "rhythm": 0.772,
-     "contour": 0.858,
-     "density": 0.863,
+     "harmonic": 0.898,
+     "separation": 0.894,
+     "rhythm": 0.99,
+     "contour": 0.841,
+     "density": 0.862,
      "mix": 0.94,
-     "style_match": 0.955,
-     "hook": 0.68
+     "style_match": 0.933,
+     "hook": 0.698
     },
-    "hash": "66a2a7d3b4116deb"
+    "hash": "67159cbf8fa92eed"
    },
    {
     "style": "lofi",
     "seed": 436100216,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.875,
+    "attempts": 1,
+    "green": true,
+    "total": 0.937,
     "dims": {
      "harmonic": 0.99,
      "separation": 0.965,
-     "rhythm": 0.707,
+     "rhythm": 0.979,
      "contour": 0.885,
-     "density": 0.858,
+     "density": 0.866,
      "mix": 0.94,
      "style_match": 0.886,
-     "hook": 0.732
+     "hook": 0.848
     },
     "hash": "f7b2fa8de463ee70"
    },
@@ -20192,16 +20193,16 @@
     "meter": "3/4",
     "attempts": 5,
     "green": false,
-    "total": 0.835,
+    "total": 0.892,
     "dims": {
      "harmonic": 0.999,
      "separation": 0.924,
-     "rhythm": 0.542,
+     "rhythm": 0.837,
      "contour": 0.893,
-     "density": 0.828,
+     "density": 0.804,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.74
+     "hook": 0.727
     },
     "hash": "8ae93112a37353f8"
    },
@@ -20209,37 +20210,37 @@
     "style": "funk",
     "seed": 579061791,
     "meter": "3/4",
-    "attempts": 5,
+    "attempts": 2,
     "green": false,
-    "total": 0.832,
+    "total": 0.894,
     "dims": {
-     "harmonic": 0.991,
-     "separation": 0.91,
-     "rhythm": 0.531,
-     "contour": 0.901,
-     "density": 0.835,
+     "harmonic": 0.935,
+     "separation": 0.944,
+     "rhythm": 0.846,
+     "contour": 0.875,
+     "density": 0.813,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.753
+     "hook": 0.87
     },
-    "hash": "2c2275320a04b276"
+    "hash": "f24d279827fdc70d"
    },
    {
     "style": "funk",
     "seed": 835807632,
     "meter": "3/4",
-    "attempts": 5,
+    "attempts": 4,
     "green": false,
-    "total": 0.835,
+    "total": 0.882,
     "dims": {
      "harmonic": 0.991,
      "separation": 0.925,
-     "rhythm": 0.548,
+     "rhythm": 0.826,
      "contour": 0.878,
-     "density": 0.827,
+     "density": 0.803,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.759
+     "hook": 0.688
     },
     "hash": "8d68c24937ff6a10"
    },
@@ -20247,39 +20248,39 @@
     "style": "funk",
     "seed": 1366488993,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.814,
+    "attempts": 2,
+    "green": true,
+    "total": 0.878,
     "dims": {
-     "harmonic": 0.963,
-     "separation": 0.892,
-     "rhythm": 0.583,
-     "contour": 0.775,
-     "density": 0.835,
+     "harmonic": 0.948,
+     "separation": 0.872,
+     "rhythm": 0.835,
+     "contour": 0.844,
+     "density": 0.834,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.689
+     "hook": 0.815
     },
-    "hash": "13ad330e83d6eccf"
+    "hash": "6e245ec2cdc50f51"
    },
    {
     "style": "funk",
     "seed": 174352462,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.824,
+    "attempts": 2,
+    "green": true,
+    "total": 0.857,
     "dims": {
-     "harmonic": 0.961,
-     "separation": 0.891,
-     "rhythm": 0.55,
-     "contour": 0.907,
-     "density": 0.829,
+     "harmonic": 0.971,
+     "separation": 0.853,
+     "rhythm": 0.847,
+     "contour": 0.615,
+     "density": 0.822,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.744
+     "hook": 0.76
     },
-    "hash": "ea77a10fbadf5e31"
+    "hash": "94e515a17f69265d"
    },
    {
     "style": "funk",
@@ -20287,18 +20288,18 @@
     "meter": "3/4",
     "attempts": 5,
     "green": false,
-    "total": 0.822,
+    "total": 0.872,
     "dims": {
-     "harmonic": 0.969,
-     "separation": 0.892,
-     "rhythm": 0.571,
-     "contour": 0.749,
-     "density": 0.832,
+     "harmonic": 1.0,
+     "separation": 0.894,
+     "rhythm": 0.834,
+     "contour": 0.586,
+     "density": 0.8,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.799
+     "hook": 0.845
     },
-    "hash": "09d7ce1ad1ab96ff"
+    "hash": "00958959e2c03ebb"
    },
    {
     "style": "funk",
@@ -20306,18 +20307,18 @@
     "meter": "3/4",
     "attempts": 5,
     "green": false,
-    "total": 0.829,
+    "total": 0.904,
     "dims": {
-     "harmonic": 0.983,
-     "separation": 0.917,
-     "rhythm": 0.519,
-     "contour": 0.906,
-     "density": 0.836,
+     "harmonic": 0.958,
+     "separation": 0.94,
+     "rhythm": 0.848,
+     "contour": 0.934,
+     "density": 0.81,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.758
+     "hook": 0.858
     },
-    "hash": "cbcc11c4a3fe64ca"
+    "hash": "59d4aaa3a1e1542a"
    },
    {
     "style": "funk",
@@ -20325,16 +20326,16 @@
     "meter": "3/4",
     "attempts": 5,
     "green": false,
-    "total": 0.835,
+    "total": 0.882,
     "dims": {
      "harmonic": 0.951,
      "separation": 0.947,
-     "rhythm": 0.56,
+     "rhythm": 0.821,
      "contour": 0.951,
-     "density": 0.83,
+     "density": 0.807,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.749
+     "hook": 0.706
     },
     "hash": "1273d9728774d181"
    },
@@ -20342,18 +20343,18 @@
     "style": "funk",
     "seed": 886523225,
     "meter": "6/8",
-    "attempts": 5,
+    "attempts": 2,
     "green": false,
-    "total": 0.809,
+    "total": 0.895,
     "dims": {
      "harmonic": 0.999,
      "separation": 0.924,
-     "rhythm": 0.415,
+     "rhythm": 0.85,
      "contour": 0.893,
-     "density": 0.828,
+     "density": 0.804,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.74
+     "hook": 0.727
     },
     "hash": "e65798fb50aebd89"
    },
@@ -20363,18 +20364,18 @@
     "meter": "6/8",
     "attempts": 5,
     "green": false,
-    "total": 0.799,
+    "total": 0.893,
     "dims": {
-     "harmonic": 0.991,
-     "separation": 0.91,
-     "rhythm": 0.371,
-     "contour": 0.901,
-     "density": 0.835,
+     "harmonic": 0.94,
+     "separation": 0.944,
+     "rhythm": 0.835,
+     "contour": 0.875,
+     "density": 0.813,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.753
+     "hook": 0.87
     },
-    "hash": "252753e203c52d41"
+    "hash": "e51316cf881c8ab5"
    },
    {
     "style": "funk",
@@ -20382,16 +20383,16 @@
     "meter": "6/8",
     "attempts": 5,
     "green": false,
-    "total": 0.805,
+    "total": 0.888,
     "dims": {
      "harmonic": 0.991,
      "separation": 0.925,
-     "rhythm": 0.401,
+     "rhythm": 0.856,
      "contour": 0.878,
-     "density": 0.827,
+     "density": 0.803,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.759
+     "hook": 0.688
     },
     "hash": "7505f7fd1f38e162"
    },
@@ -20399,39 +20400,39 @@
     "style": "funk",
     "seed": 1366488993,
     "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.787,
+    "attempts": 2,
+    "green": true,
+    "total": 0.883,
     "dims": {
-     "harmonic": 0.963,
-     "separation": 0.892,
-     "rhythm": 0.45,
-     "contour": 0.775,
-     "density": 0.835,
+     "harmonic": 0.948,
+     "separation": 0.872,
+     "rhythm": 0.859,
+     "contour": 0.844,
+     "density": 0.834,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.689
+     "hook": 0.815
     },
-    "hash": "97526555ca8f3dd5"
+    "hash": "1de748922b3d0f5e"
    },
    {
     "style": "funk",
     "seed": 174352462,
     "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.784,
+    "attempts": 2,
+    "green": true,
+    "total": 0.859,
     "dims": {
-     "harmonic": 0.961,
-     "separation": 0.891,
-     "rhythm": 0.358,
-     "contour": 0.907,
-     "density": 0.829,
+     "harmonic": 0.971,
+     "separation": 0.853,
+     "rhythm": 0.859,
+     "contour": 0.615,
+     "density": 0.822,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.744
+     "hook": 0.76
     },
-    "hash": "ca3522052f39dece"
+    "hash": "171bbbcd6efd7019"
    },
    {
     "style": "funk",
@@ -20439,16 +20440,16 @@
     "meter": "6/8",
     "attempts": 5,
     "green": false,
-    "total": 0.793,
+    "total": 0.874,
     "dims": {
      "harmonic": 0.968,
      "separation": 0.87,
-     "rhythm": 0.416,
+     "rhythm": 0.851,
      "contour": 0.802,
-     "density": 0.823,
+     "density": 0.797,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.819
+     "hook": 0.76
     },
     "hash": "707480418deb055e"
    },
@@ -20458,18 +20459,18 @@
     "meter": "6/8",
     "attempts": 5,
     "green": false,
-    "total": 0.806,
+    "total": 0.905,
     "dims": {
-     "harmonic": 0.979,
-     "separation": 0.905,
-     "rhythm": 0.422,
-     "contour": 0.885,
-     "density": 0.835,
+     "harmonic": 0.958,
+     "separation": 0.94,
+     "rhythm": 0.855,
+     "contour": 0.934,
+     "density": 0.81,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.771
+     "hook": 0.858
     },
-    "hash": "740660d70ad90278"
+    "hash": "a61e0e4c8e770088"
    },
    {
     "style": "funk",
@@ -20477,16 +20478,16 @@
     "meter": "6/8",
     "attempts": 5,
     "green": false,
-    "total": 0.802,
+    "total": 0.885,
     "dims": {
      "harmonic": 0.951,
      "separation": 0.947,
-     "rhythm": 0.399,
+     "rhythm": 0.834,
      "contour": 0.951,
-     "density": 0.83,
+     "density": 0.807,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.749
+     "hook": 0.706
     },
     "hash": "8bdc313e0a07f62a"
    },
@@ -20494,132 +20495,132 @@
     "style": "funk",
     "seed": 886523225,
     "meter": "7/8",
-    "attempts": 5,
+    "attempts": 2,
     "green": false,
-    "total": 0.799,
+    "total": 0.894,
     "dims": {
-     "harmonic": 0.95,
-     "separation": 0.908,
-     "rhythm": 0.463,
-     "contour": 0.932,
-     "density": 0.83,
+     "harmonic": 0.987,
+     "separation": 0.926,
+     "rhythm": 0.817,
+     "contour": 0.749,
+     "density": 0.817,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.666
+     "hook": 0.921
     },
-    "hash": "b0a4b432eb620ab1"
+    "hash": "e451f90872421ce5"
    },
    {
     "style": "funk",
     "seed": 579061791,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.799,
+    "attempts": 1,
+    "green": true,
+    "total": 0.887,
     "dims": {
-     "harmonic": 0.944,
-     "separation": 0.924,
-     "rhythm": 0.492,
-     "contour": 0.877,
-     "density": 0.833,
+     "harmonic": 0.941,
+     "separation": 0.931,
+     "rhythm": 0.822,
+     "contour": 0.881,
+     "density": 0.831,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.646
+     "hook": 0.831
     },
-    "hash": "5ab600d07eff58cb"
+    "hash": "cafd68980bf0a969"
    },
    {
     "style": "funk",
     "seed": 835807632,
     "meter": "7/8",
     "attempts": 5,
-    "green": false,
-    "total": 0.803,
+    "green": true,
+    "total": 0.882,
     "dims": {
-     "harmonic": 0.966,
+     "harmonic": 0.969,
      "separation": 0.887,
-     "rhythm": 0.468,
-     "contour": 0.882,
-     "density": 0.834,
+     "rhythm": 0.837,
+     "contour": 0.835,
+     "density": 0.832,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.714
+     "hook": 0.781
     },
-    "hash": "ffea669a828a6d6f"
+    "hash": "177712f65e812feb"
    },
    {
     "style": "funk",
     "seed": 1366488993,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.808,
+    "attempts": 1,
+    "green": true,
+    "total": 0.869,
     "dims": {
-     "harmonic": 0.988,
-     "separation": 0.887,
-     "rhythm": 0.469,
-     "contour": 0.867,
-     "density": 0.83,
+     "harmonic": 0.905,
+     "separation": 0.916,
+     "rhythm": 0.828,
+     "contour": 0.822,
+     "density": 0.822,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.721
+     "hook": 0.822
     },
-    "hash": "637fb703e3dec29a"
+    "hash": "39c9868be34c618e"
    },
    {
     "style": "funk",
     "seed": 174352462,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.799,
+    "attempts": 2,
+    "green": true,
+    "total": 0.884,
     "dims": {
-     "harmonic": 0.972,
-     "separation": 0.892,
-     "rhythm": 0.465,
-     "contour": 0.874,
-     "density": 0.845,
+     "harmonic": 0.98,
+     "separation": 0.876,
+     "rhythm": 0.837,
+     "contour": 0.8,
+     "density": 0.828,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.656
+     "hook": 0.822
     },
-    "hash": "dcaa9832fa19a974"
+    "hash": "6bc6f67f52296672"
    },
    {
     "style": "funk",
     "seed": 1754323835,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.794,
+    "attempts": 2,
+    "green": true,
+    "total": 0.867,
     "dims": {
-     "harmonic": 0.943,
-     "separation": 0.854,
-     "rhythm": 0.459,
-     "contour": 0.919,
-     "density": 0.837,
+     "harmonic": 0.966,
+     "separation": 0.893,
+     "rhythm": 0.827,
+     "contour": 0.792,
+     "density": 0.829,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.716
+     "hook": 0.699
     },
-    "hash": "89acfdd61eeb5ccb"
+    "hash": "74e0c549c8663671"
    },
    {
     "style": "funk",
     "seed": 1447369345,
     "meter": "7/8",
-    "attempts": 5,
+    "attempts": 2,
     "green": false,
-    "total": 0.802,
+    "total": 0.88,
     "dims": {
      "harmonic": 0.955,
      "separation": 0.942,
-     "rhythm": 0.461,
+     "rhythm": 0.814,
      "contour": 0.862,
-     "density": 0.833,
+     "density": 0.823,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.699
+     "hook": 0.757
     },
     "hash": "176b72ac7fc76be1"
    },
@@ -20627,37 +20628,37 @@
     "style": "funk",
     "seed": 436100216,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.791,
+    "attempts": 1,
+    "green": true,
+    "total": 0.888,
     "dims": {
-     "harmonic": 0.98,
-     "separation": 0.859,
-     "rhythm": 0.452,
-     "contour": 0.856,
-     "density": 0.816,
+     "harmonic": 0.945,
+     "separation": 0.947,
+     "rhythm": 0.862,
+     "contour": 0.722,
+     "density": 0.838,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.679
+     "hook": 0.856
     },
-    "hash": "1a3e827abdbda58d"
+    "hash": "06d352f76c500e4e"
    },
    {
     "style": "funk",
     "seed": 886523225,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.83,
+    "attempts": 2,
+    "green": true,
+    "total": 0.886,
     "dims": {
      "harmonic": 0.971,
      "separation": 0.894,
-     "rhythm": 0.639,
+     "rhythm": 0.879,
      "contour": 0.802,
-     "density": 0.821,
+     "density": 0.837,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.7
+     "hook": 0.751
     },
     "hash": "3caa5a60a119ced5"
    },
@@ -20665,75 +20666,75 @@
     "style": "funk",
     "seed": 579061791,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.836,
+    "attempts": 1,
+    "green": true,
+    "total": 0.873,
     "dims": {
-     "harmonic": 0.974,
-     "separation": 0.947,
-     "rhythm": 0.619,
-     "contour": 0.832,
-     "density": 0.812,
+     "harmonic": 0.938,
+     "separation": 0.942,
+     "rhythm": 0.837,
+     "contour": 0.813,
+     "density": 0.835,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.694
+     "hook": 0.718
     },
-    "hash": "95c763922eb37c04"
+    "hash": "2b162fcd595e6027"
    },
    {
     "style": "funk",
     "seed": 835807632,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.834,
+    "attempts": 1,
+    "green": true,
+    "total": 0.875,
     "dims": {
-     "harmonic": 0.968,
-     "separation": 0.9,
-     "rhythm": 0.598,
-     "contour": 0.815,
-     "density": 0.861,
+     "harmonic": 0.963,
+     "separation": 0.85,
+     "rhythm": 0.885,
+     "contour": 0.743,
+     "density": 0.839,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.769
+     "hook": 0.757
     },
-    "hash": "163e48e274eada3d"
+    "hash": "d1fb0962e6d34bac"
    },
    {
     "style": "funk",
     "seed": 1366488993,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.814,
+    "attempts": 1,
+    "green": true,
+    "total": 0.874,
     "dims": {
-     "harmonic": 0.965,
-     "separation": 0.903,
-     "rhythm": 0.604,
-     "contour": 0.767,
-     "density": 0.812,
+     "harmonic": 0.924,
+     "separation": 0.899,
+     "rhythm": 0.86,
+     "contour": 0.848,
+     "density": 0.828,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.66
+     "hook": 0.749
     },
-    "hash": "352a930ce524f75c"
+    "hash": "e7daab2aca91fe29"
    },
    {
     "style": "funk",
     "seed": 174352462,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.82,
+    "attempts": 1,
+    "green": true,
+    "total": 0.875,
     "dims": {
      "harmonic": 0.917,
      "separation": 0.885,
-     "rhythm": 0.615,
+     "rhythm": 0.842,
      "contour": 0.803,
-     "density": 0.822,
+     "density": 0.837,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.795
+     "hook": 0.863
     },
     "hash": "0d9170251fab5e56"
    },
@@ -20741,18 +20742,18 @@
     "style": "funk",
     "seed": 1754323835,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.831,
+    "attempts": 2,
+    "green": true,
+    "total": 0.878,
     "dims": {
      "harmonic": 0.955,
      "separation": 0.894,
-     "rhythm": 0.62,
+     "rhythm": 0.844,
      "contour": 0.899,
-     "density": 0.829,
+     "density": 0.843,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.695
+     "hook": 0.692
     },
     "hash": "f8c61f411b6da41e"
    },
@@ -20760,58 +20761,58 @@
     "style": "funk",
     "seed": 1447369345,
     "meter": "5/4",
-    "attempts": 5,
+    "attempts": 2,
     "green": false,
-    "total": 0.824,
+    "total": 0.877,
     "dims": {
-     "harmonic": 0.976,
-     "separation": 0.88,
-     "rhythm": 0.637,
-     "contour": 0.72,
-     "density": 0.816,
+     "harmonic": 0.951,
+     "separation": 0.908,
+     "rhythm": 0.818,
+     "contour": 0.696,
+     "density": 0.845,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.724
+     "hook": 0.888
     },
-    "hash": "a22625883ddf22f2"
+    "hash": "7370b6d13ff9c32c"
    },
    {
     "style": "funk",
     "seed": 436100216,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.819,
+    "attempts": 1,
+    "green": true,
+    "total": 0.878,
     "dims": {
-     "harmonic": 0.962,
-     "separation": 0.901,
-     "rhythm": 0.58,
-     "contour": 0.799,
-     "density": 0.825,
+     "harmonic": 0.941,
+     "separation": 0.905,
+     "rhythm": 0.845,
+     "contour": 0.844,
+     "density": 0.837,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.724
+     "hook": 0.767
     },
-    "hash": "8f6b55a0b7fedfb3"
+    "hash": "c5850ce513229eb1"
    },
    {
     "style": "epic_orchestral",
     "seed": 886523225,
     "meter": "3/4",
     "attempts": 5,
-    "green": false,
-    "total": 0.807,
+    "green": true,
+    "total": 0.912,
     "dims": {
-     "harmonic": 0.97,
-     "separation": 0.885,
-     "rhythm": 0.563,
-     "contour": 0.672,
-     "density": 0.816,
-     "mix": 0.94,
+     "harmonic": 0.969,
+     "separation": 0.861,
+     "rhythm": 1.0,
+     "contour": 0.765,
+     "density": 0.833,
+     "mix": 0.89,
      "style_match": 0.0,
-     "hook": 0.758
+     "hook": 0.884
     },
-    "hash": "6244fc9c2ed33594"
+    "hash": "90291f70a31af94b"
    },
    {
     "style": "epic_orchestral",
@@ -20819,16 +20820,16 @@
     "meter": "3/4",
     "attempts": 5,
     "green": false,
-    "total": 0.822,
+    "total": 0.916,
     "dims": {
      "harmonic": 0.966,
      "separation": 0.906,
-     "rhythm": 0.53,
+     "rhythm": 1.0,
      "contour": 0.942,
-     "density": 0.822,
+     "density": 0.796,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.716
+     "hook": 0.709
     },
     "hash": "b6c3c73878c59bee"
    },
@@ -20838,16 +20839,16 @@
     "meter": "3/4",
     "attempts": 5,
     "green": false,
-    "total": 0.822,
+    "total": 0.93,
     "dims": {
      "harmonic": 0.992,
      "separation": 0.923,
-     "rhythm": 0.53,
+     "rhythm": 1.0,
      "contour": 0.853,
-     "density": 0.822,
+     "density": 0.795,
      "mix": 0.926,
      "style_match": 0.0,
-     "hook": 0.711
+     "hook": 0.845
     },
     "hash": "cb2d8c868f7f66e1"
    },
@@ -20857,16 +20858,16 @@
     "meter": "3/4",
     "attempts": 5,
     "green": false,
-    "total": 0.824,
+    "total": 0.919,
     "dims": {
      "harmonic": 0.976,
      "separation": 0.852,
-     "rhythm": 0.566,
+     "rhythm": 1.0,
      "contour": 0.92,
-     "density": 0.818,
+     "density": 0.791,
      "mix": 0.866,
      "style_match": 0.0,
-     "hook": 0.791
+     "hook": 0.869
     },
     "hash": "23038e0ba480560e"
    },
@@ -20874,20 +20875,20 @@
     "style": "epic_orchestral",
     "seed": 174352462,
     "meter": "3/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.834,
+    "attempts": 1,
+    "green": true,
+    "total": 0.911,
     "dims": {
-     "harmonic": 0.968,
-     "separation": 0.866,
-     "rhythm": 0.651,
-     "contour": 0.841,
-     "density": 0.824,
+     "harmonic": 0.972,
+     "separation": 0.86,
+     "rhythm": 1.0,
+     "contour": 0.73,
+     "density": 0.825,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.723
+     "hook": 0.858
     },
-    "hash": "2f5b42a4287cf79c"
+    "hash": "9ca717ff5c143db4"
    },
    {
     "style": "epic_orchestral",
@@ -20895,16 +20896,16 @@
     "meter": "3/4",
     "attempts": 5,
     "green": false,
-    "total": 0.841,
+    "total": 0.913,
     "dims": {
      "harmonic": 0.966,
      "separation": 0.896,
-     "rhythm": 0.606,
+     "rhythm": 1.0,
      "contour": 0.841,
-     "density": 0.821,
+     "density": 0.795,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.838
+     "hook": 0.779
     },
     "hash": "488f0e5f69ec6640"
    },
@@ -20914,18 +20915,18 @@
     "meter": "3/4",
     "attempts": 5,
     "green": false,
-    "total": 0.834,
+    "total": 0.927,
     "dims": {
-     "harmonic": 0.987,
-     "separation": 0.868,
-     "rhythm": 0.651,
-     "contour": 0.769,
-     "density": 0.795,
+     "harmonic": 0.995,
+     "separation": 0.889,
+     "rhythm": 1.0,
+     "contour": 0.88,
+     "density": 0.809,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.755
+     "hook": 0.801
     },
-    "hash": "0a3764f21a0f8ab1"
+    "hash": "08b55283803c0ade"
    },
    {
     "style": "epic_orchestral",
@@ -20933,35 +20934,35 @@
     "meter": "3/4",
     "attempts": 5,
     "green": false,
-    "total": 0.814,
+    "total": 0.904,
     "dims": {
-     "harmonic": 0.965,
-     "separation": 0.899,
-     "rhythm": 0.566,
-     "contour": 0.758,
-     "density": 0.83,
+     "harmonic": 0.969,
+     "separation": 0.856,
+     "rhythm": 1.0,
+     "contour": 0.836,
+     "density": 0.806,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.726
+     "hook": 0.733
     },
-    "hash": "6ab28b8f0dc0fb36"
+    "hash": "5270bdd405cdf4a3"
    },
    {
     "style": "epic_orchestral",
     "seed": 886523225,
     "meter": "6/8",
     "attempts": 5,
-    "green": false,
-    "total": 0.694,
+    "green": true,
+    "total": 0.912,
     "dims": {
      "harmonic": 0.969,
      "separation": 0.861,
-     "rhythm": 0.0,
+     "rhythm": 1.0,
      "contour": 0.765,
-     "density": 0.85,
+     "density": 0.833,
      "mix": 0.89,
      "style_match": 0.0,
-     "hook": 0.745
+     "hook": 0.884
     },
     "hash": "f7346eabd725ea92"
    },
@@ -20971,16 +20972,16 @@
     "meter": "6/8",
     "attempts": 5,
     "green": false,
-    "total": 0.714,
+    "total": 0.916,
     "dims": {
      "harmonic": 0.966,
      "separation": 0.906,
-     "rhythm": 0.0,
+     "rhythm": 1.0,
      "contour": 0.942,
-     "density": 0.822,
+     "density": 0.796,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.716
+     "hook": 0.709
     },
     "hash": "574b50cd7b8f5bc3"
    },
@@ -20990,16 +20991,16 @@
     "meter": "6/8",
     "attempts": 5,
     "green": false,
-    "total": 0.713,
+    "total": 0.93,
     "dims": {
      "harmonic": 0.992,
      "separation": 0.923,
-     "rhythm": 0.0,
+     "rhythm": 1.0,
      "contour": 0.853,
-     "density": 0.822,
+     "density": 0.795,
      "mix": 0.926,
      "style_match": 0.0,
-     "hook": 0.711
+     "hook": 0.845
     },
     "hash": "810d46938cdcc461"
    },
@@ -21009,16 +21010,16 @@
     "meter": "6/8",
     "attempts": 5,
     "green": false,
-    "total": 0.708,
+    "total": 0.919,
     "dims": {
      "harmonic": 0.976,
      "separation": 0.852,
-     "rhythm": 0.0,
+     "rhythm": 1.0,
      "contour": 0.92,
-     "density": 0.818,
+     "density": 0.791,
      "mix": 0.866,
      "style_match": 0.0,
-     "hook": 0.791
+     "hook": 0.869
     },
     "hash": "d45c37628f065d0e"
    },
@@ -21026,20 +21027,20 @@
     "style": "epic_orchestral",
     "seed": 174352462,
     "meter": "6/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.703,
+    "attempts": 1,
+    "green": true,
+    "total": 0.911,
     "dims": {
-     "harmonic": 0.96,
-     "separation": 0.868,
-     "rhythm": 0.0,
-     "contour": 0.882,
-     "density": 0.813,
+     "harmonic": 0.972,
+     "separation": 0.86,
+     "rhythm": 1.0,
+     "contour": 0.73,
+     "density": 0.825,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.739
+     "hook": 0.858
     },
-    "hash": "d5fffd42aea1abd9"
+    "hash": "71c13087ff0f2030"
    },
    {
     "style": "epic_orchestral",
@@ -21047,16 +21048,16 @@
     "meter": "6/8",
     "attempts": 5,
     "green": false,
-    "total": 0.716,
+    "total": 0.913,
     "dims": {
      "harmonic": 0.966,
      "separation": 0.896,
-     "rhythm": 0.0,
+     "rhythm": 1.0,
      "contour": 0.841,
-     "density": 0.821,
+     "density": 0.795,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.838
+     "hook": 0.779
     },
     "hash": "8ffb7b5da37ed92f"
    },
@@ -21066,16 +21067,16 @@
     "meter": "6/8",
     "attempts": 5,
     "green": false,
-    "total": 0.716,
+    "total": 0.927,
     "dims": {
      "harmonic": 0.995,
      "separation": 0.889,
-     "rhythm": 0.0,
+     "rhythm": 1.0,
      "contour": 0.88,
-     "density": 0.832,
+     "density": 0.809,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.733
+     "hook": 0.801
     },
     "hash": "cefc2ca36e197895"
    },
@@ -21085,16 +21086,16 @@
     "meter": "6/8",
     "attempts": 5,
     "green": false,
-    "total": 0.701,
+    "total": 0.906,
     "dims": {
      "harmonic": 0.965,
      "separation": 0.899,
-     "rhythm": 0.0,
+     "rhythm": 1.0,
      "contour": 0.797,
-     "density": 0.83,
+     "density": 0.806,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.726
+     "hook": 0.739
     },
     "hash": "0615f71c9905be1e"
    },
@@ -21102,20 +21103,20 @@
     "style": "epic_orchestral",
     "seed": 886523225,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.811,
+    "attempts": 1,
+    "green": true,
+    "total": 0.896,
     "dims": {
-     "harmonic": 0.996,
-     "separation": 0.854,
-     "rhythm": 0.539,
-     "contour": 0.779,
-     "density": 0.842,
+     "harmonic": 0.939,
+     "separation": 0.86,
+     "rhythm": 1.0,
+     "contour": 0.682,
+     "density": 0.821,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.707
+     "hook": 0.845
     },
-    "hash": "eca3ec470e5bc6c4"
+    "hash": "b44e0a4657ce337c"
    },
    {
     "style": "epic_orchestral",
@@ -21123,92 +21124,92 @@
     "meter": "7/8",
     "attempts": 5,
     "green": false,
-    "total": 0.808,
+    "total": 0.912,
     "dims": {
-     "harmonic": 0.968,
-     "separation": 0.827,
-     "rhythm": 0.539,
-     "contour": 0.866,
-     "density": 0.826,
+     "harmonic": 0.977,
+     "separation": 0.898,
+     "rhythm": 1.0,
+     "contour": 0.934,
+     "density": 0.805,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.722
+     "hook": 0.661
     },
-    "hash": "0ab52326fc86e378"
+    "hash": "c5c3d0f3280bf99d"
    },
    {
     "style": "epic_orchestral",
     "seed": 835807632,
     "meter": "7/8",
-    "attempts": 5,
+    "attempts": 3,
     "green": false,
-    "total": 0.797,
+    "total": 0.907,
     "dims": {
-     "harmonic": 0.972,
-     "separation": 0.82,
-     "rhythm": 0.539,
-     "contour": 0.814,
-     "density": 0.834,
-     "mix": 0.904,
+     "harmonic": 0.951,
+     "separation": 0.885,
+     "rhythm": 1.0,
+     "contour": 0.795,
+     "density": 0.807,
+     "mix": 0.932,
      "style_match": 0.0,
-     "hook": 0.686
+     "hook": 0.812
     },
-    "hash": "97a286573e246205"
+    "hash": "44588b69a58cc983"
    },
    {
     "style": "epic_orchestral",
     "seed": 1366488993,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.774,
+    "attempts": 1,
+    "green": true,
+    "total": 0.903,
     "dims": {
-     "harmonic": 0.993,
-     "separation": 0.89,
-     "rhythm": 0.371,
-     "contour": 0.669,
-     "density": 0.836,
-     "mix": 0.94,
+     "harmonic": 0.961,
+     "separation": 0.839,
+     "rhythm": 1.0,
+     "contour": 0.73,
+     "density": 0.83,
+     "mix": 0.857,
      "style_match": 0.0,
-     "hook": 0.732
+     "hook": 0.907
     },
-    "hash": "8089ffe5a91e08d8"
+    "hash": "6988ba831bf46929"
    },
    {
     "style": "epic_orchestral",
     "seed": 174352462,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.805,
+    "attempts": 1,
+    "green": true,
+    "total": 0.88,
     "dims": {
-     "harmonic": 0.974,
+     "harmonic": 0.998,
      "separation": 0.864,
-     "rhythm": 0.514,
-     "contour": 0.83,
-     "density": 0.831,
+     "rhythm": 1.0,
+     "contour": 0.825,
+     "density": 0.824,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.7
+     "hook": 0.423
     },
-    "hash": "e1ba9540f9c5adde"
+    "hash": "a448f4c259ff3b6c"
    },
    {
     "style": "epic_orchestral",
     "seed": 1754323835,
     "meter": "7/8",
-    "attempts": 5,
-    "green": false,
-    "total": 0.809,
+    "attempts": 2,
+    "green": true,
+    "total": 0.91,
     "dims": {
      "harmonic": 0.938,
      "separation": 0.901,
-     "rhythm": 0.539,
+     "rhythm": 1.0,
      "contour": 0.882,
-     "density": 0.831,
+     "density": 0.821,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.696
+     "hook": 0.761
     },
     "hash": "63290cf4c77bc635"
    },
@@ -21216,189 +21217,189 @@
     "style": "epic_orchestral",
     "seed": 1447369345,
     "meter": "7/8",
-    "attempts": 5,
+    "attempts": 2,
     "green": false,
-    "total": 0.778,
+    "total": 0.911,
     "dims": {
-     "harmonic": 0.971,
-     "separation": 0.875,
-     "rhythm": 0.359,
-     "contour": 0.887,
-     "density": 0.84,
-     "mix": 0.907,
+     "harmonic": 0.969,
+     "separation": 0.882,
+     "rhythm": 1.0,
+     "contour": 0.82,
+     "density": 0.801,
+     "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.718
+     "hook": 0.79
     },
-    "hash": "2a6c07772c18f4ee"
+    "hash": "3ca7f2e1d10b7913"
    },
    {
     "style": "epic_orchestral",
     "seed": 436100216,
     "meter": "7/8",
-    "attempts": 5,
+    "attempts": 4,
     "green": false,
-    "total": 0.778,
+    "total": 0.918,
     "dims": {
-     "harmonic": 0.968,
-     "separation": 0.874,
-     "rhythm": 0.392,
-     "contour": 0.788,
-     "density": 0.831,
-     "mix": 0.927,
+     "harmonic": 0.969,
+     "separation": 0.871,
+     "rhythm": 1.0,
+     "contour": 0.832,
+     "density": 0.819,
+     "mix": 0.939,
      "style_match": 0.0,
-     "hook": 0.731
+     "hook": 0.84
     },
-    "hash": "f054b6f84321a2ab"
+    "hash": "a3ad1e636675ad0f"
    },
    {
     "style": "epic_orchestral",
     "seed": 886523225,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.853,
+    "attempts": 1,
+    "green": true,
+    "total": 0.907,
     "dims": {
-     "harmonic": 0.985,
-     "separation": 0.85,
-     "rhythm": 0.743,
-     "contour": 0.804,
-     "density": 0.851,
+     "harmonic": 0.959,
+     "separation": 0.855,
+     "rhythm": 1.0,
+     "contour": 0.781,
+     "density": 0.827,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.713
+     "hook": 0.82
     },
-    "hash": "92eba2c49c689df0"
+    "hash": "47957442cb7ad014"
    },
    {
     "style": "epic_orchestral",
     "seed": 579061791,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.846,
+    "attempts": 1,
+    "green": true,
+    "total": 0.905,
     "dims": {
-     "harmonic": 0.965,
-     "separation": 0.834,
-     "rhythm": 0.743,
-     "contour": 0.767,
-     "density": 0.851,
+     "harmonic": 0.955,
+     "separation": 0.838,
+     "rhythm": 1.0,
+     "contour": 0.895,
+     "density": 0.836,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.747
+     "hook": 0.728
     },
-    "hash": "b8de07071d8c8f66"
+    "hash": "95409e1a66045719"
    },
    {
     "style": "epic_orchestral",
     "seed": 835807632,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.845,
+    "attempts": 1,
+    "green": true,
+    "total": 0.918,
     "dims": {
-     "harmonic": 0.989,
-     "separation": 0.899,
-     "rhythm": 0.64,
-     "contour": 0.895,
-     "density": 0.833,
-     "mix": 0.94,
+     "harmonic": 0.978,
+     "separation": 0.883,
+     "rhythm": 1.0,
+     "contour": 0.784,
+     "density": 0.863,
+     "mix": 0.889,
      "style_match": 0.0,
-     "hook": 0.695
+     "hook": 0.841
     },
-    "hash": "c39348c502f0e672"
+    "hash": "807ee81739698557"
    },
    {
     "style": "epic_orchestral",
     "seed": 1366488993,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.876,
+    "attempts": 1,
+    "green": true,
+    "total": 0.913,
     "dims": {
-     "harmonic": 0.964,
-     "separation": 0.898,
-     "rhythm": 0.811,
-     "contour": 0.799,
-     "density": 0.846,
+     "harmonic": 0.976,
+     "separation": 0.834,
+     "rhythm": 1.0,
+     "contour": 0.72,
+     "density": 0.84,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.787
+     "hook": 0.899
     },
-    "hash": "c0ae2000173c400c"
+    "hash": "9cde3ffc90d2f423"
    },
    {
     "style": "epic_orchestral",
     "seed": 174352462,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.86,
+    "attempts": 1,
+    "green": true,
+    "total": 0.916,
     "dims": {
-     "harmonic": 0.938,
-     "separation": 0.877,
-     "rhythm": 0.811,
-     "contour": 0.797,
-     "density": 0.876,
+     "harmonic": 0.999,
+     "separation": 0.863,
+     "rhythm": 1.0,
+     "contour": 0.809,
+     "density": 0.862,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.704
+     "hook": 0.737
     },
-    "hash": "ef8f350251cf8296"
+    "hash": "d712baea8fcd244b"
    },
    {
     "style": "epic_orchestral",
     "seed": 1754323835,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.848,
+    "attempts": 2,
+    "green": true,
+    "total": 0.919,
     "dims": {
-     "harmonic": 0.988,
-     "separation": 0.859,
-     "rhythm": 0.696,
-     "contour": 0.77,
-     "density": 0.856,
+     "harmonic": 0.92,
+     "separation": 0.908,
+     "rhythm": 1.0,
+     "contour": 0.848,
+     "density": 0.864,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.753
+     "hook": 0.869
     },
-    "hash": "d4ab341680acdab4"
+    "hash": "620552aa8d64a00c"
    },
    {
     "style": "epic_orchestral",
     "seed": 1447369345,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.827,
+    "attempts": 1,
+    "green": true,
+    "total": 0.895,
     "dims": {
-     "harmonic": 0.953,
-     "separation": 0.871,
-     "rhythm": 0.64,
-     "contour": 0.86,
-     "density": 0.835,
+     "harmonic": 0.944,
+     "separation": 0.856,
+     "rhythm": 1.0,
+     "contour": 0.815,
+     "density": 0.84,
      "mix": 0.94,
      "style_match": 0.0,
-     "hook": 0.683
+     "hook": 0.704
     },
-    "hash": "5ac1ab2bc9465046"
+    "hash": "9ea410fe2335e8ac"
    },
    {
     "style": "epic_orchestral",
     "seed": 436100216,
     "meter": "5/4",
-    "attempts": 5,
-    "green": false,
-    "total": 0.832,
+    "attempts": 1,
+    "green": true,
+    "total": 0.91,
     "dims": {
      "harmonic": 0.949,
      "separation": 0.899,
-     "rhythm": 0.64,
+     "rhythm": 1.0,
      "contour": 0.85,
-     "density": 0.831,
+     "density": 0.844,
      "mix": 0.918,
      "style_match": 0.0,
-     "hook": 0.734
+     "hook": 0.76
     },
     "hash": "1f72200754a3080b"
    }

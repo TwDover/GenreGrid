@@ -7,7 +7,7 @@
 # version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
 # <https://www.gnu.org/licenses/> for details.
 import random
-from app.core.meter import Meter, DEFAULT_METER
+from app.core.meter import Meter, DEFAULT_METER, backbeat_beats
 from typing import List
 
 from app.services.midi_writer import NoteEvent
@@ -144,7 +144,6 @@ def generate_drums(
     snare_beats        = drum_cfg.get("snare_standard_beats", [2, 4])
     if half_time:
         snare_beats = [3]
-    meter_is_44        = meter == Meter(4, 4)
     swing_amount       = drum_cfg.get("swing", 0.0)
     use_ride           = drum_cfg.get("use_ride", False)
     use_clap           = drum_cfg.get("use_clap", False)
@@ -193,25 +192,11 @@ def generate_drums(
     # them at the ACTUAL bar end in any meter; for 4/4 the shift is 0, so those
     # placements stay byte-identical. Full-bar figures instead clip to the bar.
     fill_shift = beats_per_bar - 4.0
-    # Backbeats are 1-indexed quarter-note beats ([2, 4]); drop any that fall
-    # outside a shorter bar (beat 4 overflows 3/4 and 6/8). Never leave it empty.
-    snare_beats = [b for b in snare_beats if (b - 1) < beats_per_bar] or [2]
-    # Idiomatic backbeat for non-4/4: land the snare on FELT pulses, not the
-    # clipped 4/4 [2,4] grid. Compound meters (6/8, 9/8, 12/8) put it on the
-    # "off" dotted-quarter pulses (6/8 → pulse 2 only; 12/8 → pulses 2 & 4);
-    # simple/odd meters land it on the central pulse (3/4 → beat 2, 7/8 → the
-    # start of the second group). Values are 1-indexed quarter positions so the
-    # snare loop's `b_f = beat − 1` still applies. 4/4 and half-time skip this
-    # (byte-identical). Ear-tuned defaults — the roadmap flags feel for review.
-    if not meter_is_44 and not half_time:
-        pulses = meter.pulse_positions
-        if meter.is_compound:
-            backbeat = pulses[1::2] or [pulses[-1]]
-        elif len(pulses) > 1:
-            backbeat = [pulses[len(pulses) // 2]]
-        else:
-            backbeat = pulses
-        snare_beats = [p + 1.0 for p in backbeat]
+    # Backbeat placement (clip to the bar, then land on felt pulses in non-4/4)
+    # lives in core.meter so the quality scorer builds its snare reference from
+    # the very same rule. Values stay 1-indexed quarter positions so the snare
+    # loop's `b_f = beat − 1` still applies.
+    snare_beats = backbeat_beats(meter, snare_beats, half_time=half_time)
 
     # Decide hat subdivision mode once per 4-bar phrase.
     phrase_hat_modes: dict[int, bool] = {}

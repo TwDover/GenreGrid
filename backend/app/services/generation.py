@@ -39,7 +39,7 @@ from app.core.arrangement import (
     _part_seed, scaled_profile,
     _apply_section_ramp, _plan_sections, _auto_arc_section_type, _section_end_bars,
 )
-from app.core.meter import parse_meter
+from app.core.meter import parse_meter, Meter, DEFAULT_METER
 from app.services.mixdown import (
     _PART_CHANNELS, _VELOCITY_SCALE, _generate_part_cc, _generate_melody_expression_cc, _generate_bass_expression_cc,
     _generate_808_pitch_bends, _shift,
@@ -64,7 +64,8 @@ def _final_chord_voicing(chord_events: list[NoteEvent]) -> list[int] | None:
     return voicing or None
 
 
-def _chord_tones_by_bar(chord_notes, bars: int) -> list | None:
+def _chord_tones_by_bar(chord_notes, bars: int,
+                        meter: Meter = DEFAULT_METER) -> list | None:
     """Per-bar sorted pitch-class lists from chord notes.
 
     ``chord_notes`` is an iterable of (start_beat, pitch) pairs (from generated
@@ -76,7 +77,7 @@ def _chord_tones_by_bar(chord_notes, bars: int) -> list | None:
     """
     tones: list[set[int]] = [set() for _ in range(bars)]
     for start, pitch in chord_notes:
-        b = int(start // 4)
+        b = int(start // meter.bar_beats)
         if 0 <= b < bars:
             tones[b].add(pitch % 12)
     if not any(tones):
@@ -633,7 +634,7 @@ def _run_attempt(
                                        push_windows=push_windows,
                                        section_type=s_sec_type, meter=meter)
                 section_chord_tones = _chord_tones_by_bar(
-                    [(e.start, e.pitch) for e in evts], s_bars)
+                    [(e.start, e.pitch) for e in evts], s_bars, meter)
                 _chords_prev = _final_chord_voicing(evts)
             elif part == "pads":
                 evts = generate_pads(style, s_key, req.scale, s_bars, backing_cplx,
@@ -700,7 +701,7 @@ def _run_attempt(
         # so both melody clean-up passes nudge to in-key pitches, never chromatic ones.
         _mel_scale_name = style.get("melody_scale", req.scale)
         _section_scales = [
-            (float(s["offset"]), float(s["offset"] + s["bars"] * 4),
+            (float(s["offset"]), float(s["offset"] + s["bars"] * meter.bar_beats),
              {p % 12 for p in build_scale(s.get("key", req.key), _mel_scale_name,
                                           octave_start=4, num_octaves=1)})
             for s in sections
@@ -744,7 +745,7 @@ def _run_attempt(
             ch = _PART_CHANNELS.get("bass", 1)
             pb_parts["bass"] = _generate_808_pitch_bends(all_events["bass"], ch)
 
-    patterns = extract_rhythm_patterns(all_events, req.bars)
+    patterns = extract_rhythm_patterns(all_events, req.bars, meter)
 
     # Pre-apply the same velocity scaling used for MIDI output so the mix scorer
     # evaluates what the listener will actually hear, not the raw generator values.
@@ -764,6 +765,7 @@ def _run_attempt(
             req.key, req.scale, req.bars, progression, req.complexity,
             chorus_spans=chorus_spans,
             resolved_sections=resolved_sections,
+            meter=meter,
         )
     except Exception as exc:
         logger.error("Quality scoring failed (seed=%s): %s", seed, exc, exc_info=True)

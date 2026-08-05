@@ -27,8 +27,9 @@ from app.services.midi_writer import NoteEvent
 from app.theory.chords import roman_to_chord
 from app.theory.notes import note_name_to_midi
 from app.core.constants import DRUM_MAP, DRUM_CHANNEL, SCALE_INTERVALS
+from app.core.meter import Meter, DEFAULT_METER, backbeat_beats
 
-_BEATS_PER_BAR = 4
+_BEATS_PER_BAR = 4    # 4/4 fallback for callers that don't know their meter
 _STEP = 0.25          # 16th note in beats
 _KICK_PITCH = DRUM_MAP["kick"]   # 36
 # Snare/clap land on the backbeat — the second-strongest groove signature after
@@ -46,10 +47,11 @@ def _scale_pcs(key: str, scale: str) -> set[int]:
 
 def _build_chord_map(
     progression: list, key: str, scale: str, bars: int, complexity: float,
+    meter: Meter = DEFAULT_METER,
 ) -> list[tuple[float, float, set[int]]]:
     """Return (start_beat, end_beat, pitch_class_set) for every chord slot."""
     chords_per_bar = 2 if complexity > 0.6 else 1
-    bpc = _BEATS_PER_BAR / chords_per_bar       # beats per chord
+    bpc = meter.bar_beats / chords_per_bar      # beats per chord
     total = bars * chords_per_bar
     prog_len = len(progression)
     result = []
@@ -114,17 +116,25 @@ def _chord_pcs_at(beat: float, chord_map: list) -> set[int]:
     return chord_map[-1][2] if chord_map else set()
 
 
-def _extract_16step(
+def _extract_steps(
     events: list[NoteEvent],
     pitch_filter: int | set[int] | None,
     bars: int,
     channel_filter: int | None = None,
+    meter: Meter = DEFAULT_METER,
 ) -> list[float]:
-    """Normalised 16-step hit-density vector averaged over all bars.
+    """Normalised 16th-step hit-density vector averaged over all bars.
+
+    The vector is one bar long *in this meter* — 16 steps in 4/4, 12 in 3/4 and
+    6/8, 14 in 7/8. Folding events onto a fixed 16-step grid smeared every
+    non-4/4 bar across the wrong slots (bar 2 of a 3/4 groove started at beat 3,
+    which the 4/4 grid called step 12 of bar 0), which is what collapsed the
+    rhythm dimension to noise in every meter but 4/4.
 
     ``pitch_filter`` may be a single pitch, a set of pitches (any match), or None.
     """
-    counts = [0.0] * 16
+    n_steps = meter.steps_per_bar
+    counts = [0.0] * n_steps
     is_set = isinstance(pitch_filter, set)
     for e in events:
         if channel_filter is not None and e.channel != channel_filter:
@@ -135,12 +145,12 @@ def _extract_16step(
                     continue
             elif e.pitch != pitch_filter:
                 continue
-        bar = int(e.start / _BEATS_PER_BAR)
+        bar = int(e.start / meter.bar_beats)
         if bar >= bars:
             continue
-        beat_in_bar = e.start - bar * _BEATS_PER_BAR
+        beat_in_bar = e.start - bar * meter.bar_beats
         step_i = round(beat_in_bar / _STEP)
-        if 0 <= step_i < 16:
+        if 0 <= step_i < n_steps:
             counts[step_i] += 1.0
 
     total = sum(counts)
@@ -291,21 +301,48 @@ def _register_separation(
     return (sum(scores) / len(scores) if scores else 0.65), flags
 
 
+def _fit_reference(ref: list, n_steps: int, wrap: bool) -> list[float]:
+    """Refit a 16-step 4/4 reference pattern onto an ``n_steps`` bar.
+
+    ``kick_pattern`` and ``chord_rhythm`` are hand-authored 16-step 4/4 vectors,
+    but the generators don't refuse to play them in another meter — they reindex
+    them, and the scorer has to expect what was actually played. The drum
+    generator keeps pattern entries whose position falls inside the bar and adds
+    nothing past the pattern's end (``i * step < beats_per_bar``), so its
+    reference truncates and zero-pads. The chord generator indexes modulo the
+    pattern length, so its reference tiles. Both are identity at 16 steps, which
+    is why 4/4 scores are untouched.
+    """
+    if wrap:
+        return [float(ref[i % len(ref)]) for i in range(n_steps)]
+    return [float(ref[i]) if i < len(ref) else 0.0 for i in range(n_steps)]
+
+
 def _rhythm_fit(
     drums:  list[NoteEvent],
     chords: list[NoteEvent],
     style:  dict,
     bars:   int,
+    meter:  Meter = DEFAULT_METER,
 ) -> tuple[float, list[str]]:
-    """Cosine similarity between generated and style-canonical rhythm patterns."""
+    """Cosine similarity between generated and style-canonical rhythm patterns.
+
+    Every reference is refit to this meter's bar before comparison — the step
+    patterns through ``_fit_reference`` (the generators' own reindexing rule) and
+    the backbeat through ``backbeat_beats`` (the drum generator's own felt-pulse
+    placement). Comparing a 3/4 bar against an unmodified 16-step 4/4 vector was
+    what pinned the rhythm dimension at 0.51 in every meter but 4/4.
+    """
     drum_cfg = style.get("drums", {})
     flags    = []
     scores   = []
+    n_steps  = meter.steps_per_bar
 
     # Kick pattern
     ref_kick = drum_cfg.get("kick_pattern")
     if ref_kick and drums:
-        gen_kick = _extract_16step(drums, _KICK_PITCH, bars, DRUM_CHANNEL)
+        ref_kick = _fit_reference(ref_kick, n_steps, wrap=False)
+        gen_kick = _extract_steps(drums, _KICK_PITCH, bars, DRUM_CHANNEL, meter)
         s = _cosine(gen_kick, ref_kick)
         scores.append(s)
         if s < 0.45:
@@ -315,13 +352,13 @@ def _rhythm_fit(
     # (1-indexed beats, e.g. [2, 4]) and compare where the generated backbeat lands.
     ref_beats = drum_cfg.get("snare_standard_beats")
     if ref_beats and drums:
-        ref_snare = [0.0] * 16
-        for b in ref_beats:
+        ref_snare = [0.0] * n_steps
+        for b in backbeat_beats(meter, ref_beats):
             idx = int(round((b - 1) * 4))
-            if 0 <= idx < 16:
+            if 0 <= idx < n_steps:
                 ref_snare[idx] = 1.0
         if any(ref_snare):
-            gen_snare = _extract_16step(drums, _SNARE_PITCHES, bars, DRUM_CHANNEL)
+            gen_snare = _extract_steps(drums, _SNARE_PITCHES, bars, DRUM_CHANNEL, meter)
             s = _cosine(gen_snare, ref_snare)
             scores.append(s)
             if s < 0.45:
@@ -330,7 +367,8 @@ def _rhythm_fit(
     # Chord comping rhythm
     ref_chord = style.get("chord_rhythm")
     if ref_chord and chords:
-        gen_chord = _extract_16step(chords, None, bars, channel_filter=0)
+        ref_chord = _fit_reference(ref_chord, n_steps, wrap=True)
+        gen_chord = _extract_steps(chords, None, bars, channel_filter=0, meter=meter)
         s = _cosine(gen_chord, ref_chord)
         scores.append(s)
         if s < 0.38:
@@ -347,6 +385,7 @@ def _density_fit(
     style:      dict,
     bars:       int,
     complexity: float = 0.5,
+    meter:      Meter = DEFAULT_METER,
 ) -> tuple[float, list[str]]:
     """Compare notes-per-beat against style-expected density targets.
 
@@ -362,7 +401,7 @@ def _density_fit(
     regardless of pattern_density, so the effective bass rate has a fixed
     baseline added on top of the density-driven hits.
     """
-    total_beats = bars * _BEATS_PER_BAR
+    total_beats = bars * meter.bar_beats
     if total_beats == 0:
         return 0.65, []
 
@@ -458,7 +497,8 @@ def _mix_balance(
     return (sum(scores) / len(scores) if scores else 0.70), flags
 
 
-def _hook_score(chorus_melody: list[NoteEvent]) -> tuple[float | None, list[str]]:
+def _hook_score(chorus_melody: list[NoteEvent],
+                meter: Meter = DEFAULT_METER) -> tuple[float | None, list[str]]:
     """How *memorable* the chorus melody is. Correctness scorers (coherence,
     contour, …) can pass a chorus that's valid but forgettable. A hook is
     catchy because it's *compressible*: a rhythmic figure that repeats across
@@ -483,13 +523,15 @@ def _hook_score(chorus_melody: list[NoteEvent]) -> tuple[float | None, list[str]
     notes   = sorted(chorus_melody, key=lambda e: e.start)
     pitches = [n.pitch for n in notes]
 
-    # (a) per-bar onset self-similarity
+    # (a) per-bar onset self-similarity — bars are this meter's bars, so a 6/8
+    # hook is compared bar-to-bar rather than every-4-quarter-beats.
+    n_steps = meter.steps_per_bar
     bar_vecs: dict[int, list[float]] = {}
     for n in notes:
-        b   = int(n.start // _BEATS_PER_BAR)
-        vec = bar_vecs.setdefault(b, [0.0] * 16)
-        step = round((n.start - b * _BEATS_PER_BAR) / _STEP)
-        if 0 <= step < 16:
+        b   = int(n.start // meter.bar_beats)
+        vec = bar_vecs.setdefault(b, [0.0] * n_steps)
+        step = round((n.start - b * meter.bar_beats) / _STEP)
+        if 0 <= step < n_steps:
             vec[step] += 1.0
     active = [v for v in bar_vecs.values() if sum(v) > 0]
     if len(active) >= 2:
@@ -532,18 +574,21 @@ def _hook_score(chorus_melody: list[NoteEvent]) -> tuple[float | None, list[str]
 
 # ── pattern extraction (also used by the library) ────────────────────────────
 
-def extract_rhythm_patterns(all_events: dict, bars: int) -> dict:
-    """Extract normalised 16-step kick and chord patterns from generated events.
+def extract_rhythm_patterns(all_events: dict, bars: int,
+                            meter: Meter = DEFAULT_METER) -> dict:
+    """Extract normalised per-bar kick and chord patterns from generated events.
 
-    Returns a dict with ``kick_pattern`` and ``chord_pattern`` lists (length 16,
-    each value 0–1), suitable for storing in the generation library and for
-    blending into future scoring references.
+    Returns a dict with ``kick_pattern`` and ``chord_pattern`` lists (one bar of
+    16th steps in this meter — 16 entries in 4/4, each value 0–1), suitable for
+    storing in the generation library and for blending into future scoring
+    references. The library only blends length-16 patterns back in, since the
+    style JSON references it blends *with* are 4/4 (see library._get_learned_patterns).
     """
     drums  = all_events.get("drums",  [])
     chords = all_events.get("chords", [])
     return {
-        "kick_pattern":  _extract_16step(drums,  _KICK_PITCH, bars, DRUM_CHANNEL),
-        "chord_pattern": _extract_16step(chords, None,        bars, channel_filter=0),
+        "kick_pattern":  _extract_steps(drums,  _KICK_PITCH, bars, DRUM_CHANNEL, meter),
+        "chord_pattern": _extract_steps(chords, None, bars, channel_filter=0, meter=meter),
     }
 
 
@@ -605,6 +650,7 @@ def score_generation(
     complexity:  float,
     chorus_spans: list[tuple[float, float]] | None = None,
     resolved_sections: list[dict] | None = None,
+    meter:       Meter = DEFAULT_METER,
 ) -> dict:
     """
     Score a generation across five musical dimensions.
@@ -619,6 +665,11 @@ def score_generation(
     the chord map (see ``_build_chord_map_from_sections``). ``progression`` is
     still used for ``_style_match``, which compares against corpus bigrams mined
     from *template*-level romans, not substituted ones.
+
+    ``meter`` is the time signature the events were generated in. Every bar-
+    relative measurement (rhythm step vectors, hook self-similarity bars,
+    notes-per-beat density, the legacy chord map) is computed on that bar length;
+    the 4/4 default makes every formula collapse to the previous arithmetic.
 
     Returns:
         total     — weighted composite (0–1)
@@ -640,14 +691,14 @@ def score_generation(
     chord_map = (
         _build_chord_map_from_sections(resolved_sections, key, scale)
         if resolved_sections
-        else _build_chord_map(progression, key, scale, bars, complexity)
+        else _build_chord_map(progression, key, scale, bars, complexity, meter)
     )
 
     s_harm,   f_harm   = _harmonic_coherence(melody, key, scale, chord_map)
     s_reg,    f_reg    = _register_separation(melody, chords, bass)
-    s_rhythm, f_rhythm = _rhythm_fit(drums, chords, style, bars)
+    s_rhythm, f_rhythm = _rhythm_fit(drums, chords, style, bars, meter)
     s_cont,   f_cont   = _melodic_contour(melody)
-    s_dens,   f_dens   = _density_fit(melody, bass, style, bars, complexity)
+    s_dens,   f_dens   = _density_fit(melody, bass, style, bars, complexity, meter)
     s_mix,    f_mix    = _mix_balance(melody, chords, bass)
     s_style,  f_style  = _style_match(progression, melody, style)
 
@@ -660,7 +711,7 @@ def score_generation(
             n for n in melody
             if any(start <= n.start < end for start, end in chorus_spans)
         ]
-        s_hook, f_hook = _hook_score(chorus_mel)
+        s_hook, f_hook = _hook_score(chorus_mel, meter)
 
     # Weighted, normalised over the applicable dimensions (style-match only counts
     # when a corpus prior exists, and hook only when there's a chorus melody, so
