@@ -67,6 +67,46 @@ def _build_chord_map(
     return result
 
 
+def _build_chord_map_from_sections(
+    sections: list[dict], key: str, scale: str,
+) -> list[tuple[float, float, set[int]]]:
+    """Chord map built from the harmony each section actually played.
+
+    `_build_chord_map` tiles the *raw* progression across the whole generation at
+    one global chord rate. That is not what sounds: `resolve_progression` swaps in
+    7ths/9ths, secondary dominants, and tritone subs per section; a chorus can sit
+    in a lifted key; and choruses raise the chord rate to two per bar. Scoring a
+    melody built on those chords against the pre-substitution template penalised
+    exactly the attempts that used the harmony features, so the search preferred
+    the blandest option available.
+
+    Each section supplies `offset`, `bars`, `key`, `bar_beats`, `chords_per_bar`,
+    and its resolved `romans` (see services.generation._run_attempt).
+    """
+    result: list[tuple[float, float, set[int]]] = []
+    for sec in sections:
+        romans = sec.get("romans") or []
+        if not romans:
+            continue
+        cpb       = max(1, int(sec.get("chords_per_bar", 1)))
+        bar_beats = float(sec.get("bar_beats", _BEATS_PER_BAR))
+        offset    = float(sec.get("offset", 0.0))
+        sec_key   = sec.get("key") or key       # chorus-lift sections resolve in a shifted key
+        bpc       = bar_beats / cpb
+        for i in range(int(sec.get("bars", 0)) * cpb):
+            roman = romans[i % len(romans)]
+            start = offset + i * bpc
+            try:
+                pitches = roman_to_chord(roman, sec_key, scale, octave=4,
+                                         allow_7th=True, allow_9th=True)
+                pcs = {p % 12 for p in pitches}
+            except Exception:
+                pcs = set()
+            result.append((start, start + bpc, pcs))
+    result.sort(key=lambda slot: slot[0])
+    return result
+
+
 def _chord_pcs_at(beat: float, chord_map: list) -> set[int]:
     for start, end, pcs in chord_map:
         if start <= beat < end:
@@ -564,6 +604,7 @@ def score_generation(
     progression: list,
     complexity:  float,
     chorus_spans: list[tuple[float, float]] | None = None,
+    resolved_sections: list[dict] | None = None,
 ) -> dict:
     """
     Score a generation across five musical dimensions.
@@ -572,6 +613,12 @@ def score_generation(
     sections; when supplied, the melody inside them is scored for hook
     memorability as an extra dimension. Omit it (loops without a chorus,
     callers that don't track sections) and the hook dimension is skipped.
+
+    ``resolved_sections`` carries the post-substitution harmony each section
+    actually played; when supplied it replaces ``progression`` as the source of
+    the chord map (see ``_build_chord_map_from_sections``). ``progression`` is
+    still used for ``_style_match``, which compares against corpus bigrams mined
+    from *template*-level romans, not substituted ones.
 
     Returns:
         total     — weighted composite (0–1)
@@ -590,7 +637,11 @@ def score_generation(
     bass   = all_events.get("bass",   [])
     drums  = all_events.get("drums",  [])
 
-    chord_map = _build_chord_map(progression, key, scale, bars, complexity)
+    chord_map = (
+        _build_chord_map_from_sections(resolved_sections, key, scale)
+        if resolved_sections
+        else _build_chord_map(progression, key, scale, bars, complexity)
+    )
 
     s_harm,   f_harm   = _harmonic_coherence(melody, key, scale, chord_map)
     s_reg,    f_reg    = _register_separation(melody, chords, bass)

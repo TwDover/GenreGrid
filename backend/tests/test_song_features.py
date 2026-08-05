@@ -14,7 +14,7 @@ import io
 import mido
 
 from app.core.config import EXPORTS_DIR
-from app.models.schemas import (BuildSongRequest, SongSectionDef,
+from app.models.schemas import (BuildSongRequest, SongSectionDef, HummedNote,
                                 RegenerateSongPartRequest, RestoreSongVersionRequest)
 from app.api.routes_song import (build_song, regenerate_song_part,
                                      list_song_versions, restore_song_version,
@@ -307,11 +307,10 @@ def test_build_song_from_melody_end_to_end():
 
 # ── Hum/whistle → melody (8.2) ───────────────────────────────────────────────
 
-def _hummed_notes(key_root=60, minor=False) -> list["HummedNote"]:
+def _hummed_notes(key_root=60, minor=False) -> list[HummedNote]:
     """The same 4-bar diatonic melody as _melody_bytes, as HummedNote objects —
     stands in for what usePitchDetect.ts would post after pitch-detecting a
     hummed take."""
-    from app.models.schemas import HummedNote
     sc = [0, 2, 3, 5, 7, 8, 10] if minor else [0, 2, 4, 5, 7, 9, 11]
     seqs = [[0, 2, 4, 2], [0, 3, 5, 3], [4, 2, 1, 0], [0, 1, 2, 0]]
     notes = []

@@ -22,14 +22,15 @@ Usage (from repo root):
     python scripts/batch_generate.py --report-only         # just print current library stats
 
 Green threshold: all 5 dimensions >= 0.82.
-All-green generations are auto-saved to the library regardless of --n.
+All-green generations are auto-saved to the library (skip with --no-save).
+For a fixed-seed, library-neutral sweep to compare roadmap work against, use
+scripts/quality_baseline.py instead.
 """
 
 import argparse
 import random
 import sys
 import time
-import types
 from collections import defaultdict
 from pathlib import Path
 
@@ -38,16 +39,20 @@ REPO_ROOT   = Path(__file__).parent.parent
 BACKEND_DIR = REPO_ROOT / "backend"
 sys.path.insert(0, str(BACKEND_DIR))
 
-from app.services.style_loader  import load_style, list_styles
-from app.services.library       import (
+from app.models.schemas        import GenerateRequest             # noqa: E402
+from app.services.style_loader  import load_style, list_styles      # noqa: E402
+from app.services.library       import (                            # noqa: E402
     save_generation as lib_save, is_saved, build_scoring_style, list_library,
 )
-from app.api.routes_generate    import (
-    _run_attempt, _all_green, _GREEN_THRESHOLD,
+from app.services.generation    import (                            # noqa: E402
+    _run_attempt, _all_green, _GREEN_THRESHOLD, _QUALITY_DIMS,
 )
 
 # ── constants ─────────────────────────────────────────────────────────────────
-DIMS       = ("harmonic", "register", "rhythm", "density", "mix")
+# The five dimensions the all-green gate tests, plus the two informational ones
+# (contour is unweighted by the gate; hook only scores when a chorus exists).
+DIMS       = _QUALITY_DIMS + ("contour", "hook")
+_OPTIONAL_DIMS = ("hook",)
 PARTS      = ["chords", "bass", "melody", "drums"]
 BARS       = 8
 COMPLEXITY = 0.5
@@ -57,17 +62,23 @@ KEY        = "C"
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+_reported_errors: dict[str, bool] = {}
+
+
 def _make_req(style_id: str, key: str, scale: str, bars: int, complexity: float):
-    return types.SimpleNamespace(
+    # The real request model, not a SimpleNamespace: the generators read fields
+    # (time_signature, dynamics, humanize, use_priors…) that a hand-rolled stub
+    # silently defaults differently from the API.
+    return GenerateRequest(
         style_id=style_id, key=key, scale=scale,
         bars=bars, complexity=complexity, variation=VARIATION,
-        parts=PARTS, mode=MODE,
+        parts=list(PARTS), mode=MODE,
     )
 
 
 def _run_one(style_id: str, style: dict, key: str, scale: str,
              bars: int, complexity: float, seed: int,
-             scoring_style: dict) -> dict | None:
+             scoring_style: dict, save: bool = True) -> dict | None:
     """Run a single generation attempt and return quality_raw (or None)."""
     req = _make_req(style_id, key, scale, bars, complexity)
     is_loop        = False
@@ -75,18 +86,23 @@ def _run_one(style_id: str, style: dict, key: str, scale: str,
     sec_dom        = style.get("secondary_dominants", False)
     tritone_sub    = style.get("tritone_substitution", False)
     try:
-        all_events, _, _, progression, quality_raw, patterns = _run_attempt(
+        all_events, _, _, progression, quality_raw, patterns, _sections = _run_attempt(
             req, style, seed, is_loop, groove_push, sec_dom, tritone_sub,
             scoring_style=scoring_style,
         )
-    except Exception:
+    except Exception as exc:
+        # Report the first failure per style instead of silently counting errors —
+        # a swallowed signature change let this script rot unnoticed.
+        if not _reported_errors.get(style_id):
+            _reported_errors[style_id] = True
+            print(f"\n  [error] {style_id}: {type(exc).__name__}: {exc}")
         return None
 
     if quality_raw is None:
         return None
 
     # Auto-save all-green results to library
-    if _all_green(quality_raw) and not is_saved(style_id, _gen_id(seed)):
+    if save and _all_green(quality_raw) and not is_saved(style_id, _gen_id(seed)):
         try:
             lib_save(
                 gen_id=_gen_id(seed),
@@ -127,7 +143,7 @@ class StyleStats:
         self.style_id  = style_id
         self.totals: list[float]            = []
         self.dims:   dict[str, list[float]] = {d: [] for d in DIMS}
-        self.saved   = 0
+        self.green   = 0   # all-green results (saved to the library unless --no-save)
         self.errors  = 0
 
     def add(self, q: dict):
@@ -140,14 +156,21 @@ class StyleStats:
 
     def mean_dim(self, d: str) -> float:
         vals = self.dims[d]
+        if d in _OPTIONAL_DIMS:
+            # hook is reported as 0.0 when the generation had no chorus to judge
+            # (an 8-bar run plans intro/outro only). Averaging those zeros in
+            # would crown hook "weakest dimension" in every short-bars sweep.
+            vals = [v for v in vals if v > 0.0]
         return sum(vals) / len(vals) if vals else 0.0
 
     def pass_rate(self) -> float:
         if not self.totals:
             return 0.0
+        # Only the gate's own dimensions decide green — contour and hook are
+        # reported for diagnosis but never block a save.
         green = sum(
             1 for i in range(len(self.totals))
-            if all(self.dims[d][i] >= _GREEN_THRESHOLD for d in DIMS)
+            if all(self.dims[d][i] >= _GREEN_THRESHOLD for d in _QUALITY_DIMS)
         )
         return green / len(self.totals)
 
@@ -155,17 +178,23 @@ class StyleStats:
         return len(self.totals)
 
 
+def _worst_dim(stats: "StyleStats") -> str:
+    """Lowest-scoring dimension, ignoring ones that never applied."""
+    scored = [d for d in DIMS if d not in _OPTIONAL_DIMS or stats.mean_dim(d) > 0.0]
+    return min(scored, key=stats.mean_dim)
+
+
 # ── report ────────────────────────────────────────────────────────────────────
 
 def print_report(all_stats: dict[str, StyleStats], elapsed: float, n_per_style: int):
     total_runs  = sum(s.n()     for s in all_stats.values())
-    total_saved = sum(s.saved   for s in all_stats.values())
+    total_green = sum(s.green   for s in all_stats.values())
     total_err   = sum(s.errors  for s in all_stats.values())
 
     print(f"\n\033[1m{'━'*80}\033[0m")
     print(f"\033[1m  BATCH REPORT — {total_runs} generations in {elapsed:.1f}s "
           f"({total_runs/elapsed:.0f}/s)\033[0m")
-    print(f"  Library saves: \033[32m{total_saved}\033[0m   "
+    print(f"  All-green: \033[32m{total_green}\033[0m   "
           f"Errors: \033[31m{total_err}\033[0m")
     print(f"{'━'*80}")
 
@@ -190,10 +219,13 @@ def print_report(all_stats: dict[str, StyleStats], elapsed: float, n_per_style: 
 
     # Worst dimensions overall
     print("\n\033[1m  WEAKEST DIMENSIONS (mean across all styles)\033[0m")
-    dim_means = {
-        d: sum(s.mean_dim(d) for s in all_stats.values()) / len(all_stats)
-        for d in DIMS
-    }
+    dim_means = {}
+    for d in DIMS:
+        vals = [s.mean_dim(d) for s in all_stats.values()]
+        if d in _OPTIONAL_DIMS:
+            vals = [v for v in vals if v > 0.0]     # never scored → not "weak"
+        if vals:
+            dim_means[d] = sum(vals) / len(vals)
     for d, v in sorted(dim_means.items(), key=lambda x: x[1]):
         bar = _bar(v, 30)
         print(f"    {d:<12}  {bar}  {_dim_color(v)}")
@@ -204,7 +236,7 @@ def print_report(all_stats: dict[str, StyleStats], elapsed: float, n_per_style: 
     for sid, s in worst_styles:
         pct = s.pass_rate() * 100
         bar = _bar(s.pass_rate(), 20)
-        worst_dim = min(DIMS, key=lambda d: s.mean_dim(d))
+        worst_dim = _worst_dim(s)
         print(f"    {sid:<18}  {bar}  {pct:5.1f}%  (worst: {worst_dim} {_dim_color(s.mean_dim(worst_dim))})")
 
     print(f"\n{'━'*80}\n")
@@ -239,6 +271,8 @@ def main():
     ap.add_argument("--bars",        type=int,   default=BARS)
     ap.add_argument("--complexity",  type=float, default=COMPLEXITY)
     ap.add_argument("--report-only", action="store_true", help="Print library stats and exit")
+    ap.add_argument("--no-save", action="store_true",
+                    help="Benchmark only — do not add all-green results to the library")
     args = ap.parse_args()
 
     if args.report_only:
@@ -266,7 +300,15 @@ def main():
 
     print("\n\033[1m  GenreGrid batch benchmark\033[0m")
     print(f"  {n} generations × {len(run_styles)} styles = {total_runs} total")
-    print(f"  bars={bars}  complexity={complexity}  green≥{_GREEN_THRESHOLD}\n")
+    print(f"  bars={bars}  complexity={complexity}  green≥{_GREEN_THRESHOLD}")
+    if args.no_save:
+        print("  \033[90mlibrary saves disabled (--no-save)\033[0m\n")
+    else:
+        # Library entries feed build_scoring_style, so a save run moves the
+        # scorer's reference patterns — and with them docs/quality-baseline-v3.json.
+        print("  \033[33mwarning: all-green results are saved to the library, which shifts\n"
+              "  the scorer's learned patterns. Re-run scripts/quality_baseline.py after,\n"
+              "  or pass --no-save to benchmark without touching it.\033[0m\n")
 
     all_stats: dict[str, StyleStats] = {}
     t_start   = time.perf_counter()
@@ -285,20 +327,21 @@ def main():
         stats         = StyleStats(sid)
         all_stats[sid] = stats
 
-        saved_this_style = 0
+        green_this_style = 0
         t0 = time.perf_counter()
 
         for i in range(n):
             seed = random.randint(0, 2**31 - 1)
-            q    = _run_one(sid, style, KEY, scale, bars, complexity, seed, scoring_style)
+            q    = _run_one(sid, style, KEY, scale, bars, complexity, seed,
+                            scoring_style, save=not args.no_save)
 
             if q is None:
                 stats.errors += 1
             else:
                 stats.add(q)
                 if _all_green(q):
-                    saved_this_style += 1
-                    stats.saved += 1
+                    green_this_style += 1
+                    stats.green += 1
 
             done += 1
 
@@ -310,20 +353,20 @@ def main():
             sys.stdout.write(
                 f"\r  [{pct:5.1f}%]  {sid:<18}  "
                 f"{i+1:>{len(str(n))}}/{n}  "
-                f"saves={saved_this_style}  "
+                f"green={green_this_style}  "
                 f"ETA {eta:5.0f}s   "
             )
             sys.stdout.flush()
 
         dt = time.perf_counter() - t0
         pass_pct = stats.pass_rate() * 100
-        worst_dim = min(DIMS, key=lambda d: stats.mean_dim(d))
+        worst_dim = _worst_dim(stats)
 
         sys.stdout.write(
             f"\r  {sid:<20}  n={stats.n()}  "
             f"pass={pass_pct:5.1f}%  "
             f"total={stats.mean_total():.3f}  "
-            f"saves={stats.saved}  "
+            f"green={stats.green}  "
             f"worst={worst_dim}({stats.mean_dim(worst_dim):.2f})  "
             f"{dt:.1f}s\n"
         )

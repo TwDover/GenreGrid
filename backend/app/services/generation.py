@@ -460,6 +460,11 @@ def _run_attempt(
     all_events: dict[str, list[NoteEvent]] = {part: [] for part in req.parts}
     _chords_prev = list(chords_prev_voicing) if chords_prev_voicing else None
     chorus_spans: list[tuple[float, float]] = []   # (start_beat, end_beat) per chorus, for the hook scorer
+    # The harmony each section ACTUALLY played, for the scorer. Melody/bass/arp
+    # are generated against `s_resolved` (post 7th/9th swaps, secondary dominants,
+    # tritone subs) in the section's own key at its own chord rate — scoring them
+    # against the raw template instead judged them on chords that never sounded.
+    resolved_sections: list[dict] = []
 
     for section_i, section in enumerate(sections):
         s_bars  = section["bars"]
@@ -519,6 +524,18 @@ def _run_attempt(
         _push_prob = style.get("chord_anticipation_prob", 0.15)
         _cpb = 2 if harmony_cplx > 0.6 else 1
         push_windows = {w for w in range(1, s_bars * _cpb) if random.random() < _push_prob}
+
+        # Everything the scorer needs to rebuild this section's real chord grid:
+        # `_cpb` is the same chords-per-bar the generators below use, and s_key is
+        # the (possibly chorus-lifted) key the romans resolve in.
+        resolved_sections.append({
+            "offset":         float(s_off),
+            "bars":           s_bars,
+            "key":            s_key,
+            "bar_beats":      meter.bar_beats,
+            "chords_per_bar": _cpb,
+            "romans":         list(s_resolved),
+        })
 
         kick_times: list[float] = []
         if "drums" in req.parts and "drums" in s_parts:
@@ -746,6 +763,7 @@ def _run_attempt(
             _scored_events, scoring_style or style,
             req.key, req.scale, req.bars, progression, req.complexity,
             chorus_spans=chorus_spans,
+            resolved_sections=resolved_sections,
         )
     except Exception as exc:
         logger.error("Quality scoring failed (seed=%s): %s", seed, exc, exc_info=True)
