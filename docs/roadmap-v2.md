@@ -6,6 +6,10 @@ in any meter, with custom instruments and a deep style system. This roadmap is t
 chapter — turning a great **generator** into a tool people reach for to **finish and ship**
 music. It supersedes the `backlog.md` parking lot._
 
+> **Priority note (2026-08-04):** [`roadmap-v3.md`](roadmap-v3.md) (composition
+> intelligence, no corpus required) **takes priority over the remaining items here**.
+> This file stays the reference for its unshipped entries, which resume after v3.
+
 **How to read an item:** each carries **Why** (the user gap), **Approach**, **Entry points**,
 **Effort** (S ≤ 1 day · M ≈ 2–4 days · L ≈ 1–2 weeks), **Risk**, and **Done when**.
 
