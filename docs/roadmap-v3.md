@@ -201,6 +201,43 @@ against scorer feedback.
   are **exactly** unchanged — 0 changed events and ±0.000 on every dimension across all 840
   arrangement + loop_chorus cases.
 
+### 10.3 The rhythm scorer measures what the band played  ★ found by 11.4
+- **Why:** 11.4 set out to cut search cost and found the search wasn't unlucky, it was
+  stuck: `rhythm` was the lone red dimension in **267 of 306** repair opportunities, and
+  re-rolling the drums fixed 3% of them. Per-style it barely varied across seeds
+  (trap_soul **0.498** on all 16, rock 0.800, hyperpop 0.736, cloud_rap 0.779) — the
+  signature of a scorer measuring the wrong thing, not a generator having a bad day.
+  Three independent mismatches, all the same shape as 10.2:
+  1. **The barline.** `_extract_steps` took the bar by truncation and then rounded *inside*
+     it, so anything landing a hair before a barline rounded to step 16 and was dropped.
+     Humanize, swing and `groove_push` place the downbeat 5–20ms early as a matter of
+     course: a rock kit playing beats 1 and 3 was measured as playing only beat 3
+     (kick vector `0.05` at step 0 against `0.80` at step 8), and jazz's downbeat kick —
+     every one of them at beat 3.98 of the previous bar — vanished entirely.
+  2. **The comp grid.** `chord_rhythm` is authored as one bar, but `generate_chords` reads
+     it per chord *window* and guarantees a hit at each window's start (without that, a
+     pad-hold `[1,0,…]` at two chords per bar leaves the second window silent and drops
+     half the progression — a fix already in the generator). The reference didn't, so a
+     correct comp shared no non-zero step with it and scored **0.00**.
+  3. **The groove overlay.** 13 styles have their drum fields replaced by a mined groove
+     before a note exists (`_overlay_groove`), but `scoring_style` is built from the style
+     JSON and never saw it — rock's kit was judged against a kick pattern the generator
+     had already thrown away.
+- **Approach:** quantise to the nearest 16th on one grid spanning the generation, then read
+  bar and step off it (`divmod`); build the comp reference from `resolved_sections` as the
+  bars-weighted mix of each section's chord rate, applying the generator's own
+  hit-per-window rule; overlay the scoring style with the same groove in `_run_attempt`.
+- **Entry:** `quality.py` (`_extract_steps`, new `_comp_windows` / `_comp_reference`,
+  `_rhythm_fit`), `generation.py` (`_run_attempt`'s scoring-style overlay).
+- **Effort:** S. **Risk:** every dimension that reads a step vector moves, including the
+  library's stored fingerprints — a scorer correction, so it re-baselines.
+- **Shipped:** all three, 2026-08-05. Tests: `backend/tests/test_rhythm_truth.py` (17).
+  **Measured:** `rhythm` **+0.050 / +0.050 / +0.025** (arrangement / loop_chorus / meters),
+  all-green **+10.5pp / +13.2pp / +5.7pp**, total **+0.009 / +0.008 / +0.004** — and the
+  search cost 11.4 could not move dropped on its own: attempts **−0.446 / −0.539 / −0.328**.
+  Every style moved up or stood still; biggest movers trap_soul **+0.081**, hyperpop +0.040,
+  cloud_rap +0.033, rock +0.023, jazz +0.017.
+
 ---
 
 ## Phase 11 — Make the layers agree (composition intelligence)
@@ -240,6 +277,41 @@ against scorer feedback.
   and every closed phrase on tonic (unit test on resolved romans); A/B listening across
   3 song-form styles says phrases "breathe"; all-styles sweep with the gate at 0 is
   byte-identical.
+- **Shipped:** `chords.align_cadences` rewrites each phrase's final chord slot on
+  `s_resolved`; `_run_attempt` draws the phrase plan once per section
+  (`_part_seed(seed, i, "phrase_plan")`) and hands the same plan to `generate_melody`
+  (new `phrase_plans` param — omitted, the melody plans internally exactly as before).
+  Chords, bass, pads and arp read `s_resolved`, so the band cadences together; the scorer
+  sees it through 10.1's `resolved_sections`.
+  Two things the plan didn't anticipate:
+  * **The tonic's quality comes from the progression, not the scale.** R&B's template is
+    `I ♭VI I IV` over a *minor* scale — closing that on "i" because `SCALE_INTERVALS` says
+    minor imports a chord the song never plays. The cadence chords are now drawn from the
+    section's own vocabulary (its `I`/`i` spelling, its `V`/`v`/`♭VII`/`VII`), falling back
+    to the scale only when the template has neither.
+  * **The returned progression is tiled to whole template cycles** covering the section, so
+    two phrases can cadence differently even though the template repeats. Every consumer
+    indexes modulo its own length, so away from the rewritten slots the tiling is
+    *index-identical* to the template — that is what keeps the gate-off path byte-identical
+    for bar-rate consumers (riff, counter-melody, arp) and for bass's one-past-the-end
+    lookahead, not just for the chord grid.
+  Scales whose fifth degree isn't a perfect fifth (pentatonics, blues, locrian, whole-tone)
+  are skipped: roman degrees are positional, so "V" there names a chord that can't cadence.
+  Pre-chorus sections are skipped — the song builder already swaps their whole progression.
+  Enabled: cinematic/epic_orchestral 1.0, soul/rnb 0.9, rock/metal/doom_metal/hyperpop 0.8,
+  synthwave 0.7. Vamp styles (house, techno, lofi, ambient, trap…) stay at 0.
+  Tests: `backend/tests/test_cadence_alignment.py` (31).
+  **Measured:** with every gate at 0 the full sweep is byte-identical — 0 changed events
+  and ±0.000 on every dimension across all 1032 cases. On the 9 opted-in styles the scorer
+  is flat (total −0.001, `harmonic` +0.002…+0.004, `green` −2.8pp arrangement / ±0
+  loop_chorus, attempts −0.13 loop_chorus and −0.19 meters, +0.06 arrangement) — expected,
+  since no dimension measures cadence. The payoff is an ear judgement: **A/B listen passed
+  2026-08-05** on the shipped gate values. Remaining styles stay at 0 until listened to.
+  **Found, not fixed (11.2/11.3 territory):** the melody's own phrase-tail cadence note is
+  frequently discarded by the motif-block rebuild in `generate_melody` (2-bar blocks are
+  regenerated from the seed motif, tail and all). The antecedent/consequent pass repairs
+  the open→closed case; other phrase endings land wherever the motif copy puts them, so the
+  harmony currently carries the cadence more reliably than the melody does.
 
 ### 11.2 Skeleton-first melody — goal tones, then motion  ★ flagship
 - **Why:** the note loop ([`melody.py:324-614`](../backend/app/generators/melody.py)) picks
@@ -336,6 +408,43 @@ against scorer feedback.
   unchanged. Verify with the existing regenerate-song-part tests.
 - **Done when:** on the sweep, mean attempts-per-green-section drops ≥ 30% and final section
   quality is ≥ baseline; regenerate-part/section round-trips stay byte-identical.
+- **Shipped:** `services/repair.py` holds `plan_repair` (pure: score dict + events → one
+  repair), and `generation.run_quality_search` / `evaluate_seed` are now the *single*
+  implementation of the search — the retry loop had been copied four times (`/generate`,
+  its SSE variant, the song builder's section loop, and `scripts/quality_baseline.py`,
+  which meant the sweep measured a search the app didn't quite run). `_run_attempt` gained
+  the two levers a repair pulls: `part_salts` (re-roll named parts only, composing with the
+  existing `regen_part`) and `velocity_trim` (rescale a part before scoring *and* in the
+  returned events, so a flagged mix is fixed without regenerating a note).
+  **The repair table is smaller than the roadmap proposed, because it was measured.**
+  Against the ~43% chance that the plain re-roll a repair replaces lands green:
+  | dimension | repair | converted | verdict |
+  |---|---|---|---|
+  | `density` | re-roll the part its flag names | **52–58%** (27 tries) | kept |
+  | `rhythm` | re-roll drums | 3% (267 tries) | dropped |
+  | `separation` | re-roll chords | 8% (12 tries) | dropped |
+  | `mix` | velocity rescale | never fired in the sweep | kept (deterministic, gated dim) |
+  A repair also has to be *close* to green to be worth a run: of 165 repairs attempted on
+  gaps wider than 0.06 below the line, **zero** converted. Both numbers are constants in
+  `repair.py` with the measurement in the comment.
+  **Bug found and fixed in the search itself.** Every copy of the loop kept the
+  highest-`total` attempt's events but broke out of the loop on the first *green* one and
+  recorded that attempt's seed — so whenever a green attempt scored a lower total than an
+  earlier red one, the generation returned the red attempt's notes labelled with the green
+  attempt's seed. The events and the seed disagreed, meaning `meta.json` (and the library
+  entry) pointed at music the file didn't contain. `_better` now prefers green over total,
+  and the returned events always come from the attempt that produced the returned score.
+  Tests: `backend/tests/test_repair.py` (28).
+  **Measured:** all-green **68% → 81%** (arrangement +9.1pp, loop_chorus +6.1pp,
+  meters +13.0pp); total flat at 0.899 (−0.001). Nearly all of that gain is the selection
+  fix, not the repairs.
+  **Done-when NOT met:** attempts moved +0.009 / +0.000 / +0.031 — flat, not −30%. The
+  premise didn't survive contact: the single-red dimension that dominates the search is
+  `rhythm` (267 of 306 repair opportunities), and re-rolling drums doesn't move it, because
+  `rhythm` scores the generated drums against the *style's own* reference patterns. When a
+  style reads red there it stays red however many times the dice are thrown — a
+  scorer/generator mismatch in the shape of 10.2, and the real lever on both search cost and
+  green rate. Worth its own item.
 
 ### 11.5 A tension curve across the song
 - **Why:** velocity/density arcs exist, but harmonic tension isn't modeled anywhere.
@@ -420,11 +529,15 @@ against scorer feedback.
 ## Suggested sequence
 
 1. ~~**Baseline sweep** → `docs/quality-baseline-v3.json`.~~ ✅ 2026-08-04.
-2. ~~**10.1**~~ ✅ 2026-08-04, ~~**10.2**~~ ✅ 2026-08-04 — separate PRs, re-baselined after
-   each. Phase 10 is complete: the scorer now judges the chords that sound, in the meter
-   they sound in.
-3. **11.1 cadence harmony** (hoisting phrase plans also unblocks 12.3).
-4. **11.4 targeted repair** — pays for itself immediately in search cost.
+2. ~~**10.1**~~ ✅ 2026-08-04, ~~**10.2**~~ ✅ 2026-08-04, ~~**10.3**~~ ✅ 2026-08-05
+   (found by 11.4) — re-baselined after each. Phase 10: the scorer now judges the chords
+   that sound, in the meter they sound in, on the grid they were played on.
+3. ~~**11.1 cadence harmony**~~ ✅ 2026-08-05 — phrase plans are now hoisted into
+   `_run_attempt`, which unblocks 12.3. Gates on for 9 song-form styles, A/B listen passed.
+4. ~~**11.4 targeted repair**~~ ✅ 2026-08-05 — it did not pay for itself in search cost
+   (see its measured note); it paid in green rate, via a bug it turned up in the search's
+   best-of-N selection. Its most valuable output was the diagnosis that became **10.3**,
+   which *did* cut search cost.
 5. **11.2 goal-tone melody** — the flagship; migrate styles gradually.
 6. **11.3 hook tiling** (stacks on 11.2), then **11.5 tension curve**.
 7. **12.x** in any order, as palate cleansers between the L/M items.

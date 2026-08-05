@@ -195,6 +195,7 @@ def generate_melody(
     seed_motif: list[int] | None = None,
     section_type: str | None = None,
     meter: Meter = DEFAULT_METER,
+    phrase_plans: list | None = None,
 ) -> List[NoteEvent]:
     """`melody_model` — optional mined melody prior (interval/phrase-bigram stats).
 
@@ -211,6 +212,11 @@ def generate_melody(
     `seed_motif` — scale-step intervals of a motif from an earlier section (e.g. the
     verse's opening phrase). When provided, this melody develops that motif instead of
     inventing an unrelated one, so a song's chorus feels like it grew out of its verse.
+
+    `phrase_plans` — the section's phrase plan, already drawn by the caller so the
+    *harmony* can cadence with it (see `chords.align_cadences`). When omitted the
+    melody draws its own plan exactly as before, which keeps every existing caller
+    byte-identical.
     """
     _mined_prev_iv: int | None = None
     if melody_model is not None:
@@ -305,7 +311,7 @@ def generate_melody(
     # contour peak, register target, density, cadence, and motif restatement --
     # the note-level logic below fills the phrases in.
     _num_phrases = max(1, int((total_beats + phrase_beats - 1) // phrase_beats))
-    _plans = plan_phrases(_num_phrases)
+    _plans = list(phrase_plans) if phrase_plans else plan_phrases(_num_phrases)
 
     current_note_idx = len(scale_notes) // 2  # always start in the normal (low) register
     _prev_pitch: int | None = None     # anti-repetition tracking

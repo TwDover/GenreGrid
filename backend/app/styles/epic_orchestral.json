@@ -6,6 +6,7 @@
         80
     ],
     "default_scale": "minor",
+    "cadence_alignment": 1.0,
     "compound_swing": 0.0,
     "instrumentation": {
         "chords": "brass_section",

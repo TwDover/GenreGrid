@@ -16,10 +16,12 @@ progression choice, style blending / groove overlay, and the voice-leading and
 quality helpers. Imports only services / generators / core — never routes."""
 import logging
 import random
+from dataclasses import dataclass
 
 from app.services.style_loader import load_style
 from app.services.midi_writer import NoteEvent, ControlEvent, PitchBendEvent
-from app.generators.chords import generate_chords, resolve_progression
+from app.generators.chords import generate_chords, resolve_progression, align_cadences
+from app.theory.phrase_plan import plan_phrases
 from app.theory.scales import build_scale, scale_mode as _scale_mode
 from app.generators.bass import generate_bass
 from app.generators.melody import generate_melody
@@ -34,6 +36,7 @@ from app.services.humanize import (
     apply_odd_meter_accent, ODD_ACCENT_DEFAULT,
 )
 from app.services.quality import score_generation, extract_rhythm_patterns
+from app.services.repair import plan_repair
 from app.services.priors import load_prior, sample_progression, melody_prior_for, groove_fields_for
 from app.core.arrangement import (
     _part_seed, scaled_profile,
@@ -271,6 +274,85 @@ def _all_green(quality_raw: dict) -> bool:
     return all(quality_raw.get(d, 0.0) >= _GREEN_THRESHOLD for d in _QUALITY_DIMS)
 
 
+# ── the quality search ────────────────────────────────────────────────────────
+# One implementation, three callers (/generate, the song builder, and the
+# baseline sweep). They used to keep three copies of the same retry loop, which
+# is how the sweep could have measured a search production wasn't running.
+
+@dataclass
+class SearchResult:
+    """The attempt the search settled on, plus what it cost."""
+    result: tuple                  # whatever `run` returned for the winner
+    seed: int
+    quality: dict | None
+    runs: int = 0                  # _run_attempt calls made
+    repairs: tuple = ()            # the repairs that were applied, in order
+
+    @property
+    def green(self) -> bool:
+        return bool(self.quality) and _all_green(self.quality)
+
+
+def _better(candidate: dict | None, incumbent: dict | None) -> bool:
+    """Green beats not-green; otherwise the higher total wins."""
+    if candidate is None:
+        return False
+    if incumbent is None:
+        return True
+    if _all_green(candidate) != _all_green(incumbent):
+        return _all_green(candidate)
+    return candidate.get("total", 0.0) > incumbent.get("total", 0.0)
+
+
+def evaluate_seed(run, seed: int, repair: bool = True) -> SearchResult:
+    """Score one seed, and give it one cheap repair if the scorer flags exactly
+    one dimension (roadmap v3 11.4).
+
+    Deliberately self-contained: a seed's evaluation never depends on how much
+    search budget is left, so replaying a winning seed reproduces the very same
+    events — which is what lets `fixed_section_seeds` stay a list of plain ints
+    while repairs still survive a regenerate-part round trip.
+    """
+    result = run(seed)
+    quality = result[4]
+    out = SearchResult(result=result, seed=seed, quality=quality, runs=1)
+    if not repair or out.green:
+        return out
+
+    plan = plan_repair(quality, result[0], _QUALITY_DIMS, _GREEN_THRESHOLD)
+    if plan is None:
+        return out
+    repaired = run(seed, **plan.kwargs)
+    out.runs += 1
+    if _better(repaired[4], quality):
+        out.result, out.quality, out.repairs = repaired, repaired[4], (plan,)
+    return out
+
+
+def run_quality_search(run, base_seed: int, max_attempts: int = _MAX_QUALITY_ATTEMPTS,
+                       repair: bool = True) -> SearchResult:
+    """Best-of-N over deterministic retry seeds, each with its own repair pass.
+
+    `run(seed, **kwargs)` must return an `_run_attempt` tuple. Retry seeds are
+    derived from `base_seed`, so a given seed always reproduces the same attempt
+    sequence.
+    """
+    best: SearchResult | None = None
+    runs = 0
+    for attempt in range(max_attempts):
+        seed = base_seed if attempt == 0 else _part_seed(base_seed, attempt, "retry")
+        candidate = evaluate_seed(run, seed, repair=repair)
+        runs += candidate.runs
+        if best is None or _better(candidate.quality, best.quality):
+            best = candidate
+        if best.green:
+            break
+    if best is None:
+        return SearchResult(result=(), seed=base_seed, quality=None)
+    best.runs = runs
+    return best
+
+
 def _blend_styles(style: dict, blend_style_id: str | None, blend_amount: float) -> dict:
     """Numerically blend a second style into `style` (shared by /generate and
     the Song Builder). Groove/density/swing fields interpolate; progression
@@ -408,6 +490,8 @@ def _run_attempt(
     melody_seed_motif: list[int] | None = None,
     rhythm_cell: list[float] | None = None,
     arp_contour: list[int] | None = None,
+    part_salts: dict[str, int] | None = None,
+    velocity_trim: dict[str, float] | None = None,
 ) -> tuple[dict, dict, dict, list, dict | None, dict, list]:
     """Run one generation attempt for a given seed.
 
@@ -430,13 +514,30 @@ def _run_attempt(
     into generate_chords so voice leading continues across section seams.
     melody_seed_motif — scale-step motif intervals from an earlier section (the
     verse theme), passed to generate_melody so choruses develop the verse's idea.
+
+    part_salts / velocity_trim — the two levers targeted repair pulls (see
+    services.repair). `part_salts` re-rolls named parts by salting only their
+    seeds, exactly like regen_part but for a repair the search chose rather than
+    a stem the user asked for, and the two compose. `velocity_trim` scales a
+    part's velocities before scoring *and* in the returned events, so a mix the
+    scorer flagged is fixed without regenerating a single note.
     """
     def _pseed(sec_i: int, part: str) -> int:
-        s = (seed + regen_salt) if (regen_part and part == regen_part) else seed
+        s = seed
+        if regen_part and part == regen_part:
+            s += regen_salt
+        if part_salts:
+            s += part_salts.get(part, 0)
         return _part_seed(s, sec_i, part)
 
     _use_priors = getattr(req, "use_priors", True) and not getattr(req, "custom_progression", None)
     style = _overlay_groove(style, getattr(req, "use_priors", True))
+    # The scorer has to judge the groove the drummer actually played. 13 styles
+    # overlay their hand-authored drum fields with a mined groove above, but the
+    # scoring style was built from the style JSON and never saw it — so rock's
+    # kit was measured against a kick pattern the generator had already replaced.
+    if scoring_style is not None:
+        scoring_style = _overlay_groove(scoring_style, getattr(req, "use_priors", True))
     progression = fixed_progression if fixed_progression is not None else _choose_progression(style, _use_priors, seed, req.scale)
     _melody_model = melody_prior_for(_prior_name(style), getattr(req, "use_priors", True))
 
@@ -526,6 +627,24 @@ def _run_attempt(
         _cpb = 2 if harmony_cplx > 0.6 else 1
         push_windows = {w for w in range(1, s_bars * _cpb) if random.random() < _push_prob}
 
+        # Cadence-aware harmony: the phrase plan that shapes the melody also
+        # decides where the CHORDS breathe. Planned once here (not inside
+        # generate_melody) so the melody's open/closed landing and the chord it
+        # lands on are the same decision instead of two independent ones — the
+        # rest of the band follows for free, since chords/bass/pads/arp all read
+        # `s_resolved`. Styles opt in via `cadence_alignment` (default 0 = off,
+        # byte-identical); a loop-forever vamp is correct to never cadence.
+        # Pre-chorus sections are skipped: the song builder already swaps their
+        # whole progression for the ramp into the chorus.
+        phrase_plans = None
+        _cadence_prob = style.get("cadence_alignment", 0.0)
+        if _cadence_prob > 0 and s_sec_type != "pre_chorus":
+            random.seed(_part_seed(seed, section_i, "phrase_plan"))
+            phrase_plans = plan_phrases(max(1, (s_bars + 3) // 4))
+            if random.random() < _cadence_prob:
+                s_resolved = align_cadences(s_resolved, req.scale, s_bars, _cpb,
+                                            phrase_plans)
+
         # Everything the scorer needs to rebuild this section's real chord grid:
         # `_cpb` is the same chords-per-bar the generators below use, and s_key is
         # the (possibly chorus-lifted) key the romans resolve in.
@@ -583,7 +702,8 @@ def _run_attempt(
                                        melody_model=_melody_model,
                                        harmony_complexity=harmony_cplx,
                                        seed_motif=melody_seed_motif,
-                                       section_type=s_sec_type, meter=meter)
+                                       section_type=s_sec_type, meter=meter,
+                                       phrase_plans=phrase_plans)
             mel_evts = _apply_dynamic(mel_evts, s_dyn)
             all_events["melody"].extend(_shift(mel_evts, s_off))
             if mel_evts:
@@ -744,6 +864,17 @@ def _run_attempt(
         if bass_cfg.get("bass_style") == "808":
             ch = _PART_CHANNELS.get("bass", 1)
             pb_parts["bass"] = _generate_808_pitch_bends(all_events["bass"], ch)
+
+    # A mix repair rescales the offending part in place: the listener hears the
+    # fixed balance, and the scorer below measures the same events.
+    if velocity_trim:
+        for part, factor in velocity_trim.items():
+            if part in all_events and abs(factor - 1.0) > 1e-6:
+                all_events[part] = [
+                    NoteEvent(e.pitch, e.start, e.duration,
+                              max(1, min(127, int(round(e.velocity * factor)))), e.channel)
+                    for e in all_events[part]
+                ]
 
     patterns = extract_rhythm_patterns(all_events, req.bars, meter)
 

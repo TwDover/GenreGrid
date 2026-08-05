@@ -47,7 +47,7 @@ from app.services.mixdown import (
 from app.services.generation import (
     _chord_tones_by_bar, _MAX_QUALITY_ATTEMPTS, _GENERATION_TIMEOUT_S, _all_green,
     _blend_styles, _prior_name, _overlay_groove,
-    _choose_progression, _run_attempt,
+    _choose_progression, _run_attempt, run_quality_search, evaluate_seed,
 )
 
 router = APIRouter()
@@ -95,28 +95,17 @@ def generate(req: GenerateRequest):
     base_seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
 
     def _run_best_attempt():
-        _best_events = _best_cc = _best_pb = _best_progression = _best_quality_raw = _best_patterns = None
-        _best_seed = base_seed
-        for attempt in range(_MAX_QUALITY_ATTEMPTS):
-            # Deterministic retry seeds: a given base seed always reproduces the
-            # same attempt sequence (global-RNG retries made seeded generations
-            # unreproducible whenever the quality gate triggered a retry).
-            attempt_seed = base_seed if attempt == 0 else _part_seed(base_seed, attempt, "retry")
-            _evts, _cc, _pb, _prog, _qraw, _pats, _secs = _run_attempt(
-                req, style, attempt_seed, is_loop, groove_push, secondary_dominants, tritone_sub,
-                scoring_style=scoring_style,
+        # Deterministic retry seeds (a given base seed always reproduces the same
+        # attempt sequence) plus targeted repair, both in `run_quality_search`.
+        def _run(seed, **repair_kwargs):
+            return _run_attempt(
+                req, style, seed, is_loop, groove_push, secondary_dominants, tritone_sub,
+                scoring_style=scoring_style, **repair_kwargs,
             )
-            if _best_quality_raw is None or (
-                _qraw is not None and _qraw.get("total", 0) > _best_quality_raw.get("total", 0)
-            ):
-                _best_events, _best_cc, _best_pb = _evts, _cc, _pb
-                _best_progression, _best_quality_raw = _prog, _qraw
-                _best_patterns, _best_sections = _pats, _secs
-                _best_seed = attempt_seed
-            if _qraw is not None and _all_green(_qraw):
-                _best_seed = attempt_seed
-                break
-        return _best_events, _best_cc, _best_pb, _best_progression, _best_quality_raw, _best_patterns, _best_sections, _best_seed
+
+        found = run_quality_search(_run, base_seed)
+        _evts, _cc, _pb, _prog, _qraw, _pats, _secs = found.result
+        return _evts, _cc, _pb, _prog, _qraw, _pats, _secs, found.seed
 
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _pool:
@@ -275,19 +264,27 @@ def generate_stream(req: GenerateRequest):
             # unreproducible whenever the quality gate triggered a retry).
             attempt_seed = base_seed if attempt == 0 else _part_seed(base_seed, attempt, "retry")
             yield f"data: {_json_module.dumps({'type': 'progress', 'attempt': attempt + 1, 'total': _MAX_QUALITY_ATTEMPTS})}\n\n"
+            # Same per-seed evaluation as the non-streaming route (attempt, then
+            # one targeted repair if the scorer flagged exactly one dimension);
+            # the loop stays inline here only so progress can still be yielded.
             try:
-                evts, cc, pb, prog, qraw, pats, secs = _run_attempt(
-                    req, style, attempt_seed, is_loop, groove_push,
-                    secondary_dominants, tritone_sub, scoring_style=scoring_style,
+                found = evaluate_seed(
+                    lambda seed, **kw: _run_attempt(
+                        req, style, seed, is_loop, groove_push,
+                        secondary_dominants, tritone_sub, scoring_style=scoring_style, **kw,
+                    ),
+                    attempt_seed,
                 )
             except Exception as exc:
                 logger.error("Attempt %d failed: %s", attempt + 1, exc, exc_info=True)
                 continue
+            qraw = found.quality
             if best_quality_raw is None or (qraw and qraw.get("total", 0) > best_quality_raw.get("total", 0)):
+                evts, cc, pb, prog, _q, pats, secs = found.result
                 best_events, best_cc, best_pb = evts, cc, pb
                 best_progression, best_quality_raw, best_patterns = prog, qraw, pats
                 best_seed = attempt_seed
-            if qraw and _all_green(qraw):
+            if found.green:
                 best_seed = attempt_seed
                 break
 

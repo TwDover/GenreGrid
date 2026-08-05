@@ -12,6 +12,7 @@ from app.core.meter import Meter, DEFAULT_METER
 from typing import List
 
 from app.services.midi_writer import NoteEvent
+from app.core.constants import SCALE_INTERVALS
 from app.theory.chords import roman_to_chord
 from app.services.variation import should_trigger
 from app.services.humanize import timing_jitter, phrase_breath_factor, style_jitter
@@ -332,6 +333,104 @@ def resolve_progression(progression: list, scale: str, complexity: float, second
     ``generate_melody``.  Both generators will then target the same chord tones.
     """
     return [_apply_substitution(roman, scale, complexity, secondary_dominants, tritone_sub) for roman in progression]
+
+
+# Suffixes that colour a chord without deciding its function. A cadence
+# rewrite keeps these (a sus4 V is still a dominant, a I6 is still tonic) and
+# drops everything else — carrying "maj7" onto a minor tonic or onto the
+# dominant would change the chord's quality, which is the one thing the
+# cadence is supposed to fix.
+_CADENCE_SAFE_SUFFIXES = ("add11", "add9", "sus2", "sus4", "6")
+
+
+def _split_suffix(roman: str) -> tuple[str, str]:
+    """Split a roman into (degree-with-accidental, chord-type suffix).
+
+    Same suffix vocabulary `roman_to_chord` parses, longest first so `9sus4`
+    can't be read as a bare `9`.
+    """
+    for suffix in ("m7b5", "mM7", "dim7", "maj7", "9sus4", "7sus4", "sus2",
+                   "sus4", "add11", "add9", "aug", "dim", "m6", "m9", "6", "9"):
+        if len(roman) > len(suffix) and roman.lower().endswith(suffix.lower()):
+            return roman[: -len(suffix)], suffix
+    return roman, ""
+
+
+def _cadence_supported(scale: str) -> bool:
+    """True when `scale` has a real dominant to cadence onto.
+
+    Roman degree V is looked up positionally (`ROMAN_TO_DEGREE["V"] == 4`), so
+    on a five-note scale "V" names the fifth *scale note* — in pentatonic_minor
+    that is the ♭7, not the fifth — and on locrian the fifth is diminished.
+    Neither gives a functional half cadence, so those scales stay unaligned.
+    """
+    intervals = SCALE_INTERVALS.get(scale)
+    return bool(intervals) and len(intervals) == 7 and intervals[4] == 7
+
+
+def align_cadences(
+    resolved: list,
+    scale: str,
+    bars: int,
+    chords_per_bar: int,
+    plans: list,
+    bars_per_phrase: int = 4,
+) -> list:
+    """Rewrite each phrase's final chord to match its planned cadence.
+
+    `phrase_plan.plan_phrases` already decides whether a phrase is *open* (half
+    cadence — the melody lands on sd2/sd5) or *closed* (full close on the
+    tonic), and the melody obeys it. The harmony underneath did not: it just
+    kept cycling the section's template, so a melody landing "open" over
+    whatever chord happened to fall there did not read as a half cadence.
+    This aligns the two — open phrases end on dominant harmony, closed phrases
+    on the tonic. Only the *last* chord slot of each phrase moves; mid-phrase
+    harmony is untouched.
+
+    The returned progression is tiled out to cover the whole section (so two
+    phrases can cadence differently even though the template repeats), at a
+    length that is a whole number of template cycles. Every consumer indexes it
+    modulo its own length, so with no rewrites applied the result is
+    indistinguishable from the template it came from — that is what keeps the
+    gate-off path byte-identical.
+    """
+    if not resolved or not plans or bars <= 0 or not _cadence_supported(scale):
+        return list(resolved)
+
+    cpb = max(1, int(chords_per_bar))
+    prog_len = len(resolved)
+    slots = bars * cpb
+    # Whole template cycles, so out[i % len(out)] == resolved[i % prog_len] for
+    # every index — including the lookahead past the section's end that bass and
+    # riff take on their final chord.
+    cycles = max(1, -(-slots // prog_len))
+    out = [resolved[i % prog_len] for i in range(cycles * prog_len)]
+
+    # The cadence chords come out of the progression's OWN vocabulary wherever
+    # it has them: the template, not the scale name, is what says whether this
+    # style's tonic is major or minor (R&B writes I ♭VI I IV over a minor scale
+    # — cadencing that on "i" imports a chord from a different song), and a
+    # modal ♭VII progression gets its own subtonic back instead of a
+    # harmonic-minor leading tone it never uses.
+    degrees = [_split_suffix(r)[0] for r in resolved]
+    is_major = scale in _MAJOR_FAMILY
+    tonic = next((d for d in degrees if d in ("I", "i")), "I" if is_major else "i")
+    # Strongest available dominant function first; V is the fallback because a
+    # raised V is a legal cadence in any minor key even when nothing else uses it.
+    dominant = next((d for d in ("V", "v", "bVII", "VII") if d in degrees), "V")
+
+    slots_per_phrase = bars_per_phrase * cpb
+    for p, plan in enumerate(plans):
+        # A truncated final phrase (6 bars = one full phrase + half of another)
+        # cadences on the section's last chord instead of a slot that never sounds.
+        end = min((p + 1) * slots_per_phrase, slots)
+        if end <= p * slots_per_phrase:
+            break
+        idx = end - 1
+        target = dominant if plan.cadence_open else tonic
+        suffix = _split_suffix(out[idx])[1]
+        out[idx] = target + (suffix if suffix in _CADENCE_SAFE_SUFFIXES else "")
+    return out
 
 
 def _is_dominant(roman: str) -> bool:
