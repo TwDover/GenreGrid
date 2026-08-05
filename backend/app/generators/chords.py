@@ -7,6 +7,7 @@
 # version. Distributed WITHOUT ANY WARRANTY. See the GNU General Public License
 # <https://www.gnu.org/licenses/> for details.
 import random
+from itertools import combinations, permutations
 from app.core.meter import Meter, DEFAULT_METER
 from typing import List
 
@@ -75,8 +76,33 @@ def _apply_inversion(pitches: list[int], inversion: int) -> list[int]:
 
 
 def _movement_score(pitches: list[int], prev_pitches: list[int]) -> float:
-    """Sum of each new pitch's distance to its nearest previous pitch."""
-    return sum(min(abs(p - q) for q in prev_pitches) for p in pitches)
+    """Cost of the best one-to-one pairing between pitches and prev_pitches —
+    each pairing is a voice continuing from its previous position; an
+    unpaired note (chord grew or shrank a voice) costs its distance to the
+    nearest previous pitch instead, since a newly-entering/-leaving voice has
+    no partner to move smoothly from/to.
+
+    A plain nearest-previous-pitch sum (the original approach) lets two new
+    notes both "claim" the same previous voice, which can under-count the
+    true movement and pick a voicing that isn't actually smoothest per
+    continuous voice. Exact via brute-force permutation — chord voicings here
+    are always small (<=6 notes) so this is cheap.
+    """
+    if len(pitches) <= len(prev_pitches):
+        short, long_ = pitches, prev_pitches
+    else:
+        short, long_ = prev_pitches, pitches
+    n_short, n_long = len(short), len(long_)
+    best = None
+    for combo_idx in combinations(range(n_long), n_short):
+        chosen = [long_[i] for i in combo_idx]
+        leftover = [long_[i] for i in range(n_long) if i not in combo_idx]
+        leftover_cost = sum(min(abs(p - s) for s in short) for p in leftover)
+        for perm in permutations(chosen):
+            total = sum(abs(a - b) for a, b in zip(short, perm)) + leftover_cost
+            if best is None or total < best:
+                best = total
+    return best if best is not None else 0.0
 
 
 def _voice_lead(pitches: list[int], prev_pitches: list[int]) -> list[int]:
