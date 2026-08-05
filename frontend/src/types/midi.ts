@@ -201,6 +201,13 @@ export interface BuildSongRequest {
   blend_amount?: number             // 0..1 mix toward blend_style_id
 }
 
+export interface HummedNote {
+  pitch: number
+  start: number      // beats
+  duration: number   // beats
+  velocity: number
+}
+
 export interface SongSectionResult {
   name: string
   section_type: string

@@ -305,6 +305,68 @@ def test_build_song_from_melody_end_to_end():
     assert fi.part == "drums"
 
 
+# ── Hum/whistle → melody (8.2) ───────────────────────────────────────────────
+
+def _hummed_notes(key_root=60, minor=False) -> list["HummedNote"]:
+    """The same 4-bar diatonic melody as _melody_bytes, as HummedNote objects —
+    stands in for what usePitchDetect.ts would post after pitch-detecting a
+    hummed take."""
+    from app.models.schemas import HummedNote
+    sc = [0, 2, 3, 5, 7, 8, 10] if minor else [0, 2, 4, 5, 7, 9, 11]
+    seqs = [[0, 2, 4, 2], [0, 3, 5, 3], [4, 2, 1, 0], [0, 1, 2, 0]]
+    notes = []
+    for bar, steps in enumerate(seqs):
+        for q, s in enumerate(steps):
+            notes.append(HummedNote(pitch=key_root + sc[s], start=bar * 4 + q, duration=0.9, velocity=90))
+    return notes
+
+
+def test_build_song_from_notes_end_to_end():
+    """A hummed note list (no MIDI file involved) reaches the same seam as
+    build-song-from-melody: key detection, progression derivation, and the
+    notes become the chorus hook."""
+    from app.models.schemas import BuildSongFromNotesRequest
+    from app.api.routes_song import build_song_from_notes
+
+    notes = _hummed_notes()
+    r = build_song_from_notes(BuildSongFromNotesRequest(
+        notes=notes, style_id="lofi", template="compact",
+        parts=["chords", "bass", "melody", "drums"], complexity=0.6, variation=0.4,
+        humanize=0.5, use_priors=False, chorus_key_shift=0, final_chorus_lift=0,
+        tempo_automation=0.5, bpm=100, seed=64))
+    assert r.key.startswith("C major")
+    d = EXPORTS_DIR / r.generation_id
+
+    chorus = next(s for s in r.sections if s.section_type == "chorus")
+    mid = mido.MidiFile(str(d / "melody.mid"))
+    tpb = mid.ticks_per_beat
+    mid_notes = []
+    for tr in mid.tracks:
+        t = 0
+        for msg in tr:
+            t += msg.time
+            if msg.type == "note_on" and msg.velocity > 0:
+                mid_notes.append((t / tpb, msg.note))
+    lo, hi = chorus.start_bar * 4, (chorus.start_bar + chorus.bars) * 4
+    chorus_notes = {(round((t - lo) % 16, 1), p) for t, p in mid_notes if lo <= t < hi}
+    hook_set = {(round(n.start, 1), n.pitch) for n in notes}
+    matched = sum(1 for ev in hook_set if ev in chorus_notes)
+    assert matched / len(hook_set) >= 0.9, "chorus should carry the hummed hook"
+
+
+def test_build_song_from_notes_clamps_bpm_to_style_range():
+    from app.models.schemas import BuildSongFromNotesRequest
+    from app.api.routes_song import build_song_from_notes
+
+    r = build_song_from_notes(BuildSongFromNotesRequest(
+        notes=_hummed_notes(), style_id="lofi", template="compact",
+        parts=["chords", "bass", "melody", "drums"], use_priors=False,
+        bpm=240, seed=65))   # above lofi's bpm_range (70-90)
+    from app.services.style_loader import load_style
+    bpm_min, bpm_max = load_style("lofi").get("bpm_range", [40, 240])
+    assert bpm_min <= r.bpm <= bpm_max
+
+
 # ── Seed from a progression (5.4a) ───────────────────────────────────────────
 
 def test_build_song_with_progression_text_pins_harmony():

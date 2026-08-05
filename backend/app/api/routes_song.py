@@ -31,7 +31,8 @@ from app.models.schemas import (FileInfo, BuildSongRequest, BuildSongResponse,
                                 RebuildSongProgressionRequest, RearrangeSongSectionsRequest,
                                 AudioClipInfo, PartAutomation,
                                 NoteRegionInfo, SaveNoteRegionRequest, MoveNoteRegionRequest,
-                                SetNoteRegionLoopRequest, NoteRegionMutationResponse)
+                                SetNoteRegionLoopRequest, NoteRegionMutationResponse,
+                                BuildSongFromNotesRequest)
 from app.services.style_loader import load_style
 from app.services.progression_import import parse_progression, ROMAN_TOKEN_RE
 from app.services.midi_writer import (NoteEvent, write_midi, rebuild_combined_from_parts,
@@ -578,6 +579,39 @@ async def build_song_from_melody(
         tempo_automation=tempo_automation,
     )
     return _do_build_song(req, user_progression=progression, hook_melody=melody)
+
+
+@router.post("/build-song-from-notes", response_model=BuildSongResponse)
+def build_song_from_notes(req: BuildSongFromNotesRequest):
+    """Build a full song around a hummed/whistled melody (roadmap 8.2).
+
+    The frontend pitch-detects mic audio into a note list client-side (YIN +
+    note segmentation, see frontend/src/utils/pitchDetect.ts) and posts it
+    here as plain note data instead of a MIDI file. From here it's the exact
+    same seam as build-song-from-melody: detect the key, derive a supporting
+    progression, and use the notes as the song's chorus hook.
+    """
+    from app.services.melody_import import detect_key, derive_progression
+
+    melody = [NoteEvent(n.pitch, n.start, n.duration, n.velocity, 2) for n in req.notes]
+    key, scale = detect_key(melody)
+    progression = derive_progression(melody, key, scale)
+
+    try:
+        style = load_style(req.style_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    bpm_min, bpm_max = style.get("bpm_range", [40, 240])
+    bpm = int(max(bpm_min, min(bpm_max, req.bpm)))
+
+    build_req = BuildSongRequest(
+        style_id=req.style_id, key=key, scale=scale, bpm=bpm,
+        complexity=req.complexity, variation=req.variation, humanize=req.humanize,
+        parts=req.parts, template=req.template, seed=req.seed, use_priors=req.use_priors,
+        chorus_key_shift=req.chorus_key_shift, final_chorus_lift=req.final_chorus_lift,
+        tempo_automation=req.tempo_automation,
+    )
+    return _do_build_song(build_req, user_progression=progression, hook_melody=melody)
 
 
 def _mine_uploaded_groove(data: bytes) -> dict | None:

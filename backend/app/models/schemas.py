@@ -186,6 +186,35 @@ class BuildSongRequest(BaseModel):
     progression_text: Optional[str] = Field(default=None, max_length=200)  # free-typed roman numerals or chord names ("Am F C G"); parsed server-side into progression_override
 
 
+class HummedNote(BaseModel):
+    """One note from client-side pitch detection (roadmap 8.2 — see
+    frontend/src/utils/pitchDetect.ts). Units match NoteEvent: beats, not
+    seconds — the frontend quantizes to a grid before posting."""
+    pitch: int = Field(..., ge=0, le=127)
+    start: float = Field(..., ge=0.0)
+    duration: float = Field(..., gt=0.0)
+    velocity: int = Field(default=90, ge=1, le=127)
+
+
+class BuildSongFromNotesRequest(BaseModel):
+    """Build a song around a hummed/whistled melody, pitch-detected client-side
+    (roadmap 8.2). Mirrors build-song-from-melody's fields, minus the MIDI file —
+    a plain note list stands in for it."""
+    notes: List[HummedNote] = Field(..., min_length=4, max_length=256)
+    style_id: str
+    template: str = "verse_chorus"
+    parts: List[str] = ["chords", "bass", "melody", "drums", "pads"]
+    complexity: float = Field(default=0.6, ge=0.0, le=1.0)
+    variation: float = Field(default=0.4, ge=0.0, le=1.0)
+    humanize: float = Field(default=0.5, ge=0.0, le=1.0)
+    use_priors: bool = False
+    chorus_key_shift: Optional[int] = Field(default=None, ge=-12, le=12)
+    final_chorus_lift: Optional[int] = Field(default=None, ge=-12, le=12)
+    tempo_automation: float = Field(default=0.5, ge=0.0, le=1.0)
+    bpm: int = Field(default=100, ge=40, le=240)
+    seed: Optional[int] = None
+
+
 class RegenerateSongPartRequest(BaseModel):
     generation_id: str
     part: str
