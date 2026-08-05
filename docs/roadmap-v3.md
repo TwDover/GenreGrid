@@ -23,12 +23,58 @@ behaviors default off / opt-in per style, scorer *corrections* are the exception
 fix wrong answers); each shipped item bumps at least the minor version; the final judge of
 *feel* is ears in a DAW via `/run-genregrid`.
 
-**Measurement baseline (do this first, ~half a day):** before touching anything, run
-[`scripts/batch_generate.py`](../scripts/batch_generate.py) across all styles × a fixed seed
-set and store per-dimension quality scores + attempt counts as
-`docs/quality-baseline-v3.json`. Every item below re-runs the same sweep; "Done when"
-claims of "scores improve / attempts drop" are judged against this file, and the 4/4
-byte-identical invariant is checked by hashing the baseline seeds' MIDI output.
+**Measurement baseline — ✅ shipped 2026-08-04.**
+[`scripts/quality_baseline.py`](../scripts/quality_baseline.py) sweeps all styles × a fixed
+seed set and stores per-dimension scores, attempt counts, and a per-case hash of the
+generated notes as [`docs/quality-baseline-v3.json`](quality-baseline-v3.json). Every item
+below re-runs the same sweep; "scores improve / attempts drop" claims are judged against
+that file, and the byte-identical invariant is the hash check.
+
+```bash
+python scripts/quality_baseline.py                                   # rewrite the baseline
+python scripts/quality_baseline.py --compare docs/quality-baseline-v3.json
+python scripts/quality_baseline.py --compare docs/quality-baseline-v3.json \
+       --require-identical                                           # exits 1 if any note moved
+```
+
+`--compare` re-runs using the *baseline file's own* config and seeds, so the two are always
+comparable, and prints per-dimension deltas plus a count of cases whose notes changed. The
+sweep is library-neutral (it never saves) and takes ~60 s. Three suites:
+`arrangement` (all styles, 16 seeds, 16 bars — the primary), `loop_chorus` (the app's
+default single-section path), `meters` (6 styles × 3/4, 6/8, 7/8, 5/4 — feeds 10.2).
+
+**Current baseline (mean over the winning attempt of each case) — after 10.1:**
+
+| suite | cases | total | all-green | attempts | harmonic | separation | rhythm | contour | density | mix | hook |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| arrangement | 560 | 0.899 | 75.2% | 1.94 | 0.953 | 0.912 | 0.924 | **0.803** | 0.838 | 0.940 | **0.790** |
+| loop_chorus | 280 | 0.902 | 78.2% | 1.90 | 0.957 | 0.919 | 0.906 | **0.804** | 0.889 | 0.940 | **0.791** |
+| meters | 192 | 0.815 | **0.0%** | **5.00** | 0.961 | 0.905 | **0.513** | 0.852 | 0.836 | 0.938 | 0.728 |
+
+_First capture at `e44e7ed` (pre-10.1), for reference: arrangement 0.897 / 74.8% / 1.96
+attempts / harmonic 0.949; loop_chorus 0.901 / 78.2% / 1.90 / 0.954; meters 0.812 / 0.0% /
+5.00 / 0.950._
+
+What the baseline already confirms, before any item ships:
+
+- **10.2 is worse than the roadmap assumed.** Every non-4/4 case fails: `rhythm` collapses
+  to 0.51 (vs 0.92 in 4/4), *nothing* goes green, and all 192 cases burn the full 5-attempt
+  budget chasing noise. Non-4/4 generation currently costs 2.5× the search time of 4/4 for
+  a strictly worse result.
+- **`contour` (0.804) and `hook` (0.790) are the weakest 4/4 dimensions**, both below the
+  0.82 green line on average — exactly what 11.2 and 11.3 target. `mix` sits at 0.940 in
+  every suite and every style, so it discriminates nothing.
+- **Four styles never go green in 4/4 and always burn all 5 attempts** — arrangement:
+  `trap_soul` (rhythm 0.50), `doom_metal`, `hyperpop`, `rock`; loop: `trap_soul`,
+  `cloud_rap`, `hyperpop`, `rock`. That's ~11% of the sweep paying 5× search cost for
+  nothing, and it's the headline case for 11.4's targeted repair.
+- Overall mean attempts is 1.96 (arrangement), so 11.4's "≥ 30% drop" means landing ≤ 1.37.
+
+Caveat: the scorer blends library-learned rhythm patterns into its reference
+(`build_scoring_style`), so a library that grows between two sweeps moves scores on its
+own. The baseline records per-style library counts (441 entries at capture) and `--compare`
+warns when they differ. `scripts/batch_generate.py` writes to that library — pass
+`--no-save` when using it for measurement.
 
 ---
 
@@ -40,7 +86,7 @@ improve **every existing generation path** (loop, song builder, regen) with no n
 machinery. Ship both before anything in Phase 11, because Phase 11's items are tuned
 against scorer feedback.
 
-### 10.1 Score against the chords that actually sound  ★ do first
+### 10.1 Score against the chords that actually sound  ★ ✅ shipped 2026-08-04
 - **Why:** melody/bass/arp are generated against `s_resolved` — the per-section
   progression **after** `resolve_progression` applies 7th/9th swaps, secondary dominants,
   and tritone subs — but `score_generation` receives the raw pre-substitution
@@ -70,12 +116,33 @@ against scorer feedback.
   melody was generated against it or against the raw progression's map is *removed* — i.e.
   the new test asserts the substituted chord map is what gets scored; batch sweep shows
   `harmonic` no longer anti-correlates with `chromatic_color`/substitution activity.
+- **Shipped:** `_run_attempt` records `(offset, bars, key, bar_beats, chords_per_bar,
+  romans)` per section and passes it to `score_generation` as `resolved_sections`;
+  `_build_chord_map_from_sections` builds the map from that. Two mis-bins beyond the
+  substitution gap turned out to be in the same code path and are fixed with it: the map
+  used the *request's* global complexity to pick chords-per-bar while the generators use
+  the per-section `harmony_complexity` (so every boosted chorus was scored on slots twice
+  as long as the ones playing), and it ignored the section's key (chorus-lift sections were
+  scored in the unlifted key). `_style_match` deliberately still reads the raw progression —
+  its corpus bigrams are mined from template-level romans.
+  Tests: `backend/tests/test_quality_chord_map.py` (10).
+  **Measured** (vs. the pre-10.1 baseline): styles that actually use substitutions or
+  chromatic color (7 of 35) gained **+0.019 harmonic** and **−0.116 attempts**, against
+  **+0.0007 / ±0.000** for the 28 that don't — the anti-correlation the item predicted,
+  confirmed and removed. Biggest movers `rnb +0.061`, `jazz +0.046`, `soul +0.032`.
+  Overall arrangement attempts 1.96 → 1.94, all-green 74.8% → 75.2%. 142 of 1032 cases
+  picked a different winning attempt, as expected for a scorer correction.
 
 ### 10.2 Meter-correct scoring (finish roadmap 6.1's reach)
 - **Why:** [`quality.py`](../backend/app/services/quality.py) hard-codes
   `_BEATS_PER_BAR = 4`; in 3/4, 6/8, or 7/8 the 16-step rhythm vectors, the chord map, and
   the hook self-similarity bars are all computed on a wrong bar grid — every non-4/4
-  generation is quality-gated by noise. The same hard-coded 4 survives in three other spots
+  generation is quality-gated by noise. **The chord map is already done:** 10.1's
+  `_build_chord_map_from_sections` takes each section's real `bar_beats`, so the production
+  path is meter-correct there (only the legacy `_build_chord_map` fallback still assumes 4).
+  What remains is the rhythm vectors, the hook bars, and the three stragglers below — and
+  the baseline says that remainder is the whole problem: non-4/4 `rhythm` sits at 0.513
+  against 0.924 in 4/4, nothing goes green, and all 192 meter cases burn all 5 attempts. The same hard-coded 4 survives in three other spots
   the 6.1 meter work didn't reach: `_chord_tones_by_bar`
   ([`generation.py:80`](../backend/app/services/generation.py)) mis-bins the arp's chord
   tones, `_section_scales` ([`generation.py:687`](../backend/app/services/generation.py))
@@ -322,8 +389,8 @@ against scorer feedback.
 
 ## Suggested sequence
 
-1. **Baseline sweep** (half a day) → `docs/quality-baseline-v3.json`.
-2. **10.1** then **10.2** — separate PRs, re-baseline after each.
+1. ~~**Baseline sweep** → `docs/quality-baseline-v3.json`.~~ ✅ 2026-08-04.
+2. ~~**10.1**~~ ✅ 2026-08-04 — then **10.2**; separate PRs, re-baseline after each.
 3. **11.1 cadence harmony** (hoisting phrase plans also unblocks 12.3).
 4. **11.4 targeted repair** — pays for itself immediately in search cost.
 5. **11.2 goal-tone melody** — the flagship; migrate styles gradually.
@@ -333,7 +400,9 @@ against scorer feedback.
 ## Measurement
 
 - Per-dimension quality scores + attempts-per-green across all styles × fixed seeds,
-  compared to `quality-baseline-v3.json` on every item.
-- Byte-identical hash check on gated-off paths (and 4/4 for 10.2) every PR.
+  compared to `quality-baseline-v3.json` on every item
+  (`scripts/quality_baseline.py --compare docs/quality-baseline-v3.json`).
+- Byte-identical hash check on gated-off paths (and 4/4 for 10.2) every PR
+  (add `--require-identical`; it exits 1 if any note moved).
 - Ears: `/run-genregrid` A/B per style before flipping any style's gate on — the scorer
   measures agreement, only listening measures *music*.

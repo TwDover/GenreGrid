@@ -47,17 +47,17 @@ VOICE_SAMPLE_DIR_ALIASES = {
 # in instrument identity, not an oversight, so it is listed rather than asserted
 # away — each entry is a voice the app plays with someone else's timbre.
 #
-#   clavinet / drawbar_organ / accordion / acoustic_guitar_nylon
-#       No CC0 or CC-BY multisample of any of them has been found; see
-#       docs/LICENSE_AUDIT.md §6. Remove an entry the moment one is sourced.
+#   clavinet
+#       No CC0 or CC-BY multisample has been found: FreePats lists one as "in
+#       development" and the only other SFZ carries an unconfirmed license. See
+#       docs/LICENSE_AUDIT.md §7. Remove this entry the moment one is sourced —
+#       drawbar_organ, accordion, and acoustic_guitar_nylon left this list on
+#       2026-08-04 when FreePats CC0 sets were found for them.
 #   synth_bass_1
 #       Synthesized by choice — it IS a synth, so the app's own oscillator beats
 #       a frozen sample of someone else's.
 DELIBERATELY_SYNTHESIZED = {
     "clavinet",
-    "drawbar_organ",
-    "accordion",
-    "acoustic_guitar_nylon",
     "synth_bass_1",
 }
 
