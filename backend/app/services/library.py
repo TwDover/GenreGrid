@@ -134,8 +134,14 @@ def _get_learned_patterns(style_id: str) -> dict | None:
     generation the USER kept (exported or thumbed-up, weight ~2.5) pulls the
     learned reference toward the user's taste far more than a merely
     high-scoring auto-save (weight 1.0) — the priors learn what the user likes,
-    not just what the scorer rewards."""
-    entries = list_library(style_id)
+    not just what the scorer rewards.
+
+    Only 4/4 fingerprints take part. A generation's pattern vector is one bar of
+    16th steps *in its own meter* (12 for 3/4 or 6/8, 14 for 7/8), and the
+    references these get blended into — the style JSON's ``kick_pattern`` and
+    ``chord_rhythm`` — are hand-authored 16-step 4/4 bars. Averaging a 3/4 bar
+    into one would zero-pad it into a 4/4 pattern that nothing ever played."""
+    entries = [e for e in list_library(style_id) if _is_44_fingerprint(e)]
     if len(entries) < _MIN_EXAMPLES:
         return None
 
@@ -152,6 +158,18 @@ def _get_learned_patterns(style_id: str) -> dict | None:
             chord_avg[i] += (chord[i] if i < len(chord) else 0.0) * w
 
     return {"kick_pattern": kick_avg, "chord_pattern": chord_avg, "example_count": len(entries)}
+
+
+def _is_44_fingerprint(entry: dict) -> bool:
+    """True when an entry's rhythm patterns are on the 16-step 4/4 grid.
+
+    Length is the test rather than a stored time signature: entries predate the
+    field, and a 16-long vector is exactly what "comparable to the 4/4 style
+    reference" means. Entries with no patterns at all stay in — they contribute
+    nothing but also can't distort the average."""
+    pats = entry.get("patterns") or {}
+    return all(len(pats.get(k, [0.0] * 16)) == 16
+               for k in ("kick_pattern", "chord_pattern"))
 
 
 def build_scoring_style(style: dict, style_id: str) -> dict:

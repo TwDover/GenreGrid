@@ -369,6 +369,11 @@ def regenerate_part(req: RegeneratePartRequest):
     bpm_min, bpm_max = style.get("bpm_range", [40, 240])
     bpm = max(bpm_min, min(bpm_max, req.bpm))
 
+    # The request carries the original generation's meter so the re-rolled part
+    # lands in the same bars as its siblings on disk. It used to be ignored
+    # entirely: regenerating one part of a 7/8 song wrote a 4/4 part over it.
+    meter = parse_meter(getattr(req, "time_signature", None))
+
     # Replay the original seed so we pick the same progression and substitutions —
     # keeps harmony consistent with the other parts generated from that seed.
     progression = _choose_progression(style, getattr(req, "use_priors", True), req.seed, req.scale)
@@ -386,7 +391,8 @@ def regenerate_part(req: RegeneratePartRequest):
         sections = [{"bars": req.bars, "complexity": req.complexity, "parts": [req.part], "offset": 0, "key": req.key}]
     else:
         key_shift = style.get("chorus_key_shift", 0)
-        sections = _plan_sections(req.bars, req.complexity, [req.part], req.key, key_shift)
+        sections = _plan_sections(req.bars, req.complexity, [req.part], req.key, key_shift,
+                                  meter=meter)
     events: list[NoteEvent] = []
 
     # Detect if melody.mid already exists alongside the regenerated part so
@@ -401,7 +407,8 @@ def regenerate_part(req: RegeneratePartRequest):
         chords_path = output_dir / "chords.mid"
         if chords_path.exists():
             try:
-                global_chord_tones = _chord_tones_by_bar(read_note_starts(chords_path), req.bars)
+                global_chord_tones = _chord_tones_by_bar(read_note_starts(chords_path), req.bars,
+                                                     meter)
             except Exception:
                 logger.debug("Could not derive chord tones for arpeggio from %s", chords_path, exc_info=True)
                 global_chord_tones = None
@@ -430,8 +437,8 @@ def regenerate_part(req: RegeneratePartRequest):
             saved_state = random.getstate()
             random.seed(_part_seed(req.seed, section_i, "drums"))
             drum_evts_tmp = generate_drums(style, s_bars, s_cplx, req.variation,
-                                           section_end_bars=_section_end_bars(sections, s_off),
-                                           dynamics=getattr(req, "dynamics", 0.5))
+                                           section_end_bars=_section_end_bars(sections, s_off, meter),
+                                           dynamics=getattr(req, "dynamics", 0.5), meter=meter)
             kick_times = [e.start for e in drum_evts_tmp if e.pitch == DRUM_MAP["kick"]]
             random.setstate(saved_state)
 
@@ -440,18 +447,19 @@ def regenerate_part(req: RegeneratePartRequest):
         if req.part == "chords":
             evts = generate_chords(style, s_key, req.scale, s_bars, s_cplx,
                                    req.variation, progression, s_resolved,
-                                   kick_times=kick_times)
+                                   kick_times=kick_times, meter=meter)
         elif req.part == "bass":
             evts = generate_bass(style, s_key, req.scale, s_bars, s_cplx,
-                                 req.variation, progression, kick_times)
+                                 req.variation, progression, kick_times, meter=meter)
         elif req.part == "melody":
             evts = generate_melody(style, s_key, req.scale, s_bars, s_cplx,
                                    req.variation, s_resolved,
                                    melody_model=melody_prior_for(_prior_name(style),
-                                                                 getattr(req, "use_priors", True)))
+                                                                 getattr(req, "use_priors", True)),
+                                   meter=meter)
         elif req.part == "pads":
             evts = generate_pads(style, s_key, req.scale, s_bars, s_cplx,
-                                 req.variation, s_resolved)
+                                 req.variation, s_resolved, meter=meter)
         elif req.part == "counter_melody":
             # Rebuild the sibling melody deterministically (same part-seed the
             # original generation used) so the re-rolled harmony line tracks the
@@ -461,23 +469,24 @@ def regenerate_part(req: RegeneratePartRequest):
             sib_mel = generate_melody(style, s_key, req.scale, s_bars, s_cplx,
                                       req.variation, s_resolved,
                                       melody_model=melody_prior_for(_prior_name(style),
-                                                                    getattr(req, "use_priors", True)))
+                                                                    getattr(req, "use_priors", True)),
+                                      meter=meter)
             random.setstate(saved_cm_state)
             evts = generate_counter_melody(sib_mel, s_key, req.scale, s_bars,
-                                           s_resolved, style)
+                                           s_resolved, style, meter=meter)
         elif req.part == "drums":
             evts = generate_drums(style, s_bars, s_cplx, req.variation,
-                                  section_end_bars=_section_end_bars(sections, s_off),
-                                  dynamics=getattr(req, "dynamics", 0.5))
+                                  section_end_bars=_section_end_bars(sections, s_off, meter),
+                                  dynamics=getattr(req, "dynamics", 0.5), meter=meter)
         elif req.part == "arpeggio":
             arp_octave = 6 if melody_exists else 5
             sec_tones = None
             if global_chord_tones:
-                start_bar = int(s_off // 4)
+                start_bar = int(s_off // meter.bar_beats)
                 sec_tones = global_chord_tones[start_bar:start_bar + s_bars] or None
             evts = generate_arpeggio(style, s_key, req.scale, s_bars, s_cplx,
                                      req.variation, s_resolved, arp_octave,
-                                     chord_tones=sec_tones)
+                                     chord_tones=sec_tones, meter=meter)
         else:
             continue
         evts = _apply_dynamic(evts, s_dyn)
@@ -510,10 +519,10 @@ def regenerate_part(req: RegeneratePartRequest):
     out_path = output_dir / filename
     write_midi(events, out_path, bpm=bpm, program=programs.get(req.part),
                cc_events=part_cc, pb_events=pb_events,
-               track_name=track_names.get(req.part))
+               track_name=track_names.get(req.part), meter=meter)
 
     # Rebuild combined.mid so it reflects the newly regenerated part
-    rebuild_combined_from_parts(output_dir, bpm, track_names=track_names)
+    rebuild_combined_from_parts(output_dir, bpm, track_names=track_names, meter=meter)
 
     return FileInfo(part=req.part, filename=filename, url=f"/exports/{req.generation_id}/{filename}")
 

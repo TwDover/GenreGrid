@@ -96,6 +96,22 @@ class Meter:
         return 1.5 if self.is_compound else 4.0 / self.denominator
 
     @property
+    def strong_positions(self) -> list[float]:
+        """Metrically strong positions in the bar, in quarter-beats — where a
+        line "lands" (bebop runs, approach runs, downbeat targeting).
+
+        The downbeat always counts; the bar's midpoint joins it only when it
+        coincides with a felt pulse. 4/4→[0, 2] (unchanged), 6/8→[0, 1.5] (the
+        two dotted-quarter beats), 12/8→[0, 3], while 3/4, 5/4 and 7/8 keep the
+        downbeat alone rather than inventing an accent mid-pulse.
+        """
+        out = [0.0]
+        mid = self.bar_beats / 2.0
+        if mid > 0 and any(abs(p - mid) < 1e-6 for p in self.pulse_positions):
+            out.append(mid)
+        return out
+
+    @property
     def pulse_positions(self) -> list[float]:
         """Felt-beat start positions within a bar, in quarter-beats.
         4/4→[0,1,2,3], 3/4→[0,1,2], 6/8→[0,1.5], 7/8→[0,1.0,2.0] (2+2+3)."""
@@ -114,6 +130,37 @@ class Meter:
 
 
 DEFAULT_METER = Meter(4, 4)
+
+
+def backbeat_beats(meter: Meter, standard_beats: list | None = None,
+                   half_time: bool = False) -> list[float]:
+    """Where the snare/clap backbeat lands, as 1-indexed quarter-beat positions.
+
+    Styles author ``snare_standard_beats`` on a 4/4 grid ([2, 4]); a shorter or
+    irregular bar needs a meter-native answer. Beats past the bar end are
+    dropped, then non-4/4 meters land the backbeat on FELT pulses instead of the
+    clipped 4/4 grid: compound meters take the "off" dotted-quarter pulses
+    (6/8 → pulse 2; 12/8 → pulses 2 & 4), simple/odd meters the central pulse
+    (3/4 → beat 2, 7/8 → the second group). 4/4 and half-time sections are
+    returned unchanged, so 4/4 output stays byte-identical.
+
+    Shared by the drum generator (which plays them) and the quality scorer
+    (which builds its backbeat reference from them) so the two cannot drift —
+    scoring a 7/8 groove against a 4/4 backbeat was half of why every non-4/4
+    generation failed the rhythm dimension.
+    """
+    beats = list(standard_beats if standard_beats is not None else [2, 4])
+    beats = [b for b in beats if (b - 1) < meter.bar_beats] or [2]
+    if meter == DEFAULT_METER or half_time:
+        return [float(b) for b in beats]
+    pulses = meter.pulse_positions
+    if meter.is_compound:
+        backbeat = pulses[1::2] or [pulses[-1]]
+    elif len(pulses) > 1:
+        backbeat = [pulses[len(pulses) // 2]]
+    else:
+        backbeat = pulses
+    return [p + 1.0 for p in backbeat]
 
 _ALLOWED_DENOMINATORS = (2, 4, 8, 16)
 

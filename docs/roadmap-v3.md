@@ -43,24 +43,25 @@ sweep is library-neutral (it never saves) and takes ~60 s. Three suites:
 `arrangement` (all styles, 16 seeds, 16 bars — the primary), `loop_chorus` (the app's
 default single-section path), `meters` (6 styles × 3/4, 6/8, 7/8, 5/4 — feeds 10.2).
 
-**Current baseline (mean over the winning attempt of each case) — after 10.1:**
+**Current baseline (mean over the winning attempt of each case) — after 10.2:**
 
 | suite | cases | total | all-green | attempts | harmonic | separation | rhythm | contour | density | mix | hook |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | arrangement | 560 | 0.899 | 75.2% | 1.94 | 0.953 | 0.912 | 0.924 | **0.803** | 0.838 | 0.940 | **0.790** |
 | loop_chorus | 280 | 0.902 | 78.2% | 1.90 | 0.957 | 0.919 | 0.906 | **0.804** | 0.889 | 0.940 | **0.791** |
-| meters | 192 | 0.815 | **0.0%** | **5.00** | 0.961 | 0.905 | **0.513** | 0.852 | 0.836 | 0.938 | 0.728 |
+| meters | 192 | 0.900 | 68.8% | 2.42 | 0.951 | 0.899 | 0.936 | 0.838 | 0.834 | 0.937 | **0.786** |
 
-_First capture at `e44e7ed` (pre-10.1), for reference: arrangement 0.897 / 74.8% / 1.96
+_Earlier captures, for reference. At `e44e7ed` (pre-10.1): arrangement 0.897 / 74.8% / 1.96
 attempts / harmonic 0.949; loop_chorus 0.901 / 78.2% / 1.90 / 0.954; meters 0.812 / 0.0% /
-5.00 / 0.950._
+5.00 / 0.950. After 10.1 the meters suite still read 0.815 / **0.0%** / **5.00 attempts** /
+rhythm **0.513** — 10.2 is the item that moved it._
 
-What the baseline already confirms, before any item ships:
+What the baseline confirms after Phase 10:
 
-- **10.2 is worse than the roadmap assumed.** Every non-4/4 case fails: `rhythm` collapses
-  to 0.51 (vs 0.92 in 4/4), *nothing* goes green, and all 192 cases burn the full 5-attempt
-  budget chasing noise. Non-4/4 generation currently costs 2.5× the search time of 4/4 for
-  a strictly worse result.
+- **The meters suite is no longer the outlier.** 10.2 took it from 0% green on 5.00 attempts
+  to 68.8% green on 2.42, with `rhythm` 0.513 → 0.936. Non-4/4 generation no longer costs
+  2.5× the search time of 4/4 for a worse result; the remaining gap to the 4/4 suites is
+  ordinary style variance (`funk` and `rock` in odd meters are the weakest at 53–75% green).
 - **`contour` (0.804) and `hook` (0.790) are the weakest 4/4 dimensions**, both below the
   0.82 green line on average — exactly what 11.2 and 11.3 target. `mix` sits at 0.940 in
   every suite and every style, so it discriminates nothing.
@@ -133,7 +134,7 @@ against scorer feedback.
   Overall arrangement attempts 1.96 → 1.94, all-green 74.8% → 75.2%. 142 of 1032 cases
   picked a different winning attempt, as expected for a scorer correction.
 
-### 10.2 Meter-correct scoring (finish roadmap 6.1's reach)
+### 10.2 Meter-correct scoring (finish roadmap 6.1's reach)  ★ ✅ shipped 2026-08-04
 - **Why:** [`quality.py`](../backend/app/services/quality.py) hard-codes
   `_BEATS_PER_BAR = 4`; in 3/4, 6/8, or 7/8 the 16-step rhythm vectors, the chord map, and
   the hook self-similarity bars are all computed on a wrong bar grid — every non-4/4
@@ -170,6 +171,35 @@ against scorer feedback.
 - **Done when:** a 6/8 and a 7/8 generation score with correctly-binned rhythm vectors
   (unit tests with hand-placed events), 4/4 scores are bit-identical to the baseline, and
   the non-4/4 batch sweep's attempt counts drop (the search stops chasing noise).
+- **Shipped:** `score_generation` and `extract_rhythm_patterns` take a `meter`; every
+  bar-relative measurement (step vectors, hook self-similarity bars, notes-per-beat density,
+  the legacy chord map) is computed on `meter.bar_beats`, and step vectors are one bar long
+  *in that meter* (12 steps in 3/4 and 6/8, 14 in 7/8, 20 in 5/4) instead of folding bar 2
+  onto the tail of bar 1.
+  The approach changed in one place: rather than *skip* the 4/4-authored `kick_pattern` /
+  `chord_rhythm` references in other meters (the roadmap's plan), they are refit by the same
+  rule the generators use to read them — the drum generator keeps entries falling inside the
+  bar (`i * step < beats_per_bar`, so truncate + zero-pad), the chord generator indexes
+  modulo the pattern (so tile). Skipping them was tried first and made `rhythm` a constant
+  1.0 in every non-4/4 case: honest, but zero search signal. Both rules are identity at 16
+  steps, which is what keeps 4/4 untouched.
+  The backbeat reference moved to `core.meter.backbeat_beats`, now shared with the drum
+  generator so scorer and generator cannot disagree about where a 7/8 snare goes.
+  Stragglers fixed with the threaded meter: `_chord_tones_by_bar`, `_section_scales`, and
+  melody's bebop/approach runs (which now fire on `meter.strong_positions` — 4/4 → [0, 2]
+  unchanged, 6/8 → both dotted-quarter beats, 3/4 and 7/8 → the downbeat, rather than a
+  `% 4` that drifted across the bar). `library._get_learned_patterns` now blends only
+  length-16 fingerprints, so a saved 3/4 generation can't zero-pad itself into a style's
+  4/4 reference.
+  **Adjacent bug found and fixed:** `regenerate_part` accepted a `time_signature` and
+  ignored it entirely — re-rolling one part of a 7/8 song wrote 32 beats of 4/4 melody
+  across 28 beats of everything else, with a 4/4 signature in the .mid. The meter is now
+  threaded through its planner, generators, and writer.
+  Tests: `backend/tests/test_quality_meter.py` (38).
+  **Measured** (vs. the pre-10.2 baseline): meters suite `rhythm` **0.513 → 0.936**,
+  all-green **0.0% → 68.8%**, attempts **5.00 → 2.42**, total 0.815 → 0.900. The 4/4 suites
+  are **exactly** unchanged — 0 changed events and ±0.000 on every dimension across all 840
+  arrangement + loop_chorus cases.
 
 ---
 
@@ -390,7 +420,9 @@ against scorer feedback.
 ## Suggested sequence
 
 1. ~~**Baseline sweep** → `docs/quality-baseline-v3.json`.~~ ✅ 2026-08-04.
-2. ~~**10.1**~~ ✅ 2026-08-04 — then **10.2**; separate PRs, re-baseline after each.
+2. ~~**10.1**~~ ✅ 2026-08-04, ~~**10.2**~~ ✅ 2026-08-04 — separate PRs, re-baselined after
+   each. Phase 10 is complete: the scorer now judges the chords that sound, in the meter
+   they sound in.
 3. **11.1 cadence harmony** (hoisting phrase plans also unblocks 12.3).
 4. **11.4 targeted repair** — pays for itself immediately in search cost.
 5. **11.2 goal-tone melody** — the flagship; migrate styles gradually.
