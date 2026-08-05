@@ -6,6 +6,7 @@
     78
   ],
   "default_scale": "minor",
+  "cadence_alignment": 0.8,
   "compound_swing": 0.05,
   "instrumentation": {
     "chords": "distortion_guitar",

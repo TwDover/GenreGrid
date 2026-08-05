@@ -145,12 +145,16 @@ def _extract_steps(
                     continue
             elif e.pitch != pitch_filter:
                 continue
-        bar = int(e.start / meter.bar_beats)
-        if bar >= bars:
-            continue
-        beat_in_bar = e.start - bar * meter.bar_beats
-        step_i = round(beat_in_bar / _STEP)
-        if 0 <= step_i < n_steps:
+        # Quantise to the nearest 16th on ONE grid spanning the whole
+        # generation, then read the bar and step off that. Rounding inside a bar
+        # computed by truncation instead dropped every note a hair before a
+        # barline — and humanize, swing and groove_push routinely place the
+        # downbeat 5-20ms early, so a rock kit playing beats 1 and 3 was scored
+        # as playing only beat 3, and a jazz kit's downbeat kick vanished
+        # entirely. Both read as "this drummer ignores the style's signature".
+        step_global = int(round(e.start / _STEP))
+        bar, step_i = divmod(step_global, n_steps)
+        if 0 <= bar < bars:
             counts[step_i] += 1.0
 
     total = sum(counts)
@@ -318,12 +322,61 @@ def _fit_reference(ref: list, n_steps: int, wrap: bool) -> list[float]:
     return [float(ref[i]) if i < len(ref) else 0.0 for i in range(n_steps)]
 
 
+def _comp_windows(ref: list, n_steps: int, chords_per_bar: int) -> list[float]:
+    """One bar of the comping pattern as the chord generator will play it at
+    `chords_per_bar` chords per bar.
+
+    `chord_rhythm` is authored as one bar, but the generator reads it per *chord
+    window* and guarantees a hit at the start of every window — without that, a
+    pad-hold pattern (`[1, 0, 0, …]`) at two chords per bar would leave the
+    second window silent and drop half the progression (see
+    generators.chords.generate_chords). One chord per bar is identity.
+    """
+    fitted = _fit_reference(ref, n_steps, wrap=True)
+    cpb = max(1, int(chords_per_bar))
+    if cpb == 1:
+        return fitted
+    window = max(1, n_steps // cpb)
+    for w in range(cpb):
+        start = w * window
+        if start < n_steps and not any(fitted[start:start + window]):
+            fitted[start] = 1.0
+    return fitted
+
+
+def _comp_reference(ref: list, n_steps: int,
+                    resolved_sections: list[dict] | None) -> list[float]:
+    """The comping pattern this generation should be measured against.
+
+    The generated vector averages every bar of the generation, and a chorus
+    comps twice as fast as the verse around it — so the reference is the same
+    bars-weighted average of each section's expected pattern. Scoring a correct
+    two-chord-per-bar comp against the bare one-hit bar scored it **0.00**: the
+    reference expected the downbeat alone, the music played both chord changes,
+    and the two vectors shared no non-zero step at all.
+    """
+    rates: dict[int, int] = {}
+    for sec in resolved_sections or []:
+        cpb = max(1, int(sec.get("chords_per_bar", 1)))
+        rates[cpb] = rates.get(cpb, 0) + max(0, int(sec.get("bars", 0)))
+    rates = {k: v for k, v in rates.items() if v} or {1: 1}
+
+    total = sum(rates.values())
+    out = [0.0] * n_steps
+    for cpb, bars in rates.items():
+        share = bars / total
+        for i, v in enumerate(_comp_windows(ref, n_steps, cpb)):
+            out[i] += v * share
+    return out
+
+
 def _rhythm_fit(
     drums:  list[NoteEvent],
     chords: list[NoteEvent],
     style:  dict,
     bars:   int,
     meter:  Meter = DEFAULT_METER,
+    resolved_sections: list[dict] | None = None,
 ) -> tuple[float, list[str]]:
     """Cosine similarity between generated and style-canonical rhythm patterns.
 
@@ -367,7 +420,7 @@ def _rhythm_fit(
     # Chord comping rhythm
     ref_chord = style.get("chord_rhythm")
     if ref_chord and chords:
-        ref_chord = _fit_reference(ref_chord, n_steps, wrap=True)
+        ref_chord = _comp_reference(ref_chord, n_steps, resolved_sections)
         gen_chord = _extract_steps(chords, None, bars, channel_filter=0, meter=meter)
         s = _cosine(gen_chord, ref_chord)
         scores.append(s)
@@ -696,7 +749,8 @@ def score_generation(
 
     s_harm,   f_harm   = _harmonic_coherence(melody, key, scale, chord_map)
     s_reg,    f_reg    = _register_separation(melody, chords, bass)
-    s_rhythm, f_rhythm = _rhythm_fit(drums, chords, style, bars, meter)
+    s_rhythm, f_rhythm = _rhythm_fit(drums, chords, style, bars, meter,
+                                     resolved_sections)
     s_cont,   f_cont   = _melodic_contour(melody)
     s_dens,   f_dens   = _density_fit(melody, bass, style, bars, complexity, meter)
     s_mix,    f_mix    = _mix_balance(melody, chords, bass)

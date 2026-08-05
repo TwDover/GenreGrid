@@ -39,8 +39,8 @@ from app.services.mixdown import (
     generate_build_sweeps, generate_section_crescendo,
 )
 from app.services.generation import (
-    _run_attempt, _choose_progression, _all_green,
-    _MAX_QUALITY_ATTEMPTS, _final_chord_voicing,
+    _run_attempt, _choose_progression, _final_chord_voicing,
+    evaluate_seed, run_quality_search,
 )
 
 logger = logging.getLogger(__name__)
@@ -305,47 +305,48 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
         # quality-searched seed, like a normal build).
         use_fixed = (fixed_section_seeds is not None and sec_i < len(fixed_section_seeds)
                      and fixed_section_seeds[sec_i] is not None)
+        def _section_run(seed, **extra):
+            try:
+                return _run_attempt(
+                    sec_req, sec_style, seed, True, groove_push, secondary_dominants, tritone_sub,
+                    scoring_style=sec_scoring, fixed_progression=sec_progression,
+                    chords_prev_voicing=prev_voicing, melody_seed_motif=sec_motif,
+                    rhythm_cell=rhythm_cell, arp_contour=verse_motif, **extra,
+                )
+            except Exception as exc:
+                logger.error("build_song section %r (seed %s) failed: %s", sec_name, seed, exc, exc_info=True)
+                return ({}, {}, {}, [], None, {}, [])
+
         if use_fixed:
             # Replay: reuse the exact seed the original build_song call landed on
             # for this section — no re-search, so untouched parts stay identical.
             winning_seed = fixed_section_seeds[sec_i]
-            _qraw = None
-            try:
-                evts, _cc, _pb, _prog, _qraw, _patterns, _secs = _run_attempt(
-                    sec_req, sec_style, winning_seed, True, groove_push, secondary_dominants, tritone_sub,
-                    scoring_style=sec_scoring, regen_part=regen_part, regen_salt=regen_salt,
-                    fixed_progression=sec_progression,
-                    chords_prev_voicing=prev_voicing, melody_seed_motif=sec_motif,
-                    rhythm_cell=rhythm_cell, arp_contour=verse_motif,
-                )
-            except Exception as exc:
-                logger.error("build_song section %r failed: %s", sec_name, exc, exc_info=True)
-                evts = {}
+            # A repair the original build kept is part of that section's
+            # identity, and `section_seeds` carries only the seed — so re-derive
+            # it by re-running the very evaluation that chose it. Deriving it
+            # from the UNregenerated attempt matters: which repair fires must not
+            # depend on the stem the user is re-rolling, or every other part
+            # would shift underneath them.
+            _found = evaluate_seed(_section_run, winning_seed)
+            if regen_part:
+                _kept = _found.repairs[0].kwargs if _found.repairs else {}
+                _replayed = _section_run(winning_seed, regen_part=regen_part,
+                                         regen_salt=regen_salt, **_kept)
+                evts, _sec_qraw = _replayed[0], _replayed[4]
+            else:
+                evts, _sec_qraw = _found.result[0], _found.quality
         else:
-            # Quality-gated multi-attempt search, mirroring plain /generate's
-            # _run_best_attempt — song sections previously ran once with no
-            # quality check at all. Also the path for brand-new/duplicated
-            # sections in a rearrange (no prior seed to replay).
-            best_evts, best_total, winning_seed = None, -1.0, sec_seed
-            for attempt in range(_MAX_QUALITY_ATTEMPTS):
-                attempt_seed = sec_seed if attempt == 0 else _part_seed(sec_seed, attempt, "retry")
-                try:
-                    evts, _cc, _pb, _prog, qraw, _patterns, _secs = _run_attempt(
-                        sec_req, sec_style, attempt_seed, True, groove_push, secondary_dominants, tritone_sub,
-                        scoring_style=sec_scoring, regen_part=regen_part, regen_salt=regen_salt,
-                        fixed_progression=sec_progression,
-                        chords_prev_voicing=prev_voicing, melody_seed_motif=sec_motif,
-                        rhythm_cell=rhythm_cell, arp_contour=verse_motif,
-                    )
-                except Exception as exc:
-                    logger.error("build_song section %r attempt %d failed: %s", sec_name, attempt, exc, exc_info=True)
-                    continue
-                total = qraw.get("total", 0.0) if qraw is not None else 0.0
-                if best_evts is None or total > best_total:
-                    best_evts, best_total, winning_seed = evts, total, attempt_seed
-                if qraw is not None and _all_green(qraw):
-                    break
-            evts = best_evts or {}
+            # Quality-gated search with targeted repair, shared with plain
+            # /generate — song sections previously ran once with no quality
+            # check at all. Also the path for brand-new/duplicated sections in
+            # a rearrange (no prior seed to replay).
+            _found = run_quality_search(
+                lambda s, **kw: _section_run(s, regen_part=regen_part,
+                                             regen_salt=regen_salt, **kw),
+                sec_seed)
+            evts = _found.result[0] if _found.result else {}
+            winning_seed = _found.seed
+            _sec_qraw = _found.quality
 
         section_seeds.append(winning_seed)
 
@@ -360,8 +361,7 @@ def _generate_song_sections(req, style, bpm, base_seed, chorus_key_shift,
                                     e.duration, e.velocity, e.channel) for e in fitted]
             evts["melody"] = fitted
 
-        sec_quality = best_total if (not use_fixed and best_total >= 0) else (
-            _qraw.get("total") if use_fixed and _qraw else None)
+        sec_quality = _sec_qraw.get("total") if _sec_qraw else None
 
         # Cross-section motif reuse: the first section of each type sets the theme
         # (melody + harmony); later sections of that type reuse it, keeping fresh

@@ -6,6 +6,7 @@
         95
     ],
     "default_scale": "minor",
+    "cadence_alignment": 0.9,
     "compound_swing": 0.65,
   "chromatic_color": 0.2,
   "bridge_escape_prob": 0.5,

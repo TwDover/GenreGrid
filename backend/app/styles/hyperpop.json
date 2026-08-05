@@ -6,6 +6,7 @@
     168
   ],
   "default_scale": "major",
+  "cadence_alignment": 0.8,
   "compound_swing": 0.15,
   "instrumentation": {
     "chords": "polysynth_pad",

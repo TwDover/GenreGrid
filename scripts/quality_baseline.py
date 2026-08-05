@@ -55,7 +55,7 @@ from app.core.arrangement import _part_seed                       # noqa: E402
 from app.models.schemas import GenerateRequest                    # noqa: E402
 from app.services.generation import (                             # noqa: E402
     _all_green, _blend_styles, _MAX_QUALITY_ATTEMPTS, _QUALITY_DIMS,
-    _GREEN_THRESHOLD, _run_attempt,
+    _GREEN_THRESHOLD, _run_attempt, run_quality_search,
 )
 from app.services.library import build_scoring_style, list_library  # noqa: E402
 from app.services.style_loader import list_styles, load_style     # noqa: E402
@@ -155,19 +155,16 @@ def _run_case(style_id: str, style: dict, scoring_style: dict, scale: str,
     sec_dom = style.get("secondary_dominants", False)
     tritone = style.get("tritone_substitution", False)
 
-    best_q = best_events = None
-    attempts = 0
-    for attempt in range(_MAX_QUALITY_ATTEMPTS):
-        attempts += 1
-        attempt_seed = base_seed if attempt == 0 else _part_seed(base_seed, attempt, "retry")
-        events, _cc, _pb, _prog, q, _pats, _secs = _run_attempt(
-            req, style, attempt_seed, is_loop, groove_push, sec_dom, tritone,
-            scoring_style=scoring_style,
-        )
-        if best_q is None or (q is not None and q.get("total", 0) > best_q.get("total", 0)):
-            best_q, best_events = q, events
-        if q is not None and _all_green(q):
-            break
+    # The production search itself (services.generation.run_quality_search), not a
+    # copy of it — a re-implementation here could measure a search the app doesn't run.
+    found = run_quality_search(
+        lambda seed, **kw: _run_attempt(
+            req, style, seed, is_loop, groove_push, sec_dom, tritone,
+            scoring_style=scoring_style, **kw,
+        ),
+        base_seed,
+    )
+    best_q, best_events = found.quality, (found.result[0] if found.result else None)
 
     if best_q is None:
         return {"style": style_id, "seed": base_seed, "meter": meter, "error": True}
@@ -176,7 +173,10 @@ def _run_case(style_id: str, style: dict, scoring_style: dict, scale: str,
         "style": style_id,
         "seed": base_seed,
         "meter": meter,
-        "attempts": attempts,
+        # Generation runs, so this stays comparable to the pre-11.4 baselines
+        # (where one attempt was always exactly one run).
+        "attempts": found.runs,
+        "repairs": [r.describe() for r in found.repairs],
         "green": _all_green(best_q),
         "total": best_q["total"],
         "dims": {d: best_q.get(d, 0.0) for d in DIMS},
